@@ -9968,8 +9968,8 @@ test.describe('在谈详情完整布局', () => {
       // 长正文样本：只加长自由文本 wire 字段（时间线 text / 叮嘱回执 expression）。
       // 阶段区 summary 是 17 个 step 闭词（未知词按安全文案「阶段信息待更新」收口，不进
       // DOM），状态/步骤同为闭词 —— 不用闭词字段造长文（spec：仅测试服务端真实支持的事实）。
-      // S0–S3 展示统一 Task 4：无正文价值的时间线文本不再上屏（问答应以 screening records
-      // 为准）—— 长文本证据改由正式叮嘱回执气泡承载，transcript 长文断言缺席。
+      // review-r1 F3 / r2-F1 裁决：role 为空的纯系统事件非空正文保留原文语义（上屏），
+      // 结构化问答仍只以 screening records 正式投影 —— 长文本证据=系统注释+叮嘱回执气泡。
       const 长前缀 = `P5 长文本标记·${P5编号.甲.slice(-4)}`;
       const 长文 = `${长前缀}${'：这是一段很长的自由文本，用来验证长正文换行可读、不横向溢出、不截断丢内容。'.repeat(6)}`;
       const 回执长文 = `${长前缀}回执${'：这是一段很长的叮嘱回执，同样要完整上屏、换行可读、不横向溢出。'.repeat(6)}`;
@@ -10001,8 +10001,8 @@ test.describe('在谈详情完整布局', () => {
       await expect(page.getByText('出具简历初筛结论', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
       await 断言纵序(page, ['匿名初筛', '递交简历', '差异协同', '意向确认']);
-      // 时间线裸文本不再上屏；长叮嘱回执气泡完整上屏（换行可读，不横向溢出）
-      await expect(page.getByText(长文)).toHaveCount(0);
+      // 纯系统事件（role=''）非空正文按原文上屏；长叮嘱回执气泡完整上屏（换行可读，不横向溢出）
+      await expect(page.getByText(长文)).toBeVisible();
       await expect(page.getByText(回执长文)).toBeVisible();
       await 断言无横向溢出(page);
       await page.screenshot({ path: 'test-results/详情布局/bk-招聘-进度-390.png', fullPage: true });
@@ -10034,7 +10034,7 @@ test.describe('在谈详情完整布局', () => {
 
       // 320px 回切进度 Tab：长正文样本在最窄视口仍完整可读、不横向溢出（与其余三侧同构）
       await page.getByRole('button', { name: '代谈进度', exact: true }).click();
-      await expect(page.getByText(长文)).toHaveCount(0);
+      await expect(page.getByText(长文)).toBeVisible();
       await expect(page.getByText(回执长文)).toBeVisible();
       await expect(page.getByRole('button', { name: '通过初筛' })).toBeVisible();
       await 断言无横向溢出(page);
@@ -10843,11 +10843,11 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       await page.goto(`/#/deal/${pre编号}`);
       await expect(page.getByText(P5标记.庚职位名).first()).toBeVisible({ timeout: 20_000 });
 
-      // pre-Case 状态区保留（Spec §5.2）：闭词状态「正在进行公开信息初评」，无轮次不造
-      // 0/3（轮次 — 带可访问缺失说明；阶段标题归下方分节条，状态区不重复）
-      await expect(page.getByText('正在进行公开信息初评')).toBeVisible();
-      await expect(page.getByText('轮次 —')).toBeVisible();
-      // 四段都未开始；S0 可展开（默认展开）承载公开初评的过程/决定与中文证据
+      // review-r1 F1（Spec §5.1/§5.2）：pre-Case 评估中不再有顶部独立状态区；过程/决定
+      // 归 S0 可展开区（有公开决定显示决定文，无决定才显示过程词）
+      await expect(page.getByText('正在进行公开信息初评')).toHaveCount(0);
+      await expect(page.getByText('轮次 —')).toHaveCount(0);
+      // 四段都未开始；S0 可展开（默认展开）承载公开初评的决定与中文证据
       await expect(page.getByText('公开初评匹配').first()).toBeVisible();
       await expect(page.getByText('其他条件：匹配')).toBeVisible();
       await expect(page.getByText('未开始', { exact: true }).first()).toBeVisible();
@@ -14782,7 +14782,8 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     await expect(page.getByText('公开初评匹配').first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('其他条件：匹配')).toBeVisible(); // 中文证据（未知维度安全兜底）
     await expect(page.getByText('P5 Fixture 公开初评·基础信息匹配')).toHaveCount(0); // 英文大段不上屏
-    await expect(page.getByText('正在进行公开信息初评')).toBeVisible();
+    // review-r1 F1：pre-Case 评估中无顶部独立状态区，过程信息归 S0 信息区
+    await expect(page.getByText('正在进行公开信息初评')).toHaveCount(0);
 
     // ── 开案（同一条记录指到 Case，无第二张卡）：S0 消费 case_detail ──
     //    （fixture 里开案的 Case 冻结职位 = 本次受托岗位：职位名随 Case 同步）
@@ -14880,7 +14881,10 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     };
     置失败初评();
     await 查看进展.click();
-    await expect(page.getByText('本次评估未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // review-r1 F1：初评失败的状态/原因/动作都在 S0 信息区（默认展开）—— 过程词
+    // 「初评未完成」+ 失败原因一行；重试/归档动作卡在同段尾部（控制能力未动）
+    await expect(page.getByText('初评未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('AI 服务暂时不可用，本次没有创建 Case').first()).toBeVisible(); // S0 小结行 + 动作卡说明同词各一处
     await expect(page.getByRole('button', { name: '重试初评' })).toBeVisible();
     await expect(page.getByRole('button', { name: '归档', exact: true })).toBeVisible();
 
@@ -14892,14 +14896,14 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     const 重试POST = p5.变更请求.filter((项) => 项.path === 重试POST路径);
     expect(重试POST[0]!.body).toEqual({ expected_retry_generation: 0 });
     expect(重试POST[0]!.idempotencyKey).not.toBe('');
-    await expect(page.getByText('正在进行公开信息初评')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('初评中', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: '重试初评' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '归档', exact: true })).toHaveCount(0);
 
     // ── 再次失败（代际已被 retry 消费为 1）→ 归档：body 严格 {} 且无 Idempotency-Key，
     //    权威 shelf 回读：active 无卡、历史有卡，绝不复活第二条记录 ──
     置失败初评();
-    await expect(page.getByText('本次评估未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('初评未完成', { exact: true })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '归档', exact: true }).click();
     await expect(page.getByText('移入历史，不是取消')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: '归档', exact: true }).click();
@@ -14911,7 +14915,7 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
 
     // 权威回读（动作后的已载刷新/重读）：在谈空、历史有卡。
     // S0–S3 展示统一 Task 2：历史白卡走共享历史卡 —— 结果文案按终局字典（初评失败），
-    // 不再是列表短词「本次评估未完成」（那份词只保留在详情状态区）
+    // 不是列表短词「本次评估未完成」（详情侧过程词也是字典词「初评未完成」，非列表短词）
     await page.goto('/#/app');
     await expect(page.getByTestId('求职在谈卡')).toHaveCount(0, { timeout: 15_000 });
     await page.goto('/#/archived');
