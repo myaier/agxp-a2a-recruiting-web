@@ -183,7 +183,7 @@ npm run test:e2e                                   # 全量（mock + fixture + a
 npm run test:e2e -- --grep '@mock'                  # 只跑 Mock 回归
 npm run test:e2e -- --grep '@backend'               # 只跑 Backend fixture
 npm run test:e2e -- --grep '@annotation'            # 只跑标注评审构建（4183 独有构建）
-npm run test:e2e -- e2e/数据源模式.spec.ts --project=fixture   # 单文件子集
+npm run test:e2e -- e2e/suites/求职意向.spec.ts --project=fixture   # 单文件子集
 ```
 
 由 `playwright.config.ts` 同时启动三个不可复用的 Vite dev server
@@ -207,22 +207,31 @@ npm run test:e2e -- e2e/数据源模式.spec.ts --project=fixture   # 单文件�
   status / affiliation / claim）。multipart 不用 JSON parser 解
   整体，敏感正文只在测试进程内比对。
 - 基线视觉回归（`e2e/视觉回归/`，固定 18 个场景）由 `playwright.视觉回归.config.ts`
-  单独驱动，不为本套件增加 Backend 视觉场景；Backend 行为全部由数据源模式 Playwright 验证。
+  单独驱动，不为本套件增加 Backend 视觉场景；Backend 行为全部由 `e2e/suites/` 的
+  Backend fixture 用例验证。
 
-确定性 fixture 通过后，还需按上面命令对可达的真实 `stg`（以及本地 BFF 可用时的 `local`）
+确定性 fixture 通过后，还需按上面命令对可达的真实 `stg`
 完成一次真实登录 / 资源读取 smoke。若目标环境或 OTP 前置未就绪，记录外部 blocker，
 不能用 route fixture 冒充真实联调通过。
 
 ### 真实后端行为验收（Agent Dogfood）
 
-真实后端业务验收由 Agent 使用 `agent-browser` 按文档执行：环境与数据用现有后端工具准备，
-Agent 观察页面完成九类行为（基础 B01–B05、Hosted H01–H04），按关键节点与刷新/重开
-证据判 PASS/FAIL/BLOCKED/NOT_RUN。它是**本地、显式、慢速**入口，不进普通 `npm test`，
-也不进 CI；没有对应 npm 命令，从指南启动：
+真实后端业务验收由 Agent 使用 `agent-browser` 按文档执行，活动范围只覆盖真实 STG：
+`STG 基础试点`（两轮）与 `STG Onboarding` Suite（`stg-onboarding`）。Agent 观察页面
+完成业务操作，按关键节点与刷新/重开证据判 PASS/FAIL/BLOCKED/NOT_RUN。它是**显式、
+慢速**入口，不进普通 `npm test`，也不进 CI；没有对应 npm 命令，从指南启动：
 
 - 执行指南：[docs/dogfood/真实后端行为验收.md](docs/dogfood/真实后端行为验收.md)
 - 报告模板：[docs/dogfood/真实后端报告模板.md](docs/dogfood/真实后端报告模板.md)
-- 全新账号注册走查：[docs/dogfood/backend-local-onboarding.md](docs/dogfood/backend-local-onboarding.md)
+- STG Onboarding Suite：[docs/dogfood/stg-onboarding.md](docs/dogfood/stg-onboarding.md)
+
+> 旧 local 行为（基础 B01–B05、Hosted H01–H04）与其 local 环境/fixture 流程已归档至
+> `docs/dogfood/archive/`（[local-behavior.md](docs/dogfood/archive/local-behavior.md)、
+> [local-report-template.md](docs/dogfood/archive/local-report-template.md)）；
+> 全新账号注册走查
+> [docs/dogfood/backend-local-onboarding.md](docs/dogfood/backend-local-onboarding.md)
+> 已标历史归档、非活动执行入口。归档不计 PASS，未承接项的迁移对账见
+> `docs/testing/README.md`。
 
 > 2026-09-08 起四个旧入口 `test:agent-browser:backend-local` / `hosted-agent` / `unit` /
 > `shell` 及 `e2e/真实后端/` 整栈运行器已退役删除；历史设计见

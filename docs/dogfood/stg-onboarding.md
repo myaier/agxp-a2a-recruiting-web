@@ -8,12 +8,12 @@ onboarding 旅程：两个 Case（`stg-onboarding-candidate` / `stg-onboarding-r
   不预填任何通过数；正式运行属 final gate 的逐项决策。
 - 权威设计：`docs/superpowers/specs/2026-09-14-stg-onboarding-contract-alignment-design.md`
   第 4–6 节（接口合同、状态分流、四条旅程）。
-- 入口注册：[真实后端行为验收](真实后端行为验收.md)第 1 节范围选择与第 12 节。
-- 报告：[真实后端报告模板](真实后端报告模板.md)第 8 节；证据落既有
+- 入口注册：[真实后端行为验收](真实后端行为验收.md)第 1 节范围选择与第 10 节。
+- 报告：[真实后端报告模板](真实后端报告模板.md)第 5 节；证据落既有
   `dogfood-output/<run-id>/`，不新建报告平台。
-- 独立性：与 local B01–B05 / H01–H04、`STG 基础试点`、
-  [backend-local onboarding](backend-local-onboarding.md) 互不替代、互不计入；
-  原 `全部` 范围不含本 Suite。
+- 独立性：与 `STG 基础试点` 互不替代、互不计入；旧 local B01–B05 / H01–H04 与
+  [backend-local onboarding](backend-local-onboarding.md)（均已历史归档）互不替代、
+  互不计入；原 `全部` 范围已随 local 归档退出活动入口。
 
 ## 1. 目的与范围
 
@@ -52,8 +52,8 @@ onboarding 旅程：两个 Case（`stg-onboarding-candidate` / `stg-onboarding-r
 
 - `简历-v1.pdf` 核查（2026-09-14）：仅一行英文占位
   （「AGXP browser acceptance fixture resume v1 - no personal data」），无姓名、教育、
-  技能等可解析事实 → **不用于本 Suite 的 parsed 变体**。原文件不修改，local B/H
-  继续按原指南使用 v1/v2。
+  技能等可解析事实 → **不用于本 Suite 的 parsed 变体**。原文件不修改（local B/H
+  的 v1/v2 历史用法见 [archive/local-behavior.md](archive/local-behavior.md)）。
 - `简历-onboarding.pdf`（本 Suite 新增，candidate/parsed 用）：
 
 | 字段 | 固定合成值 |
@@ -109,7 +109,7 @@ onboarding 旅程：两个 Case（`stg-onboarding-candidate` / `stg-onboarding-r
 - prepare 未明确 READY 或 initial verify 失败时不得打开浏览器消费数据。
 - STG 前端服务、代理上游证据（`https://recruitment-stg.agxp.ai`）、退出码语义
   （`2` 参数错误 / `75` BLOCKED / `1` FAIL）、占用与恢复、foreign run 处置沿用
-  [真实后端行为验收](真实后端行为验收.md)第 4.3 与 7.1 节，本文件不复制其全文。
+  [真实后端行为验收](真实后端行为验收.md)第 4 与 6.1 节，本文件不复制其全文。
 - 记录每轮 receipt / login 文件路径与实际 deployment tag / source revision。
 
 ## 5. 安全登录与凭据

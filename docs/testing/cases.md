@@ -6064,3 +6064,9 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 进入方式与操作/凭据/清理合同见 [`docs/dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md)
 与 [`docs/dogfood/stg-onboarding.md`](../dogfood/stg-onboarding.md)。
+
+旧 local L3（基础 B01–B05、Hosted H01–H04 与 backend-local-onboarding 六个 Case）已于
+2026-09-16 退出活动执行入口并归档：行为与报告段在 [`docs/dogfood/archive/`](../dogfood/archive/local-behavior.md)，
+`docs/dogfood/backend-local-onboarding.md` 首行标历史归档、非活动执行入口。逐项迁移
+对账（原风险 / 现有覆盖 / 未承接 / 后续归属）见 [README.md](README.md)「Task 6 对账」的
+15-ID 迁移表；归档不等于验收完成，未承接项仍按缺口跟踪，不在静态清单给旧 ID 记 PASS。

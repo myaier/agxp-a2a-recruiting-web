@@ -1,5 +1,10 @@
 # Backend + Local Onboarding Dogfood Case
 
+> **历史归档、非活动执行入口（2026-09-16 起）**：本文件退出活动执行链，仅作历史参考。
+> 活动真实验收只走 STG，见 [真实后端行为验收](真实后端行为验收.md)；文内六个 Case 的
+> 迁移对账（原风险 / 现有覆盖 / 未承接 / 后续归属）见 `docs/testing/README.md`。
+> 正文与其中的旧命令、历史运行事实保持原样，不批量改写旧 PASS/FAIL；归档不等于验收完成。
+
 - Case ID：`DOGFOOD-ONBOARDING-BACKEND-LOCAL`
 - 覆盖角色：候选人、招聘方
 - 自动化工具：可见 Chrome + CDP + `agent-browser`

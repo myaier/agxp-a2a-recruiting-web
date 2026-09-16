@@ -377,6 +377,72 @@ vitest 4 对象 `it.each` 不做 `$var` 标题插值、部分表驱动用例参�
   p1 28 + wiring 24 张场景 JSON）与 `P1_BACKEND_CAPTURE_DIR`（fixture 分支）产物在
   `test-results/test-layering/{p1,wiring,p1-backend}`；无显式目录仍走 testInfo.outputPath。
 
+## Task 6 对账（L3 文档入口收敛、local 归档与一次性脚本退役，2026-09-16）
+
+### 活动入口收敛（只走 STG）
+
+- [真实后端行为验收](../dogfood/真实后端行为验收.md)只保留两个 STG 范围：
+  `STG 基础试点`（两轮 `ephemeral-baseline`，第二轮含旧凭据反证）与
+  `STG Onboarding` Suite（`stg-onboarding-candidate/recruiter` × `manual/parsed`
+  四个独立选择项）。STG 操作、凭据、占用/清理/隔离责任逐字保留；仅章节编号调整
+  （旧 4.3→4、7→6、9→7、10→8、11→9、12→10），跨文件引用已同步（stg-onboarding、
+  报告模板）。
+- [真实后端报告模板](../dogfood/真实后端报告模板.md)只呈现 STG 范围：两轮生命周期、
+  四选择项表、隔离/收尾结论均保留；local 报告段（B/H 节点表、local fixture 生命
+  周期表、七个视觉观察位置、local 等待预算行）移入
+  [archive/local-report-template.md](../dogfood/archive/local-report-template.md)。
+  STG 字段未因删除 local 表格丢失。
+- 旧 local 行为内容（local 栈启动、fixture 数据与 receipt v2 生命周期、九类场景卡、
+  七个视觉观察位置、local 完整通过定义）移入
+  [archive/local-behavior.md](../dogfood/archive/local-behavior.md)；章节编号沿用
+  原指南，历史引用不断。
+- [backend-local-onboarding.md](../dogfood/backend-local-onboarding.md) 首行标
+  「历史归档、非活动执行入口」，正文与历史运行事实不改写；
+  [docs/AgentBrowser真实后端验收.md](../AgentBrowser真实后端验收.md)、`README.md`、
+  `CLAUDE.md` 的指向已更新为 STG 入口 + 归档提示。
+
+### 15 个旧 ID 迁移表
+
+「现有覆盖」只列精确文件/标题方向；fixture/单元 PASS 不冒称真实 STG 证据。
+「未承接」= 该真实验证当前没有活动场景或受控 STG 场景，**归档不等于验收完成**。
+「后续归属」只指业务 Suite 方向，本轮不创建新 Case。
+
+| 旧 ID | 原风险 | 现有覆盖 | 未承接（真实验证缺口） | 后续归属 |
+| --- | --- | --- | --- | --- |
+| B01 候选基准加载 | 存量候选简历/意向/披露三屏真实加载与刷新持久化；Mock 或对方私有资料混入 | `e2e/suites/简历与附件.spec.ts`、`求职意向.spec.ts`、`隐私与实名.spec.ts`（契约/解码/回读）；单元 `src/数据/` 简历/意向映射；stg-onboarding-candidate/manual 覆盖空账号完成后的刷新持久化与回访 | 存量账号基准字面量（披露档位、意向配额行）的真实读取；无真实存量账号场景 | 候选资料/求职意向 Suite 方向 |
+| B02 候选 CRUD | 改名/意向增改删/披露改档/附件上传替换删除的写链路与刷新回读 | 「核心编辑」系列（简历与附件/求职意向 的 @mock·@backend）、`简历与附件.spec.ts` P2 附件；STG 基础试点第一轮覆盖简历字段修改+意向新建/编辑/删除 | 披露改档还原、附件上传/替换/删除在真实后端的全链路（candidate/parsed 只覆盖 onboarding 内上传+解析） | P2 附件/候选资料 Suite 方向 |
+| B03 招聘基准加载 | 名片/公司介绍/在招归档分组真实加载；不混入候选私有资料 | `e2e/suites/招聘组织.spec.ts`（P1C）；stg-onboarding-recruiter/manual 覆盖名片+首岗回访 | 存量招聘账号公司介绍/归档分组真实读取 | 招聘组织 Suite 方向 |
+| B04 招聘 CRUD | 名片/公司介绍改还原；岗位发布→编辑→停止→重开→删除全链路 | `e2e/suites/岗位编辑.spec.ts`、`招聘组织.spec.ts`（multipart/If-Match）；STG 基础试点第一轮覆盖岗位新建→编辑→归档→重开→删除 | 名片职务/公司介绍修改还原的真实链路（试点只改职务一次）；删除产品二次确认的真实行为 | 岗位编辑/招聘组织 Suite 方向 |
+| B05 双会话隔离 | 双账号各见授权数据、退出单端生效 | 各域 Mock 隔离用例（隐私与实名/发现推荐/MatchCase/真人消息/账号与支持）；STG 基础试点两轮（候选退出招聘仍有效、identity 轮换+旧凭据反证）；stg-onboarding 隔离两轮衔接证据 | local acceptance 栈双账号隔离无活动场景；真实 STG 隔离由试点/Onboarding 两轮证据承担，不另建 | STG 基础试点与 stg-onboarding 既有隔离合同 |
+| H01 happy 闭环 | 规则确认→PDF 解析→委托→补充事实→初筛→协调确认→深链复读全链路 | `Agent规则.spec.ts`（P6 提案/确认/版本链）、`简历与附件.spec.ts`（P2）、`MatchCase.spec.ts`（S0–S3/深链）、`连续委托.spec.ts`（委托→S0→S1）；单元 MatchCase详情 组 | 真实 STG 完整闭环（试点明确排除规则/附件/委托；无受控 STG happy 场景）；旧 H01「候选补充事实（回答补问）」与 J-PILOT-01 S0 无用户输入规则冲突，记为需更新的历史预期，不迁入活动流程 | 既有 P5/P6/P2/连续委托 fixture Suite；真实闭环缺口保留本表 |
+| H02 委托失败零 Case（p4） | 委托失败被诚实解释、零 Case、无「查看进展」假进展 | `发现推荐.spec.ts`（503 受控重试/失败展示/404 安全不可用页）、`连续委托.spec.ts` 场景二（写响应丢失→原命令核对→失败→归档回读） | 「AI 不可用→解释→零 Case→无假进展→刷新一致」受控真实失败场景的闭环（p4 scene 无 STG 等价） | 发现推荐/连续委托 Suite 方向 |
+| H03 初筛 attention（p5） | 招聘 Agent 需注意双端一致且 owner-safe；刷新不假成功 | `MatchCase.spec.ts`（fail-closed/权威重读）；单元 `MatchCase详情.展示与隐私`（owner-safe agent_attention）、`MatchCase列表`（attention/零 retry） | 真实双端一致性与安全原因展示的 STG 闭环 | MatchCase Suite 方向 |
+| H04 规则解释失败与草稿恢复（p6） | 解释失败诚实呈现、无成功入口、草稿恢复、计数不变 | `Agent规则.spec.ts`（草稿预填/确认前旧规则在场/accept 幂等/规则加载失败重试） | 「解释失败→关闭失败卡→原草稿恢复→刷新零新增规则」完整恢复链（真实服务失败闭环无受控场景，不随机制造故障） | Agent规则 Suite 方向 |
+| CAND-ONB-001 候选 onboarding | 全新账号手填/PDF 四分支、完成门槛、恢复与隔离 | stg-onboarding-candidate manual/parsed（社招合成基线）；`e2e/suites/候选建档.spec.ts` + `e2e/J-PILOT-02接线.spec.ts`（手填接线、教育恢复/首次意向唯一/头像 unknown）；单元 `工作经历.资料与预填`（预填） | 学生分支（stg-onboarding 只有社招基线）、屏蔽公司/目录中间层 PM_BLOCKED 观察、Highlights 检查、头像恢复细节 | stg-onboarding Suite（已承接部分）；学生分支如需真实验收另定 |
+| EMP-ONB-001 招聘方 onboarding | 名片/公司声明/首岗发布、JD 导入入口、空态与隔离 | stg-onboarding-recruiter manual/parsed；`e2e/suites/招聘建档与JD.spec.ts`（名片+首岗+JD 建议稿导入） | 无 verified affiliation 公司资料空态的真实链路；存量账号多页巡检 | stg-onboarding + 招聘组织 Suite 方向 |
+| CAND-AUTH-001 交互登录水合 | 登录后支持域水合不靠临时补读；刷新一致性 | `登录与数据源.spec.ts`（Backend 数据源 fixture 水合）；单元 `src/状态/会话` 套件 | 真实 STG 存量多资源账号重登水合（stg-onboarding 只覆盖首次完成后的回访） | 登录与数据源 Suite 方向 |
+| CAND-INT-001 意向增改查 | 意向创建/编辑/revision/回读闭环 | `求职意向.spec.ts`（If-Match 与权威回读）；STG 基础试点两轮覆盖意向新建/编辑/删除+刷新回读 | 5 条 active 上限腾挪等存量账号边界 | 求职意向 Suite 方向 |
+| CAND-ME-001 候选「我」与设置巡检 | 跨页接线与权威空态（访客/历史代谈/屏蔽名单等） | `账号与支持.spec.ts`（P8）、`隐私与实名.spec.ts`（P3）、`Agent规则.spec.ts`；单元各屏用例 | 谁接触过我/历史代谈/帮助反馈工单等页面的真实空态巡检（无受控 STG 场景） | 账号与支持/隐私与实名 Suite 方向 |
+| EMP-ME-001 招聘方「我」与设置巡检 | 招聘端跨页接线与权威空态 | `招聘组织.spec.ts`、`账号与支持.spec.ts`；单元企业屏用例 | 空账号多页巡检、认证摘要三态的真实核对 | 招聘组织/账号与支持 Suite 方向 |
+
+未迁移断言（上表「未承接」列）按缺口跟踪；文档归档与本地 fixture PASS 不冒称真实验收完成。
+
+### 一次性脚本退役（Spec §8.2）
+
+| 删除文件 | 覆盖的历史风险 | 现有承接 | 未承接 |
+| --- | --- | --- | --- |
+| `脚本/全流程爬测.mjs` | 全站路由可达/白屏/console 报错穷举；「每个可点元素点一遍+返回一步验证」捕捉状态类 bug（历史发现：返回键需历史垫层、缺字段白屏、选中态需指纹判变化） | 第二层按 Suite 定向保留精确路径/标题：`e2e/suites/展示与交互.spec.ts`（抽屉稳定性/换壳无闪屏/卡片几何）、各域 spec 的渲染与恢复断言、`e2e/离线边界.spec.ts`；单元 `src/屏幕/` 用例覆盖具体渲染分支 | 全站机械穷举的广度（每按钮×返回验证）无等价物；按 Spec 不重建机械爬虫，需要广度取证时用 agent-browser dogfood 按需执行 |
+| `脚本/问题截图.mjs` | 把一批已确认的未修问题（计数、红点、超宽、零入口类）逐条截图给产品负责人 | 一次性取证配图工具，不构成回归断言；相关页面的当前行为由第二层展示与交互及对应单元用例按现产品断言维护 | 历史问题编号与新断言之间不建立逐一映射（不把截图工具当回归）；新一轮问题取证按 dogfood 指南用 agent-browser 产出，不恢复脚本 |
+
+两脚本未出现在 package.json/其他脚本的调用链（仅 spec/plan 历史文本引用，按合同保留）。
+不清理用户 evidence 目录；历史运行报告的 PASS/FAIL 不改写。
+
+### L3 未承接清单
+
+活动 L3 现只有 STG 两范围（见 [`cases.md`](cases.md) 手写区）；上表「未承接」列即
+L3 未承接项。本轮 L3 selection 为 `none`：无产品/后端/真实 STG 操作语义变化，
+不执行真实登录/上传，不记 L3 PASS。
+
 ## 已知事项
 
 - `J-PILOT-02接线.spec.ts` 四条手填旅程在基线 HEAD 6b8a71fa（旧入口）即失败
