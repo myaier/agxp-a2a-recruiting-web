@@ -353,3 +353,24 @@ export interface 在线简历正文属性 {
 用户覆盖生效：development L3 = none（未执行，非 PASS）；未启动真实后端/真实账户/实际代理结果验收；fixture 证据只覆盖前端布局与接线。
 
 候选 commit 冻结：`68ef3b4c`。后续收尾按「实施后收尾」1–6 执行：异构 Codex 只读 review-loop → affected L0–L2 最小重算 → final gate 方案等用户确认。
+
+### 异构 Codex 只读 review-loop（2026-09-16）
+
+模式 FEATURE_BRANCH_REVIEW，固定 base e01291de，共用守约 `../_shared/review-contract.md`，reviewer gpt-5.6-sol/high 只读不跑测试；thread 01a0a934（session /tmp/codex-review-loop/session-G2GiLfB7）。每轮后基线核对（status/HEAD）均无变化。
+
+| 轮次 | Findings | 裁决与处置 |
+| --- | --- | --- |
+| R1 | 4 条 Important/required 契约违反 | 全部核实成立、接受并修复（提交 `01c458d8`）：①pre-Case 顶部状态区与 S0 重复（accepted/refused/retention 的 S0 无落点分支按但书保留顶部区，零信息丢失）②Mock 招聘岗位上下文硬编码 null（改为按岗位编号本地投影，缺失才 null）③transcript 带正文事件语义被固定句替换/丢弃（改为正文优先）④叮嘱回执 `角色:''` 丢身份（本人→`来自:'用户'`、对端→「X方本人」标签） |
+| R2 | 2 条 required（均为 R1 修复引入） | 全部核实成立、接受并修复（提交 `e4b5c65c`）：①`supplementary_question` 同时渲染为问答气泡+系统注释（通用正文保留加 `role===''` 限定，正式问答只显示一次）②本人回执时间只留映射数据不显示（用户气泡分支对非空时间渲染右对齐时间戳，Mock 不传时间视觉不变） |
+| R3 | NO FINDINGS | 结束（3 轮上限内，精确 NO FINDINGS） |
+
+轮间仅修复相关轻量测试：R1 后相关 10 文件 336 tests + 全量 235 文件/5592 全绿；R2 后相关 3 文件 162 tests + 全量 5593 全绿；tsc、oxlint 干净。无 rejected/deferred 项。
+
+### Affected L0–L2 与 final gate 前 evidence（2026-09-16）
+
+- `npm run lint`（oxlint）：干净（候选 9ad9c030）。
+- `npm run build`（含 tsc -b）：通过（候选 9ad9c030）。
+- Vitest：全量 235 文件 / 5593 tests 全绿（source_candidate e4b5c65c；其后仅 e2e 断言提交 9ad9c030，未触及任何 Vitest 覆盖文件，六维有效性成立，PASS_REUSED）。
+- Playwright `@s0-s3-display`（mock-stg + backend-stg，--retries=0）：24/24 passed（候选 9ad9c030）。首次重跑 4 failed 均为 r1 行为变更后的断言过期（顶部状态区删除/未知系统事件正文保留），按 PRE_GATE_L0_L2 自主修复为等价断言（9ad9c030），零产品代码改动，未重开异构 review。
+- development L3：N/A（用户覆盖本轮排除；未执行，非 PASS）。真实后端/账户/代理结果端到端未验证。
+- pre-gate target 核对（只读 fetch）：origin/main 已由规划基线 e01291de 推进至 **d1989e4b**（另一会话「候选助手会话」特性，16 commits，40 文件 +6336/−241）；与本分支改动文件**交集为空**。本分支 merge-base 仍为 e01291de。
