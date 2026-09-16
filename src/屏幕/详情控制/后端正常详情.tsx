@@ -23,6 +23,7 @@
 // 只读展示（契约 A）；错误不当缺失（刷新错误单独一行 + 重试）。
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import 确认层 from '../../组件/确认层';
 // 原始 PDF 弹层只借既有 module 的壳，文案由本文件给：Plan 1 的 简历原件层 渲染的是
 // Mock 仿真纸身（无 blob/url 通道）—— 评审 R1 裁定 P5 自建最小 UI，不硬套错口径的层。
@@ -63,13 +64,23 @@ function 公司导航按钮(编号: string | null | undefined, 跳转: (地址: 
 /**
  * 后端详情渲染（J-PILOT-01 Task 5）：按 role/case/主体 key 重挂载的详情主体 —— 持 Tab
  * 与各阶段的手动展开覆盖值（S0–S3 展示统一 Task 4：换 主体/角色/单 由 key 重挂载重置，
- * 同记录轮询、切 Tab 与 pre-Case→Case 联合切换都保留覆盖），正常联合（Case）交
- * 后端正常详情（P5 展示与动作），连续联合（pre-Case/retention）交 后端连续详情
- * （纯展示 + 失败动作卡）。同一张卡 pre-Case→Case 只是联合切换：Tab 不重置、不追加
- * 导航历史（Spec §6「正常轮询避免丢 Tab」）。
+ * 同记录轮询、切 Tab 与 pre-Case→Case 联合切换都保留覆盖；Task 5：Tab 初值按角色认
+ * 深链 query，见下），正常联合（Case）交 后端正常详情（P5 展示与动作），连续联合
+ * （pre-Case/retention）交 后端连续详情（纯展示 + 失败动作卡）。同一张卡
+ * pre-Case→Case 只是联合切换：Tab 不重置、不追加导航历史（Spec §6「正常轮询避免丢 Tab」）。
  */
 export function 后端详情渲染({ 资源 }: { 资源: 后端正常资源 | 后端连续资源 }) {
-  const [当前Tab, 设当前Tab] = useState<详情Tab>('进度');
+  // 首次挂载深链定位（S0–S3 展示统一 Task 5，Spec §5.3）：candidate 只认 ?tab=job、
+  // recruiter 只认 ?tab=resume，不匹配/未知值/缺 query 都是进度。useState 懒初始化只读
+  // 一次 —— 后续同记录的 query 变化不抢手选 Tab；换 record 由父层 key 重挂载按新 query
+  // 重新初始化；同记录 pre-Case→Case 联合切换不重挂载、不重置。只读现状 URL，不加导航
+  // 历史（candidate 别名归一 replace 由 MatchCase详情 负责，query 原样保留）。
+  const [查询参数] = useSearchParams();
+  const 角色 = 资源.kind === '正常' ? 资源.动作输入.role : 'candidate';
+  const [当前Tab, 设当前Tab] = useState<详情Tab>(() => {
+    const 深链 = 查询参数.get('tab');
+    return (角色 === 'candidate' ? 深链 === 'job' : 深链 === 'resume') ? '资料' : '进度';
+  });
   // 手动展开覆盖（键 = 共用阶段折叠键）：只存用户点过的段；没点过的段走阶段流自己的
   // 默认（当前/已结束开、已通过/未到达关）。受控对下发给阶段流，轮询整包替换不改它。
   const [展开覆盖, 设展开覆盖] = useState<Record<string, boolean>>({});

@@ -7,7 +7,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  从P5到详情分段, 从P5到详情顶栏, 从P5到职位资料, 从职位摘要到资料, 从冻结职位到资料, P5阶段共用名,
+  从P5到详情分段, 从P5到详情顶栏, 从P5到职位资料, 从职位摘要到资料, 从冻结职位到资料,
+  投影冻结职位摘要, P5阶段共用名,
 } from './详情展示映射';
 import type { P5阶段, P5阶段区块视图, P5详情正常视图 } from './MatchCase展示映射';
 import type { P5详情 } from './招聘数据源/MatchCase';
@@ -111,6 +112,73 @@ describe('从P5到详情顶栏', () => {
     expect(顶栏.右侧).toEqual({ kind: '分数', 值: 61 });
     expect(顶栏.岗位上下文).toBe('平台工程师 · 上海 · 25-40K·16薪');
     expect(JSON.stringify(顶栏)).not.toContain(别名);
+  });
+
+  // ── S0–S3 展示统一 Task 5（Spec §5.3）：S3 沿用 Mock —— 标题只剩职位、右侧改岗位薪资 ──
+
+  it('S3（意向确认是当前段）：标题职位、右侧岗位薪资、副标题公司 · 城市非空拼接，分数不上 S3', () => {
+    const S3区块 = 四段({
+      anonymous_screening: { 状态: 'passed' },
+      resume_submission: { 状态: 'passed' },
+      needs_coordination: { 状态: 'passed' },
+      intent_confirmation: { 状态: 'active' },
+    });
+    const 顶栏 = 从P5到详情顶栏(正常视图({ 阶段区块: S3区块, 匹配分: 66 }));
+    expect(顶栏).toEqual({
+      端: '求职',
+      标题: '平台工程师',
+      副标题: '公司信息缺失 · 上海',
+      画像: null,
+      右侧: { kind: '薪资', 值: '25-40K·16薪' },
+      岗位上下文: null,
+    });
+  });
+
+  it('S3 顶栏与资料 Tab 同吃一份投影：摘要薪资缺失由同记录冻结三元组补位（20/30/month → 20-30K）', () => {
+    const 冻结: BFF安全职位资料 = {
+      ...BFF安全职位资料样本, salary_lower: 20, salary_upper: 30, salary_period: 'month',
+    };
+    const 顶栏 = 从P5到详情顶栏(正常视图({
+      职位: { jobId: 'job_x', 职位名: '平台工程师', 城市: '上海', 薪资带: '', 技能: ['Go'] },
+      冻结职位资料: 冻结,
+      阶段区块: 四段({
+        anonymous_screening: { 状态: 'passed' },
+        intent_confirmation: { 状态: 'active' },
+      }),
+    }));
+    expect(顶栏.右侧).toEqual({ kind: '薪资', 值: '20-30K' });
+  });
+
+  it('completed（全段已过、停在 S3）同为薪资顶栏；S3 无薪资事实给 null（顶栏显示 —，不造 0）', () => {
+    const 全过 = 四段({
+      anonymous_screening: { 状态: 'passed' },
+      resume_submission: { 状态: 'passed' },
+      needs_coordination: { 状态: 'passed' },
+      intent_confirmation: { 状态: 'passed' },
+    });
+    const 完成 = 从P5到详情顶栏(正常视图({ 阶段区块: 全过, 匹配分: 66 }));
+    expect(完成.右侧).toEqual({ kind: '薪资', 值: '25-40K·16薪' });
+    const 无薪资 = 从P5到详情顶栏(正常视图({
+      职位: { jobId: 'job_x', 职位名: '平台工程师', 城市: '上海', 薪资带: '', 技能: [] },
+      阶段区块: 全过,
+    }));
+    expect(无薪资.右侧).toEqual({ kind: '薪资', 值: null });
+  });
+
+  it('S0–S2 副标题非空拼接无尾随分隔符：薪资全缺只留城市、城市也缺给 null；招聘端岗位上下文同规则', () => {
+    const 缺薪资 = 从P5到详情顶栏(正常视图({
+      职位: { jobId: 'job_x', 职位名: '平台工程师', 城市: '上海', 薪资带: '', 技能: [] },
+    }));
+    expect(缺薪资.副标题).toBe('上海');
+    const 全缺 = 从P5到详情顶栏(正常视图({
+      职位: { jobId: 'job_x', 职位名: '平台工程师', 城市: '', 薪资带: '', 技能: [] },
+    }));
+    expect(全缺.副标题).toBeNull();
+    const 招聘端 = 从P5到详情顶栏(正常视图({
+      role: 'recruiter',
+      职位: { jobId: 'job_x', 职位名: '平台工程师', 城市: '上海', 薪资带: '', 技能: [] },
+    }));
+    expect(招聘端.岗位上下文).toBe('平台工程师 · 上海');
   });
 });
 
@@ -307,6 +375,123 @@ describe('从冻结职位到资料', () => {
     expect(资料.公司.编号).toBeNull(); // 无合法导航坐标
     expect(资料.公司.名称).toBe('云衢科技');
     expect(资料.公司.图片URL).toBe('https://cdn.example.com/org_1/media_1.png');
+  });
+
+  // S0–S3 展示统一 Task 5（Spec §6.2）：摘要先过 统一投影，顶栏与资料 Tab 一处有值处处有值
+  it('资料 Tab 同投影：摘要薪资缺失由同一冻结三元组补位；原摘要有效成员不被顶替', () => {
+    const 冻结: BFF安全职位资料 = {
+      ...BFF安全职位资料样本, salary_lower: 20, salary_upper: 30, salary_period: 'month',
+    };
+    const 资料 = 从冻结职位到资料({
+      摘要: { 职位: '平台工程师', 城市: '上海', 薪资: '', 技能: null },
+      冻结,
+      分: null,
+    });
+    expect(资料.摘要?.薪资).toBe('20-30K');
+    expect(资料.摘要?.职位).toBe('平台工程师');
+    expect(资料.摘要?.技能).toBeNull();
+  });
+
+  it('company_intro 三态：「""」是已知空（组件显示暂无），纯空白与 null 才是缺失 —— 非空清洗不吞已知空', () => {
+    const 已知空 = 从冻结职位到资料({
+      摘要, 冻结: { ...BFF安全职位资料样本, company_intro: '' }, 分: null,
+    });
+    expect(已知空.公司.简介).toBe('');
+    expect(从冻结职位到资料({
+      摘要, 冻结: { ...BFF安全职位资料样本, company_intro: null }, 分: null,
+    }).公司.简介).toBeNull();
+  });
+});
+
+// ── S0–S3 展示统一 Task 5：冻结职位统一投影（同一记录同一次响应，顶栏与 Tab 同吃一份）──
+
+describe('投影冻结职位摘要', () => {
+  /** 摘要原值可空段在生产两路都以空串进投影；冻结样本裁剪出结构化薪资三元组。 */
+  const 空摘要 = { 职位: '', 城市: '', 薪资: '', 技能: null };
+  const 冻结样本: BFF安全职位资料 = {
+    ...BFF安全职位资料样本,
+    salary_lower: 20,
+    salary_upper: 30,
+    salary_period: 'month',
+  };
+
+  it('public 非空优先：摘要有效成员原样保留，冻结 title/location/薪资一律不顶替', () => {
+    const 摘要 = { 职位: '平台工程师', 城市: '上海', 薪资: '25-40K·16薪', 技能: ['Go'] };
+    expect(投影冻结职位摘要(摘要, 冻结样本)).toEqual(摘要);
+  });
+
+  it('摘要缺项由同一冻结补位：title/location 补空；20/30/month → 既有简洁格式 20-30K', () => {
+    expect(投影冻结职位摘要(空摘要, 冻结样本)).toEqual({
+      职位: 'AI 产品实习生',
+      城市: '上海',
+      薪资: '20-30K',
+      技能: null,
+    });
+  });
+
+  it('day/hour 用既有单位文案：300/500/day → 300-500 元/天；40/60/hour → 40-60 元/时', () => {
+    expect(投影冻结职位摘要(空摘要, {
+      ...冻结样本, salary_lower: 300, salary_upper: 500, salary_period: 'day',
+    }).薪资).toBe('300-500 元/天');
+    expect(投影冻结职位摘要(空摘要, {
+      ...冻结样本, salary_lower: 40, salary_upper: 60, salary_period: 'hour',
+    }).薪资).toBe('40-60 元/时');
+  });
+
+  it('0 是合法界值不当 false：0/30/month → 0-30K；单值上下限相等沿用既有简洁单值 20/20/month → 20K', () => {
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_lower: 0 }).薪资).toBe('0-30K');
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_upper: 20 }).薪资).toBe('20K');
+  });
+
+  it('缺成员/缺周期/非法数字/倒置保持缺失：不补默认上下限、不猜周期、不算年薪乘月数', () => {
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_lower: null }).薪资).toBe('');
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_upper: null }).薪资).toBe('');
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_period: null }).薪资).toBe('');
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_lower: 30, salary_upper: 20 }).薪资).toBe('');
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, salary_lower: Number.NaN }).薪资).toBe('');
+    // 年薪月数在场也不参与：薪资投影只认 lower/upper/period 三元组
+    expect(投影冻结职位摘要(空摘要, {
+      ...冻结样本, salary_lower: null, salary_upper: null, salary_period: null, annual_salary_months: 16,
+    }).薪资).toBe('');
+  });
+
+  it('冻结 null：摘要原值原样带出（缺口归缺口），绝不外查当前 Job 补历史', () => {
+    const 摘要 = { 职位: '平台工程师', 城市: '', 薪资: '', 技能: null };
+    expect(投影冻结职位摘要(摘要, null)).toEqual(摘要);
+  });
+
+  it('只缺 title/city：各成员独立判定，冻结只补缺失成员，薪资/技能原值不受影响', () => {
+    const 摘要 = { 职位: '', 城市: '', 薪资: '300-500 元/天', 技能: ['Python'] };
+    expect(投影冻结职位摘要(摘要, 冻结样本)).toEqual({
+      职位: 'AI 产品实习生',
+      城市: '上海',
+      薪资: '300-500 元/天',
+      技能: ['Python'],
+    });
+  });
+
+  it('skills 只认摘要原值：冻结 keywords 在场也不冒充技能（null 未知与 [] 已知空都不被顶替）', () => {
+    expect(投影冻结职位摘要(空摘要, { ...冻结样本, keywords: ['React', 'SQL'] }).技能).toBeNull();
+    expect(投影冻结职位摘要(
+      { 职位: '', 城市: '', 薪资: '', 技能: [] },
+      { ...冻结样本, keywords: ['React'] },
+    ).技能).toEqual([]);
+  });
+
+  it('两条记录异值不串：同一投影先后喂两份输入，各自产出自己的摘要', () => {
+    const 甲 = 投影冻结职位摘要(空摘要, 冻结样本);
+    const 乙 = 投影冻结职位摘要(
+      { 职位: '数据工程师', 城市: '北京', 薪资: '', 技能: [] },
+      {
+        ...冻结样本,
+        title: '数据工程师',
+        location: { id: 'loc_bj', display_name: '北京' },
+        salary_lower: 40,
+        salary_upper: 60,
+      },
+    );
+    expect(甲).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '20-30K', 技能: null });
+    expect(乙).toEqual({ 职位: '数据工程师', 城市: '北京', 薪资: '40-60K', 技能: [] });
   });
 });
 

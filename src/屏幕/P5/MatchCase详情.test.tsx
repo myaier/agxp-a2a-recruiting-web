@@ -2912,6 +2912,38 @@ describe('MatchCase详情 · J-PILOT-01 Task 5 候选连续承接', () => {
     expect(mock跳转).not.toHaveBeenCalled(); // 绝不 push：不追加一次导航历史
   });
 
+  // S0–S3 展示统一 Task 5（Spec §5.3）：首次挂载识别求职 ?tab=job；换 record 按新 query
+  // 初始化（key 重挂载），不加导航历史。
+  it('深链 ?tab=job 首开即资料 Tab；换 record（新地址无 query）回进度', async () => {
+    const user = userEvent.setup();
+    置详情状态({
+      role: 'candidate', caseId: 'dlg_a',
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 'dlg_a', phase: 'evaluating', caseDetail: null }) }),
+    });
+    const 页 = render(
+      <MemoryRouter initialEntries={['/deal/dlg_a?tab=job']}>
+        <测试换Case钮 目标="/deal/dlg_b" 文案="切到新单" />
+        <Routes>
+          {/* eslint-disable-next-line jsx-a11y/aria-role -- role 是 P5 域 prop，非 ARIA role */}
+          <Route path="/deal/:id" element={<MatchCase详情 role="candidate" />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // 首次挂载识别 ?tab=job：直开资料 Tab，进度槽（状态区/四灰条）不挂载
+    expect(await screen.findByText('当前在谈详情数据未提供')).toBeTruthy();
+    expect(screen.queryByText('正在进行公开信息初评')).toBeNull();
+    expect(screen.queryByText('未开始')).toBeNull();
+
+    // 换 record：key 重挂载按新 query 初始化 —— 新地址没有 tab query，回进度
+    置详情状态({
+      role: 'candidate', caseId: 'dlg_b',
+      连续快照: 连续详情快照({ 聚合: 连续详情DTO({ recordId: 'dlg_b', phase: 'evaluating', caseDetail: null }) }),
+    });
+    await user.click(screen.getByRole('button', { name: '切到新单' }));
+    expect(await screen.findByText('正在进行公开信息初评')).toBeTruthy(); // 进度槽回来了
+    页.unmount();
+  });
+
   it('同卡 pre-Case→Case：轮询开案只是联合切换 —— Tab 不跳、零导航、零历史条目', async () => {
     const user = userEvent.setup();
     const 记录 = 'dlg_0123456789abcdef0123456789abcdef';

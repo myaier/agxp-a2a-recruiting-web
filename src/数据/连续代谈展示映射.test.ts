@@ -434,6 +434,44 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     }));
     expect(双缺.标题).toBe('AI 产品实习生 · 公司信息缺失');
   });
+
+  // ── S0–S3 展示统一 Task 5：pre-Case 顶栏与资料 Tab 同吃一份冻结投影（D1 顶栏一致）──
+
+  it('摘要薪资缺失由同记录 job_detail 三元组补位：顶栏副标题与资料 Tab 摘要同一份 20-30K', () => {
+    const 冻结 = {
+      ...BFF安全职位资料样本,
+      salary_lower: 20,
+      salary_upper: 30,
+      salary_period: 'month' as const,
+    };
+    expect(从连续到详情顶栏(连续详情({ phase: 'accepted', 薪资: null, jobDetail: 冻结 })).副标题)
+      .toBe('上海 · 20-30K');
+    expect(从连续到职位资料(连续详情({ phase: 'accepted', 薪资: null, jobDetail: 冻结 })).摘要?.薪资)
+      .toBe('20-30K');
+  });
+
+  it('摘要 title/location 缺失由冻结补位，投影仍缺才落既有占位（占位不顶替冻结值）', () => {
+    const 冻结 = {
+      ...BFF安全职位资料样本,
+      title: 'AI 产品实习生',
+      salary_lower: null,
+      salary_upper: null,
+      salary_period: null,
+    };
+    const 顶栏 = 从连续到详情顶栏(
+      连续详情({ phase: 'accepted', 职位名: null, 城市: null, 薪资: null, jobDetail: 冻结 }),
+    );
+    expect(顶栏.标题).toBe('AI 产品实习生 · 云衢科技');
+    expect(顶栏.副标题).toBe('上海 · 薪资未知'); // 薪资两端都缺才给占位
+    const 资料 = 从连续到职位资料(
+      连续详情({ phase: 'accepted', 职位名: null, 城市: null, 薪资: null, jobDetail: 冻结 }),
+    );
+    expect(资料.摘要?.职位).toBe('AI 产品实习生');
+    expect(资料.摘要?.城市).toBe('上海');
+    expect(资料.摘要?.薪资).toBe('薪资未知');
+    // 技能仍只来自摘要原值（required_skills），冻结 keywords 不冒充
+    expect(资料.摘要?.技能).toBeNull();
+  });
 });
 
 /** 最小 JobEvaluationView 形状（从连续到详情分段 只读它的 state；不经过 decoder）。 */

@@ -11,9 +11,10 @@
 // 夹具走真实 映射P5详情 与 decoder 已接受的 DTO（不给 P5 加字段造样本）。
 // 仓库未装 @testing-library/jest-dom，用 toBeTruthy / disabled 属性断言。
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useMemo, useState } from 'react';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 后端详情渲染, 后端正常详情 } from './后端正常详情';
 import type { 后端正常资源, 后端连续资源 } from './use后端详情控制';
@@ -668,27 +669,31 @@ describe('后端正常详情 · 公开资料匹配检查（S0–S3 展示统一 
   });
 });
 
-describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5）', () => {
-  /** 与控制层连续分支同形的资源（真实 mapper + 恒空动作卡；初评托盘只归 retention）。 */
-  function 连续资源(聚合: NegotiationDetail): 后端连续资源 {
-    return {
-      kind: '连续',
-      canonical记录ID: 聚合.record_id,
-      顶栏: 从连续到详情顶栏(聚合),
-      状态: 从连续到详情状态(聚合),
-      公开初评: 聚合.phase === 'case_started' ? 映射公开初评(聚合) : null,
-      分段们: 从连续到详情分段(聚合),
-      职位资料: 从连续到职位资料(聚合),
-      失败动作卡: null,
-      归档确认: null,
-      底栏: 映射连续底栏(聚合),
-      刷新错误: null,
-      重试: () => undefined,
-    };
-  }
+/** 与控制层连续分支同形的资源（真实 mapper + 恒空动作卡；初评托盘只归 retention）。 */
+function 连续资源(聚合: NegotiationDetail): 后端连续资源 {
+  return {
+    kind: '连续',
+    canonical记录ID: 聚合.record_id,
+    顶栏: 从连续到详情顶栏(聚合),
+    状态: 从连续到详情状态(聚合),
+    公开初评: 聚合.phase === 'case_started' ? 映射公开初评(聚合) : null,
+    分段们: 从连续到详情分段(聚合),
+    职位资料: 从连续到职位资料(聚合),
+    失败动作卡: null,
+    归档确认: null,
+    底栏: 映射连续底栏(聚合),
+    刷新错误: null,
+    重试: () => undefined,
+  };
+}
 
+describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5）', () => {
   it('连续联合：共用外壳两 Tab + pre-Case 状态 + 四未到达阶段 + 禁用底栏（无叮嘱输入）', async () => {
-    render(<后端详情渲染 资源={连续资源(连续详情DTO())} />);
+    render(
+      <MemoryRouter initialEntries={['/deal/dlg_x']}>
+        <后端详情渲染 资源={连续资源(连续详情DTO())} />
+      </MemoryRouter>,
+    );
     expect(screen.getByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 顶栏同款槽
     expect(screen.getByRole('button', { name: '代谈进度' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '职位详情' })).toBeTruthy();
@@ -709,12 +714,17 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
     const user = userEvent.setup();
     const 视图 = 取视图(候选S0详情DTO());
     const Case资源 = 构造正常资源(视图, 'mc_direct');
-    const 页 = render(<后端详情渲染 资源={连续资源(连续详情DTO())} />);
+    const 壳 = ({ 资源 }: { 资源: typeof Case资源 | 后端连续资源 }) => (
+      <MemoryRouter initialEntries={['/deal/dlg_x']}>
+        <后端详情渲染 资源={资源} />
+      </MemoryRouter>
+    );
+    const 页 = render(<壳 资源={连续资源(连续详情DTO())} />);
     expect(screen.getByText('正在进行公开信息初评')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: '职位详情' })); // 切到资料 Tab
     expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy();
     // 轮询推进：同一张卡开案（连续 → 正常联合），Tab 仍是 资料
-    页.rerender(<后端详情渲染 资源={Case资源} />);
+    页.rerender(<壳 资源={Case资源} />);
     expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 资料 Tab 内容还在
     expect(screen.queryByText('正在进行公开信息初评')).toBeNull(); // 进度槽互斥卸载
     await user.click(screen.getByRole('button', { name: '代谈进度' }));
@@ -725,7 +735,9 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
   it('pre-case 冻结职位与公司导航：无 case_id 照常显示，入口按真实组织编号进企业详情', async () => {
     const user = userEvent.setup();
     render(
-      <后端详情渲染 资源={连续资源(连续详情DTO({ jobDetail: BFF安全职位资料样本, 匹配分: 73 }))} />,
+      <MemoryRouter initialEntries={['/deal/dlg_x']}>
+        <后端详情渲染 资源={连续资源(连续详情DTO({ jobDetail: BFF安全职位资料样本, 匹配分: 73 }))} />
+      </MemoryRouter>,
     );
     expect(screen.getByText('平台工程师 · 云衢科技')).toBeTruthy();
     expect(screen.getByText('73')).toBeTruthy();
@@ -738,9 +750,78 @@ describe('后端详情渲染 · 连续联合与 Tab 保持（J-PILOT-01 Task 5�
   });
 });
 
+// ── S0–S3 展示统一 Task 5（Spec §5.3）：后端详情渲染 首次挂载深链定位 Tab ──
+// candidate 只认 ?tab=job、recruiter 只认 ?tab=resume，不匹配/未知值进度；useState 懒
+// 初始化只读一次 —— 后续同记录 query 不抢手选 Tab；换 record 由 key 重挂载按新 query
+// 重新初始化；pre-Case→Case 联合切换不重置（上一 describe 已钉）。
+
+/** 测试本地导航钮：同一路由内改写 query（同记录 query 变化，后端详情渲染 不重挂载）。 */
+function 测试改query钮({ 目标, 文案 }: { 目标: string; 文案: string }) {
+  const 导航 = useNavigate();
+  return <button type="button" onClick={() => 导航(目标)}>{文案}</button>;
+}
+
+describe('后端详情渲染 · Tab 深链初始化（S0–S3 展示统一 Task 5）', () => {
+  function 渲染深链(
+    资源: 后端正常资源 | 后端连续资源,
+    地址: string,
+    换钮?: { 目标: string; 文案: string },
+  ) {
+    return render(
+      <MemoryRouter initialEntries={[地址]}>
+        {换钮 !== undefined ? <测试改query钮 目标={换钮.目标} 文案={换钮.文案} /> : null}
+        <后端详情渲染 资源={资源} />
+      </MemoryRouter>,
+    );
+  }
+
+  it('candidate 只认 ?tab=job：深链直开资料 Tab；?tab=resume / 未知值 / 缺 query 都回进度', () => {
+    const 资源 = 连续资源(连续详情DTO());
+    渲染深链(资源, '/deal/dlg_x?tab=job');
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 资料 Tab 直开
+    expect(screen.queryByText('正在进行公开信息初评')).toBeNull(); // 进度槽互斥卸载
+    cleanup();
+    渲染深链(资源, '/deal/dlg_x?tab=resume');
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // candidate 不认 resume
+    cleanup();
+    渲染深链(资源, '/deal/dlg_x?tab=whatever');
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 未知值回进度
+    cleanup();
+    渲染深链(资源, '/deal/dlg_x');
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 缺 query 回进度
+    cleanup();
+  });
+
+  it('recruiter 只认 ?tab=resume：深链直开在线简历 Tab；?tab=job 回进度', async () => {
+    const 招聘详情 = 招聘S1附件详情DTO(false);
+    const 资源 = 构造正常资源(取视图(招聘详情), 'mc_hr', 招聘详情);
+    渲染深链(资源, '/hr/candidate/mc_hr?tab=resume');
+    expect(await screen.findByText('当前在谈详情数据未提供')).toBeTruthy(); // 简历整档缺失说明
+    expect(screen.queryByText('递交简历')).toBeNull(); // 进度槽已卸载
+    cleanup();
+    渲染深链(资源, '/hr/candidate/mc_hr?tab=job');
+    expect(await screen.findByText('递交简历')).toBeTruthy(); // recruiter 不认 job
+    cleanup();
+  });
+
+  it('后续同记录 query 不抢手选 Tab：手选进度后再遇 ?tab=job 不被拉回资料', async () => {
+    const user = userEvent.setup();
+    const 页 = 渲染深链(连续资源(连续详情DTO()), '/deal/dlg_x?tab=job', {
+      目标: '/deal/dlg_x?tab=job',
+      文案: '同记录再来一次 job 深链',
+    });
+    expect(screen.getByText('当前在谈详情数据未提供')).toBeTruthy(); // 深链先开资料
+    await user.click(screen.getByRole('button', { name: '代谈进度' })); // 手选回进度
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '同记录再来一次 job 深链' }));
+    expect(screen.getByText('正在进行公开信息初评')).toBeTruthy(); // 懒初始化只读一次
+    expect(screen.queryByText('当前在谈详情数据未提供')).toBeNull();
+    页.unmount();
+  });
+});
+
 /** 与父控制正常分支同形的正常资源（真实 mapper；公开初评恒 null）。 */
-function 构造正常资源(视图: P5详情正常视图, caseId: string): 后端正常资源 {
-  const 详情 = 候选S0详情DTO();
+function 构造正常资源(视图: P5详情正常视图, caseId: string, 详情: P5详情 = 候选S0详情DTO()): 后端正常资源 {
   return {
     kind: '正常',
     canonical记录ID: null,
@@ -748,13 +829,13 @@ function 构造正常资源(视图: P5详情正常视图, caseId: string): 后�
     动作段: P5阶段共用名(详情.state.stage),
     分段们: 从P5到详情分段(视图, 详情, null),
     职位资料: 从P5到职位资料(视图),
-    在线简历资料: null,
+    在线简历资料: 详情.role === 'recruiter' ? 从BFF到在线简历展示(详情.candidateResume) : null,
     底栏: { kind: '输入', 占位: '有想法就告诉你的AI代理', 值: '', 改变: () => undefined, 发送: null, 禁用说明: null },
     终局: { 摘要: null, 移交: null },
     刷新错误: null,
     重试: () => undefined,
     当前段引用: { current: null },
-    动作输入: { role: 'candidate', caseId, 视图, 详情, 操作: mock操作 },
-    PDF输入: { role: 'candidate', caseId, 读取: mock读取简历PDF },
+    动作输入: { role: 详情.role, caseId, 视图, 详情, 操作: mock操作 },
+    PDF输入: { role: 详情.role, caseId, 读取: mock读取简历PDF },
   };
 }

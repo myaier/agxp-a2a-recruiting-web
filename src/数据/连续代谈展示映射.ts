@@ -19,7 +19,7 @@ import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连�
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
 import { 初评证据文案, 公开初评决定文案, 公开初评过程文案 } from './代谈结果文案';
 import type { 核对结果 } from './代谈结果文案';
-import { 从冻结职位到资料 } from './详情展示映射';
+import { 从冻结职位到资料, 投影冻结职位摘要 } from './详情展示映射';
 import type { 分段项, 段内记录 } from '../组件/阶段对话流';
 import type {
   详情底栏信息,
@@ -232,8 +232,24 @@ export function 从连续到详情状态(detail: NegotiationDetail): 状态区�
   };
 }
 
+/** pre-Case 职位四事实的投影输入：原值可空段以空串进 投影冻结职位摘要（不先占位，
+ *  冻结 title/location/结构化薪资才有机会补空；占位在投影之后补）。 */
+function 连续摘要输入(detail: NegotiationDetail): {
+  职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null;
+} {
+  return {
+    职位: detail.job.title ?? '',
+    城市: detail.job.location ?? '',
+    薪资: detail.job.public_salary_range ?? '',
+    // review-r1：NegotiationJob 自 release/0.2.5 起携带 required_skills（null=未知，
+    // []=已知为空，二者不互换）；同一响应权威事实，不跨 API 拼资料。
+    技能: detail.job.required_skills,
+  };
+}
+
 /**
- * pre-Case 详情顶栏：求职端同款槽位；negotiation.job 可空段缺失给占位，不猜公司。
+ * pre-Case 详情顶栏：求职端同款槽位，职位/城市/薪资走 投影冻结职位摘要（Task 5：
+ * 与资料 Tab 同吃一份冻结投影，同记录同次响应），投影仍缺的成员给既有占位，不猜公司。
  * Task 6：公司名取同一响应 job_detail 的组织名（缺失保持『公司信息缺失』），右侧取
  * 同一响应的权威 match_score（0 合法；无溯源 null 不造 0，不外查/拼其它记录）。
  */
@@ -244,10 +260,11 @@ export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信�
     非空段(detail.job_detail?.organization?.display_name ?? null) ??
     非空段(detail.job.organization?.display_name ?? null) ??
     '公司信息缺失';
+  const 摘要 = 投影冻结职位摘要(连续摘要输入(detail), detail.job_detail);
   return {
     端: '求职',
-    标题: `${非空段(detail.job.title) ?? '职位信息未知'} · ${公司名}`,
-    副标题: `${非空段(detail.job.location) ?? '城市未知'} · ${非空段(detail.job.public_salary_range) ?? '薪资未知'}`,
+    标题: `${非空段(摘要.职位) ?? '职位信息未知'} · ${公司名}`,
+    副标题: `${非空段(摘要.城市) ?? '城市未知'} · ${非空段(摘要.薪资) ?? '薪资未知'}`,
     画像: null,
     右侧: { kind: '分数', 值: detail.match_score },
     岗位上下文: null,
@@ -255,23 +272,28 @@ export function 从连续到详情顶栏(detail: NegotiationDetail): 顶栏信�
 }
 
 /**
- * pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段；Task 6 起消费同一响应的
- * job_detail（pre-case 也用它自身冻结职位，不因没有 case_id 隐藏）与 match_score；
- * legacy（job_detail=null）沿用全缺失底座，旧四事实不被抹去。
+ * pre-Case 第二 Tab 职位资料：negotiation.job 只给实际字段；消费同一响应的 job_detail
+ * （pre-case 也用它自身冻结职位，不因没有 case_id 隐藏）与 match_score —— 摘要的冻结
+ * 补位在 从冻结职位到资料 内部的 投影冻结职位摘要 完成（与顶栏同一份投影）；投影仍缺
+ * 的成员补既有占位（在投影之后，不占住冻结值的位置）；legacy（job_detail=null）沿用
+ * 全缺失底座，旧四事实不被抹去。
  */
 export function 从连续到职位资料(detail: NegotiationDetail): 职位资料信息 {
-  return 从冻结职位到资料({
-    摘要: {
-      职位: 非空段(detail.job.title) ?? '职位信息未知',
-      城市: 非空段(detail.job.location) ?? '城市未知',
-      薪资: 非空段(detail.job.public_salary_range) ?? '薪资未知',
-      // review-r1：NegotiationJob 自 release/0.2.5 起携带 required_skills（null=未知，
-      // []=已知为空，二者不互换）；同一响应权威事实，不跨 API 拼资料。
-      技能: detail.job.required_skills,
-    },
+  const 资料 = 从冻结职位到资料({
+    摘要: 连续摘要输入(detail),
     冻结: detail.job_detail,
     分: detail.match_score,
   });
+  if (资料.摘要 === null) return 资料;
+  return {
+    ...资料,
+    摘要: {
+      职位: 非空段(资料.摘要.职位) ?? '职位信息未知',
+      城市: 非空段(资料.摘要.城市) ?? '城市未知',
+      薪资: 非空段(资料.摘要.薪资) ?? '薪资未知',
+      技能: 资料.摘要.技能,
+    },
+  };
 }
 
 /**
