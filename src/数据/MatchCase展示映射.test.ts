@@ -1,8 +1,9 @@
 // MatchCase展示映射 表测：17 行已准入状态矩阵逐行逐 step 钉住 阶段标题/状态文案/步骤说明/
 // 终局/可出动作卡，运行时未知词与矩阵外四元组一律 fail closed 成契约错误视图 + 空动作表。
 // J-PILOT-01（Spec §7）：S0 不再提供 respond_fact 输入/提交（白名单摘除，旧后端返回由
-// 交集惰性挡下），底栏禁用说明按 映射S0底栏说明 五行闭表；新终局 semantic_uncertain_stop
-// 成对映射为冻结文案，原始码不进视图。文案期望全部用本文件字面量钉死，Tasks 3–7 与 E2E 按此引用。
+// 交集惰性挡下），底栏禁用说明按 映射S0底栏说明 五行闭表；终局摘要按 Spec 附录 A.2.1
+// 中文字典（代谈结果文案）投影胶囊/原因，原始 outcome/reason 码不进视图。
+// 文案期望全部用本文件字面量钉死，Tasks 3–7 与 E2E 按此引用。
 
 import { describe, expect, it } from 'vitest';
 import { 映射P5详情, 映射P5列表项, 映射S0底栏说明, P5展示矩阵行数, P5展示状态矩阵 } from './MatchCase展示映射';
@@ -627,8 +628,8 @@ describe('映射P5详情：别名与键纪律', () => {
       技能: ['Python', 'SQL'],
     });
     // 定格于 是展示值：按运行环境本地时区格式化，绝不把原始 RFC3339 摊到屏上
-    expect(视图.终局摘要?.结束语).toBe('user_ended');
-    expect(视图.终局摘要?.原因).toBe('user_ended');
+    expect(视图.终局摘要?.结束语).toBe('已结束');
+    expect(视图.终局摘要?.原因).toBe('本次代谈已结束');
     expect(视图.终局摘要?.定格于).toBe(本地终局期望('2026-08-29T03:00:00Z'));
     expect(视图.终局摘要?.定格于).not.toContain('T');
     expect(视图.终局摘要?.定格于).not.toContain('Z');
@@ -843,8 +844,8 @@ describe('映射S0底栏说明（Spec §7 输入框表）', () => {
   });
 });
 
-describe('映射P5详情：新终局成对映射（semantic_uncertain_stop 不露原始码）', () => {
-  it('终局摘要结束语/原因都是冻结文案，wire 原词不进视图', () => {
+describe('映射P5详情：终局摘要按 Spec A.2.1 中文字典投影（原始 outcome/reason 码不进视图）', () => {
+  it('semantic_uncertain_stop：胶囊「信息不足」+ 一句说明，wire 原词不进视图', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造状态({
         lifecycle: 'ended', stage: 'anonymous_screening', status: 'ended', step: 'complete',
@@ -856,15 +857,15 @@ describe('映射P5详情：新终局成对映射（semantic_uncertain_stop 不�
         reasonSummary: 'semantic_uncertain_stop', finalizedAt: '2026-08-29T03:00:00Z',
       },
     })));
-    expect(视图.终局摘要?.结束语).toBe('信息不足，未能确认条件');
+    expect(视图.终局摘要?.结束语).toBe('信息不足');
     expect(视图.终局摘要?.原因).toBe('信息不足，未能确认条件');
     expect(JSON.stringify(视图)).not.toContain('semantic_uncertain_stop');
   });
 
   it.each([
-    ['agent_failed', 'screening_incomplete', 'resume_submission', '自动筛选未完成'],
-    ['response_timeout', 'human_response_timeout', 'needs_coordination', '逾期未回应，已自动结束'],
-  ] as const)('连续代谈终局 %s 成对映射冻结文案，原始 outcome/reason 码不露', (outcome, code, stage, 文案) => {
+    ['agent_failed', 'screening_incomplete', 'resume_submission', '筛选未完成', '自动筛选未完成，不表示候选人不匹配'],
+    ['response_timeout', 'human_response_timeout', 'needs_coordination', '逾期结束', '逾期未回应，已自动结束'],
+  ] as const)('连续代谈终局 %s：状态文/原因按字典成对投影，原始 outcome/reason 码不露', (outcome, code, stage, 状态文, 原因) => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造状态({
         lifecycle: 'ended', stage, status: 'ended', step: 'complete',
@@ -872,13 +873,31 @@ describe('映射P5详情：新终局成对映射（semantic_uncertain_stop 不�
       }),
       terminalSummary: { stage, outcome, reasonSummary: code, finalizedAt: '2026-08-29T03:00:00Z' },
     })));
-    expect(视图.终局摘要?.结束语).toBe(文案);
-    expect(视图.终局摘要?.原因).toBe(文案);
+    expect(视图.终局摘要?.结束语).toBe(状态文);
+    expect(视图.终局摘要?.原因).toBe(原因);
     expect(JSON.stringify(视图)).not.toContain(outcome);
     expect(JSON.stringify(视图)).not.toContain(code);
   });
 
-  it('其它终局沿用 wire 原词（user_ended 等既有口径不变）', () => {
+  it('policy_rejected 带安全细因 code：胶囊「未通过」+ 细化原因（known policy 细因不丢）', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      state: 造状态({
+        lifecycle: 'ended', stage: 'resume_submission', status: 'ended', step: 'complete',
+        needsUser: false, outcome: 'policy_rejected', outcomeCode: 'compensation_incompatible',
+        finalizedAt: '2026-08-29T03:00:00Z',
+      }),
+      terminalSummary: {
+        stage: 'resume_submission', outcome: 'policy_rejected',
+        reasonSummary: 'compensation_incompatible', finalizedAt: '2026-08-29T03:00:00Z',
+      },
+    })));
+    expect(视图.终局摘要?.结束语).toBe('未通过');
+    expect(视图.终局摘要?.原因).toBe('薪资条件不匹配');
+    expect(JSON.stringify(视图)).not.toContain('policy_rejected');
+    expect(JSON.stringify(视图)).not.toContain('compensation_incompatible');
+  });
+
+  it('user_ended 等既有终局不再沿 wire 原词：胶囊「已结束」+ 中性一句说明', () => {
     const 视图 = 断言正常(映射P5详情(造详情({
       state: 造行状态('ended', 'intent_confirmation', 'ended', 'complete'),
       terminalSummary: {
@@ -886,8 +905,36 @@ describe('映射P5详情：新终局成对映射（semantic_uncertain_stop 不�
         finalizedAt: '2026-08-29T03:00:00Z',
       },
     })));
-    expect(视图.终局摘要?.结束语).toBe('user_ended');
-    expect(视图.终局摘要?.原因).toBe('user_ended');
+    expect(视图.终局摘要?.结束语).toBe('已结束');
+    expect(视图.终局摘要?.原因).toBe('本次代谈已结束');
+    expect(JSON.stringify(视图)).not.toContain('user_ended');
+  });
+
+  it('契约外未知终局词不透出原词：已结束 / 结束原因暂未提供（安全兜底，不把未知变成功）', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('ended', 'needs_coordination', 'ended', 'complete'),
+      terminalSummary: {
+        stage: 'needs_coordination', outcome: '神秘结局', reasonSummary: '神秘结局',
+        finalizedAt: '2026-08-29T03:00:00Z',
+      },
+    })));
+    expect(视图.终局摘要?.结束语).toBe('已结束');
+    expect(视图.终局摘要?.原因).toBe('结束原因暂未提供');
+    expect(JSON.stringify(视图)).not.toContain('神秘结局');
+  });
+
+  it('completed（decoder 钉 outcome/reason 为空串）不由 outcome 猜成功：摘要留空，移交槽另述', () => {
+    const 视图 = 断言正常(映射P5详情(造详情({
+      state: 造行状态('completed', 'intent_confirmation', 'passed', 'complete'),
+      conversationRef: '3003',
+      terminalSummary: {
+        stage: 'intent_confirmation', outcome: '', reasonSummary: '',
+        finalizedAt: '2026-08-29T03:00:00Z',
+      },
+    })));
+    expect(视图.终局摘要?.结束语).toBe('');
+    expect(视图.终局摘要?.原因).toBe('');
+    expect(视图.handoff).toEqual({ state: 'ready', copy: '真人会话已建立', conversationId: '3003' });
   });
 });
 

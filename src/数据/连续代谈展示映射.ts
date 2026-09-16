@@ -17,6 +17,7 @@ import type { P5阶段, P5状态 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
+import { 初评证据文案, 公开初评决定文案 } from './代谈结果文案';
 import { 从冻结职位到资料 } from './详情展示映射';
 import type { 分段项 } from '../组件/阶段对话流';
 import type {
@@ -292,31 +293,31 @@ export function 映射连续底栏(detail: NegotiationDetail): 详情底栏信�
   return { kind: '输入', 占位: 禁用说明, 值: '', 改变: () => undefined, 发送: null, 禁用说明 };
 }
 
-/** 公开信息初评的总结托盘数据（Spec §6）：决定/内容/证据以源数据呈现，不生成评分或条件裁决。 */
+/** 公开信息初评的总结托盘数据（Spec §6）：决定/证据行按附录 A 字典中文投影，不生成评分或条件裁决。 */
 export interface 公开初评托盘视图 {
   /** 稳定 key：evaluation_id（轮询整包替换时 React 不误配对）。 */
   编号: string;
-  /** wire 原词（fit/not_fit/uncertain）：只是建议，不翻译成前端裁决。 */
+  /** 决定的中文文案（A.2.1：公开初评匹配/不匹配/待确认；未知词安全兜底，不译英文 summary）。 */
   决定: string;
-  /** 代理写的公开初评原文。 */
+  /** 代理写的公开初评原文（不整段翻译、不在线改写；上屏形态归 Task 4）。 */
   内容: string;
-  /** evidence 源数据行：`匹配/冲突/待确认｜dimension｜code｜source`。 */
+  /** 证据完整中文句（A.4：如「招聘类型：匹配」「薪资条件：暂无法比较」；code/source 不透出）。 */
   证据行们: readonly string[];
 }
 
 export function 映射公开初评(detail: NegotiationDetail): 公开初评托盘视图 | null {
   const 评 = detail.agent_summary.public_evaluation;
   if (评 === null) return null;
-  const 行 = (组: string, 项: { dimension: string; code: string; source: string }) =>
-    `${组}｜${项.dimension}｜${项.code}｜${项.source}`;
+  const 行 = (组: 'matches' | 'conflicts' | 'unknowns', 项: { dimension: string; code: string }) =>
+    初评证据文案(组, 项).项;
   return {
     编号: 评.evaluation_id,
-    决定: 评.decision,
+    决定: 公开初评决定文案(评.decision),
     内容: 评.summary,
     证据行们: [
-      ...评.evidence.matches.map((项) => 行('匹配', 项)),
-      ...评.evidence.conflicts.map((项) => 行('冲突', 项)),
-      ...评.evidence.unknowns.map((项) => 行('待确认', 项)),
+      ...评.evidence.matches.map((项) => 行('matches', 项)),
+      ...评.evidence.conflicts.map((项) => 行('conflicts', 项)),
+      ...评.evidence.unknowns.map((项) => 行('unknowns', 项)),
     ],
   };
 }

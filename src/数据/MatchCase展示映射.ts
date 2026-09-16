@@ -7,6 +7,7 @@
 // 缓存或推断任何会话标识。本模块不 import React / Mock / HTTP，不发请求，可被列表与详情共用。
 
 import type { P5生命周期, P5阶段, P5状态, BFF安全职位资料 } from './BFF契约';
+import { 代谈终局文案 } from './代谈结果文案';
 import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 import type {
@@ -675,33 +676,21 @@ function 映射确认总结(总结: P5确认总结 | null): P5确认总结视图
 function 映射终局摘要(摘要: P5终局摘要 | null): P5终局摘要视图 | null {
   if (摘要 === null || typeof 摘要 !== 'object') return null;
   // 内部 DTO 仍保留原始 RFC3339；只有这个展示槽换成本地可读值
-  // J-PILOT-01（Spec §7）：新终局 semantic_uncertain_stop 成对映射为冻结文案，
-  // 原始码（outcome 与 reason_summary 同词）不进任何展示槽。
-  if (摘要.outcome === 'semantic_uncertain_stop') {
-    return {
-      结束语: S0信息不足终局文案, 原因: S0信息不足终局文案,
-      定格于: 格式化终局时间(摘要.finalizedAt),
-    };
+  if (摘要.outcome === '') {
+    // completed（decoder 钉 outcome/reason 为空串）的成功事实不由 outcome 猜：摘要留空，
+    // 成功口径由移交槽表达（代谈终局文案 只管 ended 终局）。
+    return { 结束语: '', 原因: '', 定格于: 格式化终局时间(摘要.finalizedAt) };
   }
-  // 连续代谈（Spec §4.2 / §8）：S1 技术失败标为自动筛选未完成，72 小时人工待办超时单列原因、
-  // 不伪装主动拒绝；两者同样成对映射冻结文案，原始 outcome / reason 码不进展示槽。
-  const 连续代谈文案 = 连续代谈终局文案表[摘要.outcome as keyof typeof 连续代谈终局文案表];
-  if (连续代谈文案 !== undefined) {
-    return { 结束语: 连续代谈文案, 原因: 连续代谈文案, 定格于: 格式化终局时间(摘要.finalizedAt) };
-  }
-  return { 结束语: 摘要.outcome, 原因: 摘要.reasonSummary, 定格于: 格式化终局时间(摘要.finalizedAt) };
+  // ended 终局按 Spec 附录 A.2.1 字典（代谈结果文案）投影胶囊状态文 + 一句原因
+  //（已知安全 code 细化、同义去重），原始 outcome/reason 码不进展示槽。
+  const 文案 = 代谈终局文案(摘要.outcome, 摘要.reasonSummary);
+  return { 结束语: 文案.状态文, 原因: 文案.原因, 定格于: 格式化终局时间(摘要.finalizedAt) };
 }
-
-/** 连续代谈新增终局的冻结文案（结束语与原因同句；原始码不露）。 */
-const 连续代谈终局文案表 = {
-  agent_failed: '自动筛选未完成',
-  response_timeout: '逾期未回应，已自动结束',
-} as const;
 
 // ── J-PILOT-01（Spec §7）：双端 S0 保留原输入框与发送键、禁用，占位随真实阶段/结果 ──
 // 委托前的初评占位（尚未开案）由 连续代谈展示映射 产出；此处只管已开 Case 的 S0 行。
 
-/** S0 信息不足终局的冻结文案（占位与终局摘要成对同句；原始码不露）。 */
+/** S0 信息不足终局的底栏占位文案（终局摘要的胶囊/原因归 代谈结果文案 字典；原始码不露）。 */
 export const S0信息不足终局文案 = '信息不足，未能确认条件';
 
 const S0底栏文案表 = {

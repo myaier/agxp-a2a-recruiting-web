@@ -488,27 +488,51 @@ describe('Task 5 · 映射公开初评（现有总结托盘数据）', () => {
     summary: '公开信息看，经验方向与岗位大体相符。',
     coverage: 'public_job_and_candidate_data',
     evidence: {
-      matches: [{ dimension: 'city', code: 'city_match', source: 'structured_precheck' }],
-      conflicts: [{ dimension: 'salary', code: 'below_expectation', source: 'candidate_agent' }],
+      matches: [{
+        dimension: 'recruitment_type', code: 'recruitment_type_match', source: 'structured_precheck',
+      }],
+      conflicts: [{ dimension: 'compensation', code: 'salary_below_expectation', source: 'candidate_agent' }],
       unknowns: [{ dimension: 'education', code: 'not_disclosed', source: 'candidate_agent' }],
     },
     next_action: 'promote_to_a2a',
     completed_at: '2026-09-01T09:00:00Z',
   };
 
-  it('缺席给 null；在场给标签数据：决定/内容/证据行全以源数据呈现，不生成评分或条件裁决', () => {
+  it('缺席给 null；在场给标签数据：决定/证据行按 Spec 附录 A 中文投影，英文 summary 原样保留不造翻译', () => {
     expect(映射公开初评(连续详情({ phase: 'evaluating' }))).toBeNull();
     const 视图 = 映射公开初评(连续详情({ phase: 'case_started', publicEvaluation: 公开初评 }));
     expect(视图).toEqual({
       编号: 'ev_pub_1',
-      决定: 'fit',
+      决定: '公开初评匹配',
       内容: '公开信息看，经验方向与岗位大体相符。',
-      证据行们: [
-        '匹配｜city｜city_match｜structured_precheck',
-        '冲突｜salary｜below_expectation｜candidate_agent',
-        '待确认｜education｜not_disclosed｜candidate_agent',
-      ],
+      证据行们: ['招聘类型：匹配', '薪资条件：不匹配', '学历要求：待确认'],
     });
+  });
+
+  it('决定/证据行是完整中文句：wire 原词与 code/source 不进托盘；未知维度按「其他条件」组态显示', () => {
+    const 序列化 = JSON.stringify(映射公开初评(连续详情({
+      phase: 'case_started', publicEvaluation: 公开初评,
+    })));
+    expect(序列化).not.toContain('recruitment_type_match');
+    expect(序列化).not.toContain('structured_precheck');
+    expect(序列化).not.toContain('salary_below_expectation');
+    const 未知维度: NegotiationPublicEvaluation = {
+      ...公开初评,
+      decision: 'uncertain',
+      evidence: {
+        matches: [], conflicts: [],
+        unknowns: [{ dimension: 'city', code: 'city_match', source: 'structured_precheck' }],
+      },
+    };
+    const 视图 = 映射公开初评(连续详情({ phase: 'case_started', publicEvaluation: 未知维度 }));
+    expect(视图?.决定).toBe('公开初评待确认');
+    expect(视图?.证据行们).toEqual(['其他条件：待确认']);
+  });
+
+  it('公开初评 fit 只是建议文案：不把公开初评映射成 S0 通过（pre-Case 分段恒未到达）', () => {
+    const 详情 = 连续详情({ phase: 'case_started', publicEvaluation: 公开初评 });
+    expect(映射公开初评(详情)?.决定).toBe('公开初评匹配');
+    expect(从连续到详情分段().every((段) => 段.态 === '未到达')).toBe(true);
   });
 });
 
