@@ -144,46 +144,48 @@ describe('候选实名数据源', () => {
       })).resolves.toMatchObject({ verifiedName: 姓名 });
     });
 
+    // 注：参数不在标题里（33 条 Case 同名，清单身份重复），补 %s 标签
+    //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
     it.each([
       // summary 层漂移：extra / missing key、未知 enum、坏时间、坏 revision
-      { ...待审摘要wire, extra: true },
-      { status: 'pending', verified_name: null, current_request: null, revision: 1, updated_at: '2026-09-04T08:00:00Z' },
-      { ...待审摘要wire, status: 'unknown' },
-      { ...待审摘要wire, revision: 0 },
-      { ...待审摘要wire, revision: -1 },
-      { ...待审摘要wire, revision: 1.5 },
-      { ...待审摘要wire, revision: Number.NaN },
-      { ...待审摘要wire, revision: Number.POSITIVE_INFINITY },
-      { ...待审摘要wire, revision: 2 ** 53 },
-      { ...待审摘要wire, revision: '7' },
-      { ...待审摘要wire, updated_at: '2026-02-30T00:00:00Z' },
-      { ...待审摘要wire, updated_at: '2026-09-04T24:00:00Z' },
-      { ...待审摘要wire, updated_at: '2026-09-04T08:00:00+25:00' },
-      { ...待审摘要wire, updated_at: '2026-09-04 08:00:00Z' },
+      ['summary 多余键', { ...待审摘要wire, extra: true }],
+      ['summary 缺 current_request', { status: 'pending', verified_name: null, current_request: null, revision: 1, updated_at: '2026-09-04T08:00:00Z' }],
+      ['summary 未知 status', { ...待审摘要wire, status: 'unknown' }],
+      ['revision 0', { ...待审摘要wire, revision: 0 }],
+      ['revision 负数', { ...待审摘要wire, revision: -1 }],
+      ['revision 小数', { ...待审摘要wire, revision: 1.5 }],
+      ['revision NaN', { ...待审摘要wire, revision: Number.NaN }],
+      ['revision Infinity', { ...待审摘要wire, revision: Number.POSITIVE_INFINITY }],
+      ['revision 2^53', { ...待审摘要wire, revision: 2 ** 53 }],
+      ['revision 字符串', { ...待审摘要wire, revision: '7' }],
+      ['updated_at 不存在日期', { ...待审摘要wire, updated_at: '2026-02-30T00:00:00Z' }],
+      ['updated_at 24 时', { ...待审摘要wire, updated_at: '2026-09-04T24:00:00Z' }],
+      ['updated_at 坏时区', { ...待审摘要wire, updated_at: '2026-09-04T08:00:00+25:00' }],
+      ['updated_at 缺 T', { ...待审摘要wire, updated_at: '2026-09-04 08:00:00Z' }],
       // request 层漂移：extra / missing key、未知 enum、空 ID、坏时间、坏 revision
-      { ...待审摘要wire, current_request: { ...待审请求wire, extra: 1 } },
-      { ...待审摘要wire, current_request: { request_id: 'ivq_1', status: 'pending', revision: 3, submitted_at: '2026-09-04T08:00:00Z' } },
-      { ...待审摘要wire, current_request: { ...待审请求wire, status: 'awaiting' } },
-      { ...待审摘要wire, current_request: { ...待审请求wire, request_id: '' } },
-      { ...待审摘要wire, current_request: { ...待审请求wire, revision: 0 } },
-      { ...待审请求wire, status: 'pending', revision: 2, submitted_at: '2026-09-31T08:00:00Z', rejection_reason: null },
-      { ...待审摘要wire, current_request: { ...待审请求wire, revision: Number.NaN } },
+      ['request 多余键', { ...待审摘要wire, current_request: { ...待审请求wire, extra: 1 } }],
+      ['request 缺 rejection_reason', { ...待审摘要wire, current_request: { request_id: 'ivq_1', status: 'pending', revision: 3, submitted_at: '2026-09-04T08:00:00Z' } }],
+      ['request 未知 status', { ...待审摘要wire, current_request: { ...待审请求wire, status: 'awaiting' } }],
+      ['request 空 ID', { ...待审摘要wire, current_request: { ...待审请求wire, request_id: '' } }],
+      ['request revision 0', { ...待审摘要wire, current_request: { ...待审请求wire, revision: 0 } }],
+      ['request 坏日期', { ...待审请求wire, status: 'pending', revision: 2, submitted_at: '2026-09-31T08:00:00Z', rejection_reason: null }],
+      ['request revision NaN', { ...待审摘要wire, current_request: { ...待审请求wire, revision: Number.NaN } }],
       // verified_name 矩阵：非 verified 非空、verified 为空、空白、201 code point
-      { ...待审摘要wire, verified_name: '张三' },
-      { status: 'verified', verified_name: null, current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
-      { status: 'verified', verified_name: '   ', current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
-      { status: 'verified', verified_name: `${'😀'.repeat(51)}${'a'.repeat(150)}`, current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
+      ['非 verified 带实名', { ...待审摘要wire, verified_name: '张三' }],
+      ['verified 空实名', { status: 'verified', verified_name: null, current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
+      ['verified 空白实名', { status: 'verified', verified_name: '   ', current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
+      ['verified 201 code point', { status: 'verified', verified_name: `${'😀'.repeat(51)}${'a'.repeat(150)}`, current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
       // rejection_reason 矩阵：rejected 缺原因、非 rejected 带原因、未知原因
-      { status: 'rejected', verified_name: null, current_request: { ...待审请求wire, status: 'rejected', rejection_reason: null }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
-      { ...待审摘要wire, current_request: { ...待审请求wire, rejection_reason: 'other' } },
-      { status: 'unverified', verified_name: null, current_request: { ...待审请求wire, status: 'cancelled', rejection_reason: 'other' }, revision: 8, updated_at: '2026-09-04T09:00:00Z' },
-      { status: 'rejected', verified_name: null, current_request: { ...待审请求wire, status: 'rejected', rejection_reason: 'weird' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
+      ['rejected 缺原因', { status: 'rejected', verified_name: null, current_request: { ...待审请求wire, status: 'rejected', rejection_reason: null }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
+      ['awaiting 带原因', { ...待审摘要wire, current_request: { ...待审请求wire, rejection_reason: 'other' } }],
+      ['cancelled 带原因', { status: 'unverified', verified_name: null, current_request: { ...待审请求wire, status: 'cancelled', rejection_reason: 'other' }, revision: 8, updated_at: '2026-09-04T09:00:00Z' }],
+      ['未知原因', { status: 'rejected', verified_name: null, current_request: { ...待审请求wire, status: 'rejected', rejection_reason: 'weird' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
       // summary/request 状态矩阵矛盾
-      { status: 'unverified', verified_name: null, current_request: { ...待审请求wire, status: 'pending' }, revision: 8, updated_at: '2026-09-04T09:00:00Z' },
-      { status: 'verified', verified_name: '张三', current_request: { ...待审请求wire, status: 'pending' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
-      { status: 'rejected', verified_name: null, current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' },
-      { ...待审摘要wire, current_request: { ...待审请求wire, status: 'rejected', rejection_reason: 'other' } },
-    ])('契约漂移 fail closed', async (wire) => {
+      ['unverified×pending', { status: 'unverified', verified_name: null, current_request: { ...待审请求wire, status: 'pending' }, revision: 8, updated_at: '2026-09-04T09:00:00Z' }],
+      ['verified×pending', { status: 'verified', verified_name: '张三', current_request: { ...待审请求wire, status: 'pending' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
+      ['rejected×verified', { status: 'rejected', verified_name: null, current_request: { ...待审请求wire, status: 'verified' }, revision: 9, updated_at: '2026-09-04T10:00:00Z' }],
+      ['摘要与请求矛盾', { ...待审摘要wire, current_request: { ...待审请求wire, status: 'rejected', rejection_reason: 'other' } }],
+    ] as const)('契约漂移 fail closed：%s', async (_标签, wire) => {
       await expect(解(wire)).rejects.toThrowError(
         expect.objectContaining({ status: 200, code: 'invalid_response' }),
       );

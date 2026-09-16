@@ -91,6 +91,9 @@ const 偏好场景 = 构造场景({
 });
 
 // candidate-salary：引导问答薪资段，求职端已注册（求职类型=社招全职 → 期望现金月薪）。
+// 注：2026-09-16 采集验证发现原「listbox 最低月薪」定位已失效 —— bottom-drawer 统一
+//（合入 main 3234fb1c）把薪资轮整体换成 选择行 + 共用薪资区间层抽屉。按 carry-forward
+// 规则把关键元素改用现产品的选择行按钮（薪资要求（月薪 · K）），不改产品代码。
 const 薪资场景 = 构造场景({
   id: 'candidate-salary',
   状态: '求职端已注册',
@@ -98,7 +101,7 @@ const 薪资场景 = 构造场景({
   关键元素(page: Page) {
     return [
       { 名称: '标题 期望现金月薪是？', 定位: page.getByRole('heading', { name: '期望现金月薪是？' }) },
-      { 名称: 'listbox 最低月薪', 定位: page.getByRole('listbox', { name: '最低月薪' }) },
+      { 名称: '选择行 薪资要求（月薪 · K）', 定位: page.getByRole('button', { name: /薪资要求（月薪 · K）/ }) },
       { 名称: '按钮 下一步', 定位: page.getByRole('button', { name: '下一步' }) },
     ];
   },

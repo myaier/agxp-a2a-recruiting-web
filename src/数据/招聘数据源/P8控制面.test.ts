@@ -403,14 +403,18 @@ describe('P8 控制面逐端点闭合错误联合', () => {
     },
   ];
 
-  it.each(端点表)('$名：表内 status+code 原样透传，表外组合按 invalid_response 拒绝', async ({ 调用, 允许, 不可能 }) => {
-    for (const [status, code] of 允许) {
-      请求Mock.mockRejectedValueOnce(new BFF错误(status, code, 'fixed'));
-      await expect(调用(source)).rejects.toMatchObject({ status, code });
-    }
-    请求Mock.mockRejectedValueOnce(new BFF错误(不可能[0], 不可能[1], 'fixed'));
-    await expect(调用(source)).rejects.toMatchObject({ status: 200, code: 'invalid_response' });
-  });
+  // 注：vitest 4 对象 it.each 不做 $名 插值（十条 Case 同名，清单身份重复），
+  // 改为按 名 展开（2026-09-16 清单验证发现，只改标题形式，断言不变）。
+  it.each(端点表.map((端点) => [端点.名, 端点] as const))(
+    '%s：表内 status+code 原样透传，表外组合按 invalid_response 拒绝',
+    async (_名, { 调用, 允许, 不可能 }) => {
+      for (const [status, code] of 允许) {
+        请求Mock.mockRejectedValueOnce(new BFF错误(status, code, 'fixed'));
+        await expect(调用(source)).rejects.toMatchObject({ status, code });
+      }
+      请求Mock.mockRejectedValueOnce(new BFF错误(不可能[0], 不可能[1], 'fixed'));
+      await expect(调用(source)).rejects.toMatchObject({ status: 200, code: 'invalid_response' });
+    });
 
   it('网络错误、请求前 invalid_request 与解码期 invalid_response 原样透传，不进错误表', async () => {
     请求Mock.mockRejectedValueOnce(new BFF错误(0, 'network_error', 'offline'));

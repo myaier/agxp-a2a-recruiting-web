@@ -33,6 +33,9 @@ S3 不再承担首次身份披露。公开岗位薪资与双方私有条件按�
 - [旅程清单与初步缺口](docs/journeys/inventory/2026-09-10-旅程清单与初步缺口.md) — 2026-09-10 两仓版本、候选/招聘旅程、证据与首条试点建议
 - [docs/后端接口需求.md](docs/后端接口需求.md) — 早期原型需求存档，含已过期路径和语义；当前公开 API 以报告钉住版本的后端 OpenAPI 为准
 - [docs/前端修改指南.md](docs/前端修改指南.md) — 想改前端从这里开始：文件速查表 + 发布流程
+- [docs/testing/README.md](docs/testing/README.md) — 测试总入口：三层责任、Suite 目录、
+  逐叶 Case 清单（[cases.md](docs/testing/cases.md)，`npm run test:list` 生成/校验）、
+  迁移对账与计时证据
 
 ## 跑起来
 
@@ -129,7 +132,8 @@ npm run test:e2e -- <file> --grep '<regex>'       # 原生文件/完整名称选
 npm run test:e2e -- --project=fixture <file> --grep '<regex>'   # HTTP fixture 子集
 npm run test:e2e -- --project=mock <file>         # Mock 浏览器子集
 npm run test:e2e -- --project=annotation          # 标注构建子集
-npm run ui:capture                                 # 视觉回归入口：e2e/视觉回归/（Task 5 同步接入边界）
+npm run ui:capture                                 # 视觉回归入口：e2e/视觉回归/（已接入 C3 离线边界）
+npm run test:list                                  # 生成/校验逐叶 Case 清单（--write 更新 cases.md 自动区）
 ```
 
 项目与端口：

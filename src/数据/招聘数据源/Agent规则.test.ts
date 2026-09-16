@@ -409,16 +409,18 @@ describe('Agent 规则数据源', () => {
     });
   });
 
+  // 注：非法矩阵各行的参数不在标题里（四条 Case 同名，清单身份重复），补 %s 标签
+  //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    { proposal_id: 失败提案ID, state: 'failed', failure_code: 'future' },
-    { proposal_id: 失败提案ID, state: 'failed', failure_code: null },
-    { proposal_id: 失败提案ID, state: 'interpreting', failure_code: 'agent_unavailable' },
-    {
+    ['future failure_code', { proposal_id: 失败提案ID, state: 'failed', failure_code: 'future' }],
+    ['failed 缺 failure_code', { proposal_id: 失败提案ID, state: 'failed', failure_code: null }],
+    ['interpreting 带 failure_code', { proposal_id: 失败提案ID, state: 'interpreting', failure_code: 'agent_unavailable' }],
+    ['ready 带 failure_code', {
       proposal_id: 失败提案ID, state: 'ready', normalized_text: '规则',
       consequence: 'advisory', created_at: '2026-08-27T02:05:00Z',
       failure_code: 'interpretation_failed',
-    },
-  ] as const)('illegal proposal failure shape fail closed', async (result) => {
+    }],
+  ] as const)('illegal proposal failure shape fail closed：%s', async (_标签, result) => {
     请求Mock.mockResolvedValue({ result, etag: null, requestId: 'illegal-failure' });
     await expect(数据源.读取Agent规则提案('candidate', 失败提案ID)).rejects.toMatchObject({
       code: 'invalid_response',

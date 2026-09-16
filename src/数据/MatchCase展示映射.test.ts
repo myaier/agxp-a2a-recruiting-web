@@ -908,11 +908,13 @@ describe('映射P5详情：旧 S0 needs_user 待核实说明', () => {
 // ── owner-safe agent_attention 投影（Hosted Agent 失败合同）──
 
 describe('映射P5列表项/映射P5详情：attention 投影统一安全说明', () => {
+  // 注：参数不在标题里（三条 Case 同名，清单身份重复），用 %s 文案做标签
+  //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
     [{ code: 'agent_unavailable', retryable: false } as const, 'AI 服务暂时不可用，本 Case 尚未继续'],
     [{ code: 'agent_result_invalid', retryable: false } as const, '本次 AI 结果无法安全用于推进 Case'],
     [null, '本阶段需要注意'],
-  ])('attention 投影统一安全说明', (agentAttention, copy) => {
+  ] as const)('attention 投影统一安全说明：%s', (agentAttention, copy) => {
     const state = 造状态({
       lifecycle: 'open', stage: 'resume_submission', status: 'attention_required',
       step: 'screening_resume', needsUser: false, agentAttention,

@@ -437,10 +437,12 @@ describe('取岗位提交错误文案', () => {
     )).toBe(expected);
   });
 
+  // 注：vitest 4 对象/单参 it.each 不把参数带进标题时两条 Case 同名（清单身份重复），
+  // 给 %s 加区分标签（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    [new BFF错误(422, 'validation_failed', 'bad', [{ path: 'unknown', reason: 'required' }])],
-    [new BFF错误(422, 'validation_failed', 'bad', [{ path: 'requirements', reason: 'unsupported_code' }])],
-  ])('未知字段或 reason 使用通用岗位文案', (error) => {
+    ['未知字段 path', new BFF错误(422, 'validation_failed', 'bad', [{ path: 'unknown', reason: 'required' }])],
+    ['未知 reason', new BFF错误(422, 'validation_failed', 'bad', [{ path: 'requirements', reason: 'unsupported_code' }])],
+  ] as const)('未知字段或 reason 使用通用岗位文案（%s）', (_标签, error) => {
     expect(取岗位提交错误文案(error)).toBe('请检查岗位信息');
   });
 });

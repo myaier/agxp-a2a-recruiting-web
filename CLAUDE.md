@@ -11,6 +11,9 @@
 
 ## 测试与验收路由
 
+- 测试总入口是 `docs/testing/README.md`（三层责任、Suite 目录、扩展 Case 步骤、迁移
+  对账与计时证据）；逐叶 Case 清单在 `docs/testing/cases.md`，用 `npm run test:list`
+  （`--write` 更新自动区 / `--check` 校验过期）从 runner 实际收集生成，不手抄。
 - 真实后端行为验收（agent-browser dogfood，B01–B05 / H01–H04 与报告模板）从
   `docs/dogfood/真实后端行为验收.md` 进入；四个旧 `test:agent-browser:*` npm 入口已于
   2026-09-08 退役删除。

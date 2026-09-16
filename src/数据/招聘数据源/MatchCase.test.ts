@@ -166,16 +166,18 @@ describe('MatchCase数据源', () => {
     ]);
   });
 
+  // 注：%j 对 Infinity 与 MAX_SAFE_INTEGER+1 都序列化成 null（两条 Case 同名），
+  // 改为带标签的数组 each（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    { open_total: 1, open_anonymous_screening_total: 0, open_needs_action_total: 0, ended_total: 0 },
-    { ...合法摘要Wire, unknown_total: 1 },
-    { ...合法摘要Wire, open_total: '51' },
-    { ...合法摘要Wire, open_total: 1.5 },
-    { ...合法摘要Wire, open_total: -1 },
-    { ...合法摘要Wire, open_total: Number.NaN },
-    { ...合法摘要Wire, open_total: Number.POSITIVE_INFINITY },
-    { ...合法摘要Wire, open_total: Number.MAX_SAFE_INTEGER + 1 },
-  ])('summary 拒绝缺键、多键与坏整数：%j', (wire) => {
+    ['缺 open_total', { open_total: 1, open_anonymous_screening_total: 0, open_needs_action_total: 0, ended_total: 0 }],
+    ['unknown 键', { ...合法摘要Wire, unknown_total: 1 }],
+    ['字符串整数', { ...合法摘要Wire, open_total: '51' }],
+    ['小数', { ...合法摘要Wire, open_total: 1.5 }],
+    ['负数', { ...合法摘要Wire, open_total: -1 }],
+    ['NaN', { ...合法摘要Wire, open_total: Number.NaN }],
+    ['Infinity', { ...合法摘要Wire, open_total: Number.POSITIVE_INFINITY }],
+    ['超安全整数', { ...合法摘要Wire, open_total: Number.MAX_SAFE_INTEGER + 1 }],
+  ] as const)('summary 拒绝缺键、多键与坏整数：%s', (_标签, wire) => {
     expect(() => 解MatchCaseSummary(wire)).toThrow(契约漂移);
   });
 

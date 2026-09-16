@@ -95,12 +95,14 @@ describe('MatchCase 统计 selector', () => {
     });
   });
 
+  // 注：参数不在标题里（四条 Case 同名，清单身份重复），补 %s 标签
+  //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    成功摘要({ 阶段: '进行中', 刷新中: true, summary: null }),
-    成功摘要({ 阶段: '失败', summary: null, error: '失败' }),
-    成功摘要({ 刷新中: true, summary: null }),
-    成功摘要({ ownerSubjectId: 'sub_old' }),
-  ])('加载、刷新、失败或 owner 不匹配都显示中性值', (snapshot) => {
+    ['刷新中', 成功摘要({ 阶段: '进行中', 刷新中: true, summary: null })],
+    ['失败', 成功摘要({ 阶段: '失败', summary: null, error: '失败' })],
+    ['无阶段刷新中', 成功摘要({ 刷新中: true, summary: null })],
+    ['owner 不匹配', 成功摘要({ ownerSubjectId: 'sub_old' })],
+  ] as const)('加载、刷新、失败或 owner 不匹配都显示中性值：%s', (_标签, snapshot) => {
     expect(取P5Open统计(snapshot, 'sub_1')).toEqual({
       open: '—', anonymousScreening: '—', needsAction: '—', archived: '—', completed: '—',
     });

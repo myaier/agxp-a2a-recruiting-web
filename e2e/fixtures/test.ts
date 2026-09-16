@@ -4,7 +4,8 @@
 //
 // 用法：功能 spec 一律 `import { expect, test } from './fixtures/test'`；
 // 类型（Page / Route / Locator / BrowserContext 等）仍从 '@playwright/test' 导入。
-// 视觉回归 spec（e2e/视觉回归/）在 Task 5 才接入本入口。
+// 视觉采集 spec（e2e/视觉回归/采集.spec.ts）因视觉配置是空项目名，在该文件内
+// 以同一个 离线边界 helper 做 file 级 extend 固定 mock 模式（C3：仅该文件取 mock）。
 //
 // 模式由项目名映射（playwright.config.ts 三项目）：
 //   mock → 'mock'（业务 HTTP/WS 均不允许）

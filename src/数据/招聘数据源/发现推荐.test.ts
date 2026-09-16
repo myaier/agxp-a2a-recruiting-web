@@ -640,17 +640,19 @@ expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.state).toBe(state);
   });
 
+  // 注：非法矩阵各行的参数不在标题里（多条 Case 同名，清单身份重复），补 %s 标签
+  //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    { ...七键回执, state: null },
-    { ...七键回执, failure_code: 'future_failure' },
-    { ...七键回执, state: 'failed', failure_code: null },
-    { ...七键回执, state: 'refused', refusal_code: null },
-    { ...七键回执, state: 'refused', refusal_code: 'delegation_cooldown', failure_code: 'delegation_failed' },
-    { ...七键回执, state: 'evaluating', evaluation_id: null },
-    { ...七键回执, state: 'accepted', evaluation_id: 'eval_1' },
-    { ...七键回执, state: 'case_started', case_id: null },
-    { ...七键回执, state: 'failed', failure_code: 'delegation_failed', task_id: 'secret' },
-  ] as const)('single GET 非法合同 fail closed', async (receipt) => {
+    ['state 为 null', { ...七键回执, state: null }],
+    ['多余 failure_code', { ...七键回执, failure_code: 'future_failure' }],
+    ['failed 缺 failure_code', { ...七键回执, state: 'failed', failure_code: null }],
+    ['refused 缺 refusal_code', { ...七键回执, state: 'refused', refusal_code: null }],
+    ['refused 带多余 failure_code', { ...七键回执, state: 'refused', refusal_code: 'delegation_cooldown', failure_code: 'delegation_failed' }],
+    ['evaluating 缺 evaluation_id', { ...七键回执, state: 'evaluating', evaluation_id: null }],
+    ['accepted 带多余 evaluation_id', { ...七键回执, state: 'accepted', evaluation_id: 'eval_1' }],
+    ['case_started 缺 case_id', { ...七键回执, state: 'case_started', case_id: null }],
+    ['failed 带多余 task_id', { ...七键回执, state: 'failed', failure_code: 'delegation_failed', task_id: 'secret' }],
+  ] as const)('single GET 非法合同 fail closed：%s', async (_标签, receipt) => {
     请求Mock.mockResolvedValue(响应(receipt));
     await expect(source.读取候选岗位委托('del_1'))
       .rejects.toMatchObject({ code: 'invalid_response' });

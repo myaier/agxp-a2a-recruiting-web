@@ -1305,23 +1305,13 @@ describe('职位详情 · 委托前必须显式选定简历坐标（Backend）',
     mock准备候选委托简历.mockReset();
   });
 
+  // 注：vitest 4 的对象 it.each 不做 $名称 标题插值（多条 Case 同名，清单身份重复），
+  // 改为数组 each + %s（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    {
-      名称: '0 份：提示先上传并跳 我的简历，零委托',
-      库: 附件库([]),
-      场景: '零',
-    },
-    {
-      名称: '1 份：披露确认点名该文件，确认只发它的当前 file/version',
-      库: 单文件附件库,
-      场景: '单',
-    },
-    {
-      名称: '2 份：必须单选后才可确认，只发所选行的当前 file/version',
-      库: 双文件附件库,
-      场景: '多',
-    },
-  ])('$名称', async ({ 库, 场景 }) => {
+    ['0 份：提示先上传并跳 我的简历，零委托', 附件库([]), '零'],
+    ['1 份：披露确认点名该文件，确认只发它的当前 file/version', 单文件附件库, '单'],
+    ['2 份：必须单选后才可确认，只发所选行的当前 file/version', 双文件附件库, '多'],
+  ] as const)('%s', async (_名称, 库, 场景) => {
     const 用户 = userEvent.setup();
     mock准备候选委托简历.mockResolvedValue(库);
     渲染Backend状态({ 候选岗位推荐: 快照With(推荐卡样本) });
@@ -1544,45 +1534,30 @@ describe('职位详情 · P8 上下文举报（Backend）', () => {
     } satisfies P8ReportReceipt);
   });
 
+  // 注：对象 it.each 不做 $名称 插值，同上改为数组 each + %s。
   it.each([
-    {
-      名称: '路由参数缺位（absent）：无 ⋯',
-      挂载: () => render(
+    ['路由参数缺位（absent）：无 ⋯', () => render(
         <MemoryRouter initialEntries={['/job']}>
           <Routes>
             <Route path="/job" element={<职位详情 />} />
           </Routes>
         </MemoryRouter>,
-      ),
-      断言零读: true,
-    },
-    {
-      名称: '读取在飞（loading）：无 ⋯，GET 已发未归',
-      挂载: () => {
+      ), true],
+    ['读取在飞（loading）：无 ⋯，GET 已发未归', () => {
         mock读取候选岗位详情.mockImplementation(() => new Promise(() => {}));
         渲染Backend状态({});
         return 渲染('job_new');
-      },
-      断言零读: false,
-    },
-    {
-      名称: '读取失败（failure）：无 ⋯，落错误态',
-      挂载: () => {
+      }, false],
+    ['读取失败（failure）：无 ⋯，落错误态', () => {
         mock读取候选岗位详情.mockRejectedValue(new BFF错误(503, 'source_unavailable', 'down'));
         渲染Backend状态({});
         return 渲染('job_new');
-      },
-      断言零读: false,
-    },
-    {
-      名称: '404 收口的不可用态：无 ⋯',
-      挂载: () => {
+      }, false],
+    ['404 收口的不可用态：无 ⋯', () => {
         渲染Backend状态({ 候选岗位不可用: ['job_gone'] });
         return 渲染('job_gone');
-      },
-      断言零读: true,
-    },
-  ])('$名称', async ({ 挂载, 断言零读 }) => {
+      }, true],
+  ] as const)('%s', async (_名称, 挂载, 断言零读) => {
     await act(async () => {});
     挂载();
     await act(async () => {});

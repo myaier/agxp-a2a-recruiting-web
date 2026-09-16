@@ -64,33 +64,35 @@ describe('解接触事件页', () => {
     );
   });
 
+  // 注：参数不在标题里（18 条 Case 同名，清单身份重复），补 %s 标签
+  //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
     // 未知键：页级 / item 级 / organization 级逐层闭合
-    { ...wire页, extra: true },
-    { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, extra: 1 } }] },
-    { ...wire页, items: [{ ...wire事件, recruiter_name: 'Alice' }] },
+    ['页级多余键', { ...wire页, extra: true }],
+    ['organization 多余键', { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, extra: 1 } }] }],
+    ['item 多余键', { ...wire页, items: [{ ...wire事件, recruiter_name: 'Alice' }] }],
     // 坏 enum
-    { ...wire页, items: [{ ...wire事件, action: 'profile_downloaded' }] },
+    ['未知 action', { ...wire页, items: [{ ...wire事件, action: 'profile_downloaded' }] }],
     // 坏时间
-    { ...wire页, items: [{ ...wire事件, occurred_at: 'yesterday' }] },
-    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01' }] },
+    ['非时间 occurred_at', { ...wire页, items: [{ ...wire事件, occurred_at: 'yesterday' }] }],
+    ['缺时刻 occurred_at', { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01' }] }],
     // 非法日历分量：Date.parse 会归一化成另一天，strict decoder 必须拒绝
-    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-02-30T08:00:00Z' }] },
-    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-31T08:00:00Z' }] },
-    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01T24:00:00Z' }] },
-    { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01T08:60:00Z' }] },
+    ['2 月 30 日', { ...wire页, items: [{ ...wire事件, occurred_at: '2026-02-30T08:00:00Z' }] }],
+    ['9 月 31 日', { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-31T08:00:00Z' }] }],
+    ['24 时', { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01T24:00:00Z' }] }],
+    ['60 分', { ...wire页, items: [{ ...wire事件, occurred_at: '2026-09-01T08:60:00Z' }] }],
     // 坏 ID
-    { ...wire页, items: [{ ...wire事件, event_id: 'cev_short' }] },
-    { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, organization_id: 'org_short' } }] },
+    ['坏 event_id', { ...wire页, items: [{ ...wire事件, event_id: 'cev_short' }] }],
+    ['坏 organization_id', { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, organization_id: 'org_short' } }] }],
     // 空 / 过长 display_name（1–200）
-    { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, display_name: '' } }] },
-    { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, display_name: 'x'.repeat(201) } }] },
+    ['空 display_name', { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, display_name: '' } }] }],
+    ['超长 display_name', { ...wire页, items: [{ ...wire事件, organization: { ...wire事件.organization, display_name: 'x'.repeat(201) } }] }],
     // 坏 / 过长 / 缺 next_cursor
-    { ...wire页, next_cursor: 'bad cursor' },
-    { ...wire页, next_cursor: '' },
-    { ...wire页, next_cursor: 'c'.repeat(513) },
-    { items: [wire事件] },
-  ])('契约漂移 fail closed', (input) => {
+    ['坏 next_cursor', { ...wire页, next_cursor: 'bad cursor' }],
+    ['空 next_cursor', { ...wire页, next_cursor: '' }],
+    ['超长 next_cursor', { ...wire页, next_cursor: 'c'.repeat(513) }],
+    ['缺 items', { items: [wire事件] }],
+  ] as const)('契约漂移 fail closed：%s', (_标签, input) => {
     expect(() => 解接触事件页(input)).toThrowError(
       expect.objectContaining({ status: 200, code: 'invalid_response' }),
     );

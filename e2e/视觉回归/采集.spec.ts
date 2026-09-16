@@ -1,23 +1,47 @@
 // 采集 spec：每个场景一个 Playwright test，写 PNG + 场景采集结果 JSON。
 // 任一步骤失败仍写 status:failed JSON，再重新抛错让 Playwright trace 生效。
-import { test } from '@playwright/test';
+//
+// C3 离线边界接入（Task 5）：视觉配置无命名 project（空项目名），本文件固定
+// 取 mock 模式安装最末级业务 HTTP/WS 防漏边界并在 Case teardown 核对()；
+// 其他项目名一律显式失败，不设可配置模式注册表（C3：边界只在此文件取 mock）。
+// UI_CAPTURE_DIR 必填检查与目录创建移到测试执行期（每用例 准备采集目录()），
+// --list / 无副作用收集不再因缺目录抛错，也不在导入阶段建目录。
+import { test as base } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { 安装离线边界 } from '../fixtures/离线边界';
 import { 视觉场景们 } from './场景';
 import { 安装诊断 } from './稳定页面';
 import type { 场景采集结果, 元素几何 } from './类型';
 
-const 输出目录 = process.env.UI_CAPTURE_DIR;
-if (!输出目录) {
-  throw new Error('UI_CAPTURE_DIR 未设置：采集 spec 需要明确输出目录');
+// 视觉配置的默认（空名）project 视同 mock；显式 mock 项目名同样允许。
+// 其余项目名（fixture/annotation/未知）一律失败：本 spec 只在 mock 数据源下采集。
+const test = base.extend({
+  context: async ({ context }, use, testInfo) => {
+    const 项目名 = testInfo.project.name;
+    if (项目名 !== '' && 项目名 !== 'mock') {
+      throw new Error(`视觉采集只支持空项目名（默认）或 mock 项目，收到「${项目名}」`);
+    }
+    const 边界 = await 安装离线边界(context, 'mock');
+    await use(context);
+    边界.核对();
+  },
+});
+
+const 输出目录 = process.env.UI_CAPTURE_DIR ?? '';
+
+function 准备采集目录(): { 截图目录: string; 场景目录: string } {
+  if (!输出目录) {
+    throw new Error('UI_CAPTURE_DIR 未设置：采集 spec 需要明确输出目录（执行期检查，--list 不需要）');
+  }
+  const 截图目录 = join(输出目录, 'screenshots');
+  const 场景目录 = join(输出目录, 'scenes');
+  mkdirSync(截图目录, { recursive: true });
+  mkdirSync(场景目录, { recursive: true });
+  return { 截图目录, 场景目录 };
 }
 
-const 截图目录 = join(输出目录, 'screenshots');
-const 场景目录 = join(输出目录, 'scenes');
-mkdirSync(截图目录, { recursive: true });
-mkdirSync(场景目录, { recursive: true });
-
-function 写结果(结果: 场景采集结果): void {
+function 写结果(场景目录: string, 结果: 场景采集结果): void {
   const 路径 = join(场景目录, `${结果.sceneId}.json`);
   mkdirSync(dirname(路径), { recursive: true });
   writeFileSync(路径, JSON.stringify(结果, null, 2));
@@ -25,6 +49,7 @@ function 写结果(结果: 场景采集结果): void {
 
 for (const 场景 of 视觉场景们) {
   test(`采集 ${场景.id}`, async ({ page }) => {
+    const { 截图目录, 场景目录 } = 准备采集目录();
     const 诊断 = 安装诊断(page);
     let 结果: 场景采集结果 = {
       schemaVersion: 1,
@@ -106,7 +131,7 @@ for (const 场景 of 视觉场景们) {
         horizontalOverflow: 溢出,
         failure: null,
       };
-      写结果(结果);
+      写结果(场景目录, 结果);
       诊断.detach();
     } catch (原始错误) {
       结果 = {
@@ -120,7 +145,7 @@ for (const 场景 of 视觉场景们) {
         apiRequests: [...诊断.apiRequests],
         failure: 原始错误 instanceof Error ? 原始错误.message : String(原始错误),
       };
-      写结果(结果);
+      写结果(场景目录, 结果);
       诊断.detach();
       throw 原始错误;
     }

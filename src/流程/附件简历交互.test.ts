@@ -25,11 +25,13 @@ const 文件A: BFF附件简历 = {
 };
 
 describe('校验附件PDF', () => {
+  // 注：参数不在标题里（三条 Case 同名，清单身份重复），补 %s 标签
+  //（2026-09-16 清单验证发现，只改标题形式，断言不变）。
   it.each([
-    [new File(['x'], 'resume.txt', { type: 'text/plain' }), '请选择 PDF 文件'],
-    [new File(['x'], 'resume.PDF', { type: '' }), null],
-    [new File(['xx'], 'resume.pdf', { type: 'application/pdf' }), '文件不能超过 1 B'],
-  ])('validates PDF before consent', (file, expected) => {
+    ['非 PDF 类型', new File(['x'], 'resume.txt', { type: 'text/plain' }), '请选择 PDF 文件'],
+    ['PDF 大写扩展名', new File(['x'], 'resume.PDF', { type: '' }), null],
+    ['超 1 B', new File(['xx'], 'resume.pdf', { type: 'application/pdf' }), '文件不能超过 1 B'],
+  ] as const)('validates PDF before consent：%s', (_标签, file, expected) => {
     expect(校验附件PDF(file, { max_files: 3, max_file_bytes: 1, accepted_media_types: ['application/pdf'] }))
       .toBe(expected);
   });

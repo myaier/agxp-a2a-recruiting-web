@@ -154,7 +154,9 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     ['remote', '   ', null, null],
     ['onsite', '徐汇区漕河泾', 12, '徐汇区漕河泾'],
     ['hybrid', '静安区南京西路', 14, '静安区南京西路'],
-  ] as const)('mode=%s office/months preserve null boundaries', (mode, office, months, expectedOffice) => {
+  // 注：前两行 mode 同为 remote、参数不在标题里（两条 Case 同名，清单身份重复），
+  // 标题补 office=%j 区分（2026-09-16 清单验证发现，只改标题形式，断言不变）。
+  ] as const)('mode=%s office=%j months preserve null boundaries', (mode, office, months, expectedOffice) => {
     const view = 从P4CandidateJob({
       ...BFFCandidateJob样本,
       workplace_mode: mode,

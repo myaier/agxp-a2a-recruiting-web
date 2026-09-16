@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:data-source": "playwright test",
+    "test:list": "node 脚本/测试清单.mjs",
     "test:watch": "vitest",
     "preview": "vite preview",
     "ui:compare": "tsx e2e/视觉回归/比较命令.ts",

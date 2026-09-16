@@ -1,7 +1,81 @@
-# 前端测试分层（迁移 / 测量工作区）
+# 前端测试分层（长期入口）
 
-这是 2026-09-16 前端测试分层重构的迁移与测量工作区；Task 5 会补齐测量协议并完善本文件。
-分层目标与验收口径见 `.superpowers/sdd/2026-09-16-frontend-test-layering/` 下的 spec 与各 task 报告。
+这是前端测试的总入口：三层责任、Suite 目录、按影响选择测试的精确命令、Case 扩展步骤、
+各 Task 的迁移对账与计时证据。完整逐叶 Case 清单在 [`cases.md`](cases.md)（自动生成 +
+手写 L3 索引）。分层目标与验收口径见
+`.superpowers/sdd/2026-09-16-frontend-test-layering/` 下的 spec 与各 task 报告。
+
+## 三层与总命令
+
+| 层 | 负责证明 | 入口 |
+|---|---|---|
+| 第一层 · 单元/组件 | 计算/映射、状态转换、请求构造与解码、组件单一交互 | `npm test`（Vitest；原生文件/`-t` 选择） |
+| 第二层 · 浏览器 | 页面接线、请求契约、异常恢复、隔离与浏览器交互 | `npm run test:e2e`（mock/fixture/annotation 三 project）＋ `npm run ui:capture`（视觉采集） |
+| 第三层 · L3 | 关键旅程跨真实 STG 可完成并持久化 | `docs/dogfood/真实后端行为验收.md`（显式选择，独立凭据/清理合同） |
+
+清单生成（C1/C5，唯一清单真相在 `cases.md` 自动区）：
+
+```bash
+npm run test:list              # stdout 输出稳定 Markdown 清单（不写文档、不跑测试）
+npm run test:list -- --write   # 全部收集/校验成功后只更新 cases.md 自动区
+npm run test:list -- --check   # 只比对自动区是否过期；不同/收集失败非零，不写文件
+```
+
+脚本（`脚本/测试清单.mjs`）只包装三次原生只收集调用（`vitest list --json`、
+`playwright test --list --reporter=json` 功能与视觉两配置），不执行测试、不启动服务、
+不访问网络、不在导入阶段建采集目录。新增未映射测试文件或重复 Case 身份会非零失败并
+提示最小补映射；生成失败不覆盖原文档，两次生成结果字节相同。
+
+## Suite 目录
+
+第一层按固定路径前缀归类（脚本冻结表），子目录/模块与既有 describe 构成更细子 Suite：
+
+| Suite | 路径前缀 / 文件 | 当前规模（2026-09-16 清单） |
+| --- | --- | --- |
+| 数据契约/映射 | `src/数据/` | 1452 例 · 49 文件 |
+| 状态 | `src/状态/` | 1227 例 · 30 文件 |
+| 流程 | `src/流程/` | 174 例 · 6 文件 |
+| 页面/接线 | `src/屏幕/`、`src/路由/`、精确文件 `src/应用.test.tsx` | 2164 例 · 100 文件 |
+| 组件 | `src/组件/` | 422 例 · 52 文件 |
+| 配置/工具 | `src/配置/`、`脚本/`（`.test.mjs`）、`e2e/视觉回归/*.test.ts` | 39 例 · 7 文件 |
+
+第二层按 C6 文件表归 Suite；保留在 `e2e/` 根的 spec 按补充映射归属（`onboarding.spec.ts`
+是「候选建档」「招聘建档与JD」两 Suite 的文件级并集，三个招聘叶子按标题前缀归招聘建档）：
+
+| Suite | 文件 | 当前规模 |
+| --- | --- | --- |
+| 登录与数据源 / 登录与数据源边界 | `e2e/suites/登录与数据源.spec.ts` / `e2e/离线边界.spec.ts`（边界反例） | 18 + 6 例 |
+| 候选建档 / 招聘建档与JD | `e2e/suites/候选建档.spec.ts`、`e2e/suites/招聘建档与JD.spec.ts`、`e2e/onboarding.spec.ts`（并集） | 6 + 6 例 |
+| 简历与附件 / 求职意向 / 岗位编辑 | `e2e/suites/简历与附件|求职意向|岗位编辑.spec.ts` | 11 + 6 + 4 例 |
+| 招聘组织 / 隐私与实名 / Agent规则 / 发现推荐 / MatchCase / 真人消息 / 账号与支持 | 同名 `e2e/suites/*.spec.ts` | 15 / 13 / 11 / 15 / 12 / 8 / 16 例 |
+| 连续委托 | `e2e/suites/连续委托.spec.ts` + `e2e/J-PILOT-02接线.spec.ts` | 8 例 |
+| 展示与交互 | `e2e/suites/展示与交互.spec.ts` + `P1展示统一/展示字段接线/抽屉稳定性/换壳无闪屏/问AI代理展示` 五个保留文件 | 137 例 |
+| 标注 | `e2e/suites/标注.spec.ts` | 2 例 |
+| 视觉采集 | `e2e/视觉回归/采集.spec.ts`（只由视觉配置收集；C3 边界在该文件取 mock） | 18 例 |
+
+清单逐叶明细（含逻辑标题、project 变体、源码链接与选择坐标）见
+[`cases.md`](cases.md)；叶子身份 = layer + 文件 + 完整名称 + project，行号只是导航。
+
+## 扩展 Case 的最小步骤
+
+1. 第一层：在同域测试文件内用原生 `describe/it` 加用例（表驱动优先用数组 each 并让
+   参数出现在标题里——vitest 4 对象 each 不做 `$var` 插值，同名 Case 会让清单身份重复）；
+   跑 `npm run test:list -- --check` 确认清单仍一致（新用例属已映射文件则自动入清单）。
+2. 第二层：功能 spec 从 `./fixtures/test` 导入 `test/expect`，按 C6 表把新 spec 放进
+   对应 Suite 文件；若新增文件，先在 `脚本/测试清单.mjs` 的映射表补归属（脚本会显式报错提示），
+   再 `npm run test:list -- --write`。
+3. 每条新 Case 单选可运行（`-t`/`--grep` 精确标题）；业务请求按 C3 坐标显式声明，
+   不改产品；涉及慢等待先按 Task 3/4 的口径补计时证据再决定拆分。
+4. L3：只在 `cases.md` 手写区/活动指南扩展现有组合；不把 fixture/单元结果冒充 STG PASS。
+
+## 成本观察（拆前拆后）
+
+- 第一层：四个大文件拆分前后用例计时合计持平（±5% 内，见 Task 4 章）；实际提速来自
+  受控时钟（城市 2421→54ms、实名 4096→752ms）。拆分目标是可以独立选择，不是全局提速。
+- 第二层：C4 拆分净增 8 例（长 Case 拆分表见 Task 3 章），拆前链路均有计时样本存档
+  （`test-results/test-layering/`，git-ignored）；离线边界与 fixture 抽取不折算为提速。
+- 清单（2026-09-16 生成）：第一层 5478 例 / 244 文件；第二层功能 294 例 + 视觉 18 例。
+  计时逐叶记「未知」（清单不含执行计时；Suite 级计时见各 Task 对账章）。
 
 ## 现状（Task 1 完成后）
 
@@ -269,6 +343,40 @@ Fix round 1（spec review 后）：恢复 JD 拆分初版丢失的三条断言�
 - `task4-命令一-新旧并存.json`：新旧并存对账（1022 例全绿，title 集合相等）；
 - `task4-命令二-城市实名.json`：城市/实名受控时钟后（45 例全绿）。
 
+## Task 5 对账（原生 Case 清单 + 视觉边界接入，2026-09-16）
+
+### 清单（C5）
+
+- `docs/testing/cases.md` 自动区由 `脚本/测试清单.mjs` 生成（三次原生只收集调用包装，
+  `npm run test:list [--write|--check]`）；脚本行为由 `脚本/测试清单.test.mjs` 冻结
+  （解析/归一/重复身份/未知文件/空集合/坏 JSON/Markdown 转义/稳定排序/失败不覆盖，
+  17 例，全部用小内联样例与临时目录）。
+- 当前清单：第一层 5478 例 / 244 文件；第二层 294 功能 + 18 视觉。两次生成字节相同，
+  `--check` 通过；过期/收集失败/未知文件/重复身份在临时目录样例中验证为非零且不覆盖。
+
+### 清单验证暴露的既有同名 Case（只改标题形式，断言不变）
+
+vitest 4 对象 `it.each` 不做 `$var` 标题插值、部分表驱动用例参数不在标题里，产生 14 组
+同名 Case（清单身份重复）。逐组给标题补区分标签（数组 each + `%s`）：
+
+| 文件 | 组（同名列数） |
+| --- | --- |
+| `src/屏幕/招聘名片.test.tsx` / `src/屏幕/发布岗位.提交.test.tsx` / `src/屏幕/看市场.test.tsx` / `src/屏幕/职位详情.test.tsx`（×2 表） | 各 1 表（2–4 行） |
+| `src/数据/招聘数据源/MatchCase.test.ts`（%j 双 null）、`发现推荐.test.ts`（9）、`候选实名.test.ts`（33）、`P8控制面.test.ts`（10）、`Agent规则.test.ts`（4） | 1 表 |
+| `src/数据/MatchCase展示映射.test.ts`（3）、`src/数据/发现推荐映射.test.ts`（2）、`src/数据/招聘数据源/接触记录.test.ts`（18） | 1 表 |
+| `src/配置/运行配置.test.ts`（2+2）、`src/流程/附件简历交互.test.ts`（3）、`src/状态/后端/MatchCase统计.test.ts`（4） | 各 1 表 |
+
+### 视觉边界与采集验证
+
+- `e2e/视觉回归/采集.spec.ts`：接 C3 离线边界（空项目名在该文件取 mock，其他项目名显式失败）；
+  `UI_CAPTURE_DIR` 检查与 mkdir 移到执行期。`--list` 无副作用收集通过（不建目录）。
+- 18 场景复跑：18/18 captured、每场景 JSON 的 apiRequests 为空、`核对()` 全过
+  （`test-results/test-layering/visual/`）；candidate-salary 一处关键元素定位按
+  carry-forward 更新为薪资选择行（产品已统一为 bottom-drawer 抽屉，见 场景.ts 注释）。
+- P1/展接线显式目录协议不变：`P1_CAPTURE_DIR`/`WIRING_CAPTURE_DIR`（mock 52 例全绿，
+  p1 28 + wiring 24 张场景 JSON）与 `P1_BACKEND_CAPTURE_DIR`（fixture 分支）产物在
+  `test-results/test-layering/{p1,wiring,p1-backend}`；无显式目录仍走 testInfo.outputPath。
+
 ## 已知事项
 
 - `J-PILOT-02接线.spec.ts` 四条手填旅程在基线 HEAD 6b8a71fa（旧入口）即失败
@@ -282,7 +390,11 @@ Fix round 1（spec review 后）：恢复 JD 拆分初版丢失的三条断言�
   覆盖）＋ `P6 accept 409 not_actionable`。修法是按同 spec「P8 举报屏蔽暂不可用」
   的既有写法补 `覆盖` 声明，属独立小修。另有 ~13 例时序 flaky（hash 直达被
   在飞水合导航吞掉类），双方树同样随机翻转。
-- 视觉回归目录 `e2e/视觉回归/` 尚未接入统一 `test` 导入与边界（Task 5 同步处理）。
+- 视觉回归目录已接入 C3 边界（Task 5）：`e2e/视觉回归/采集.spec.ts` 以同一个
+  `离线边界` helper 做文件级 extend（视觉配置空项目名在该文件取 mock），目录检查与
+  mkdir 移到执行期（`--list` 不再要求 `UI_CAPTURE_DIR`）；18 场景采集已按新边界复跑
+  （18/18 captured、零未声明业务请求），candidate-salary 场景的关键元素定位随
+  bottom-drawer 薪资选择行统一更新（carry-forward，只改测试定位）。
 - Task 2 起 BFF fixture 将从 `e2e/数据源模式.spec.ts` 抽取；计时以 Task 1 的离线版本
   为起点，离线修复本身不计入拆分提速。（Task 2 已完成抽取，见上节对账。）
 - e2e 目录不在仓库 tsconfig 覆盖内（Playwright 用 esbuild 不做类型检查）。本任务用
