@@ -17,7 +17,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 5767 例 · 256 文件
+## 第一层 · 单元/组件（Vitest） · 5775 例 · 256 文件
 
 ### 数据契约/映射 · 1565 例 · 53 文件
 
@@ -3621,7 +3621,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2215 例 · 101 文件
+### 页面/接线 · 2223 例 · 101 文件
 
 <details>
 <summary>展开明细</summary>
@@ -3807,6 +3807,8 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | Backend真人会话 > read-through：只提交最新渲染的 user_text，重渲染不重复提交；system 行零提交 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?read-through：只提交最新渲染的 user_text，重渲染不重复提交；system 行零提交' | 未知 |
 | Backend真人会话 > read-through：只有 system 行时零提交 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?read-through：只有 system 行时零提交' | 未知 |
 | Backend真人会话 > reason=in_progress 显示「消息仍在处理中，请稍后重试」，不提供放弃 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?reason=in_progress 显示「消息仍在处理中，请稍后重试」，不提供放弃' | 未知 |
+| Backend真人会话 > review-r1 F1：同会话 context 失权 —— 弹层关闭、租约回收，消息仍可读 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?review-r1 F1：同会话 context 失权 —— 弹层关闭、租约回收，消息仍可读' | 未知 |
+| Backend真人会话 > review-r1 F1：开层后关层，迟到的租约立即回收、不落预览；重开层重新取件 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?review-r1 F1：开层后关层，迟到的租约立即回收、不落预览；重开层重新取件' | 未知 |
 | Backend真人会话 > sender 对齐：本端右侧气泡、对端左侧气泡、system 行中性胶囊（双端各验一次） |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?sender 对齐：本端右侧气泡、对端左侧气泡、system 行中性胶囊（双端各验一次）' | 未知 |
 | Backend真人会话 > unknown/outcome_unknown 可放弃：显示重新确认与放弃；放弃保留在编草稿并清该意图 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?unknown/outcome_unknown 可放弃：显示重新确认与放弃；放弃保留在编草稿并清该意图' | 未知 |
 | Backend真人会话 > 候选端「看职位」盖全屏层（不再路由跳转）：电话/微信诚实缺失占位，无复制 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?候选端「看职位」盖全屏层（不再路由跳转）：电话/微信诚实缺失占位，无复制' | 未知 |
@@ -3826,14 +3828,20 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | Backend真人会话 · P8 会话举报 > ⋯ 是键盘可达控件：点击 / Enter / Space 都打开同一个举报层 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 · P8 会话举报 (> )?⋯ 是键盘可达控件：点击 / Enter / Space 都打开同一个举报层' | 未知 |
 | Backend真人会话 · P8 会话举报 > 举报绝不本地拉黑；目标不是 match_case（P8 没有为 MatchCase 加举报按钮） |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 · P8 会话举报 (> )?举报绝不本地拉黑；目标不是 match_case（P8 没有为 MatchCase 加举报按钮）' | 未知 |
 | Backend真人会话 · P8 会话举报 > 提交举报：target 是不可变会话坐标，确认后强制重读该会话 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 · P8 会话举报 (> )?提交举报：target 是不可变会话坐标，确认后强制重读该会话' | 未知 |
+| use真人会话资料 · review-r2 修复 > F1：读锁让路的提前结算不放行刷新中的旧快照（StrictMode 双挂） |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · review-r2 修复 (> )?F1：读锁让路的提前结算不放行刷新中的旧快照（StrictMode 双挂）' | 未知 |
+| use真人会话资料 · review-r2 修复 > F2：公司链本轮门槛 —— 岗位/企业在飞或失败都显示「公司暂未提供」，双落地才显示 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · review-r2 修复 (> )?F2：公司链本轮门槛 —— 岗位/企业在飞或失败都显示「公司暂未提供」，双落地才显示' | 未知 |
+| use真人会话资料 · review-r2 修复 > F2：岗位或企业读取失败 —— 旧缓存公司持续不可见 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · review-r2 修复 (> )?F2：岗位或企业读取失败 —— 旧缓存公司持续不可见' | 未知 |
+| use真人会话资料 · review-r3 修复 > F1(r3)：公司链绑定实际读取轮次 —— 岗位在飞不读企业、重放不当成功、企业按编号落地 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · review-r3 修复 (> )?F1\(r3\)：公司链绑定实际读取轮次 —— 岗位在飞不读企业、重放不当成功、企业按编号落地' | 未知 |
 | use真人会话资料 · 候选页头（发布人档案 + 发布方公司） > 发布人档案缺席：姓名/职务给缺失占位，不挖 PDF 或拼身份坐标 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 候选页头（发布人档案 \+ 发布方公司） (> )?发布人档案缺席：姓名/职务给缺失占位，不挖 PDF 或拼身份坐标' | 未知 |
 | use真人会话资料 · 候选页头（发布人档案 + 发布方公司） > 岗位/企业缺场或不可用：公司显示「公司暂未提供」，发布人姓名/职务仍按 Case 冻结档案 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 候选页头（发布人档案 \+ 发布方公司） (> )?岗位/企业缺场或不可用：公司显示「公司暂未提供」，发布人姓名/职务仍按 Case 冻结档案' | 未知 |
 | use真人会话资料 · 候选页头（发布人档案 + 发布方公司） > 标题 = 发布人姓名，副标题 = 发布方公司 · 职务；公司读公开企业 display_name，不用用人企业 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 候选页头（发布人档案 \+ 发布方公司） (> )?标题 = 发布人姓名，副标题 = 发布方公司 · 职务；公司读公开企业 display_name，不用用人企业' | 未知 |
 | use真人会话资料 · 招聘页头（Case candidateIdentity） > disclosed 有名：标题 = 候选真名、副标题 = Case 职位名、头像 = 已披露 avatar_url |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 招聘页头（Case candidateIdentity） (> )?disclosed 有名：标题 = 候选真名、副标题 = Case 职位名、头像 = 已披露 avatar_url' | 未知 |
 | use真人会话资料 · 招聘页头（Case candidateIdentity） > disclosed 缺名：显示「候选人姓名暂未提供」，anonymous：保留 Case 代号、不显被遮蔽姓名 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 招聘页头（Case candidateIdentity） (> )?disclosed 缺名：显示「候选人姓名暂未提供」，anonymous：保留 Case 代号、不显被遮蔽姓名' | 未知 |
+| use真人会话资料 · 本轮读取门槛（review-r1 F2） > 手动重读期间旧身份退场，本次落地后恢复 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 本轮读取门槛（review-r1 F2） (> )?手动重读期间旧身份退场，本次落地后恢复' | 未知 |
+| use真人会话资料 · 本轮读取门槛（review-r1 F2） > 预置成功缓存也强制本轮读取：pending 期间回落占位，本轮落地才显示身份 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 本轮读取门槛（review-r1 F2） (> )?预置成功缓存也强制本轮读取：pending 期间回落占位，本轮落地才显示身份' | 未知 |
 | use真人会话资料 · 读取与失败降级 > jobDetail 缺席：职位资料为 null（弹层显示不可用），不拿当前岗位替代历史资料 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?jobDetail 缺席：职位资料为 null（弹层显示不可用），不拿当前岗位替代历史资料' | 未知 |
 | use真人会话资料 · 读取与失败降级 > 快照缺席 = loading；上下文不可用 = unavailable（回落 P7 标签，不透出旧身份） |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?快照缺席 = loading；上下文不可用 = unavailable（回落 P7 标签，不透出旧身份）' | 未知 |
-| use真人会话资料 · 读取与失败降级 > 授权在场进会话做一次定向 P5 读取（不加轮询）；候选端补读当前岗位与公开企业 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?授权在场进会话做一次定向 P5 读取（不加轮询）；候选端补读当前岗位与公开企业' | 未知 |
+| use真人会话资料 · 读取与失败降级 > 授权在场进会话做一次定向 P5 读取（force，不加轮询）；候选端补读当前岗位与公开企业 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?授权在场进会话做一次定向 P5 读取（force，不加轮询）；候选端补读当前岗位与公开企业' | 未知 |
 | use真人会话资料 · 读取与失败降级 > 补读失败不消费缓存旧身份（有 detail 也有 error 一并按失败降级）；重读走 force |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?补读失败不消费缓存旧身份（有 detail 也有 error 一并按失败降级）；重读走 force' | 未知 |
 | use真人会话资料 · 读取与失败降级 > 迟到资料不污染新会话：旧 case 的补读落地只写旧范围键 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?迟到资料不污染新会话：旧 case 的补读落地只写旧范围键' | 未知 |
 | 个人信息 · Backend 候选头像 > 选择 JPG 走真实头像操作，不把 data URL 派发进账号状态 |  | [src/屏幕/个人信息.test.tsx](../../src/屏幕/个人信息.test.tsx) | npm test -- src/屏幕/个人信息.test.tsx -t '个人信息 · Backend 候选头像 (> )?选择 JPG 走真实头像操作，不把 data URL 派发进账号状态' | 未知 |
@@ -6241,18 +6249,18 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| P7 消息时间与短气泡几何 Asia/Shanghai @backend > 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend | fixture | [e2e/suites/真人消息.spec.ts:306](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 消息时间与短气泡几何 Asia/Shanghai @backend 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend' | 未知 |
-| P7 消息时间与短气泡几何 UTC @backend > 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend | fixture | [e2e/suites/真人消息.spec.ts:306](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 消息时间与短气泡几何 UTC @backend 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend' | 未知 |
-| P7 真人会话 fixture @backend > P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display | fixture | [e2e/suites/真人消息.spec.ts:272](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display' | 未知 |
+| P7 消息时间与短气泡几何 Asia/Shanghai @backend > 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend | fixture | [e2e/suites/真人消息.spec.ts:309](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 消息时间与短气泡几何 Asia/Shanghai @backend 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend' | 未知 |
+| P7 消息时间与短气泡几何 UTC @backend > 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend | fixture | [e2e/suites/真人消息.spec.ts:309](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 消息时间与短气泡几何 UTC @backend 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend' | 未知 |
+| P7 真人会话 fixture @backend > P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display | fixture | [e2e/suites/真人消息.spec.ts:275](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display' | 未知 |
 | P7 真人会话 fixture @backend > context 不可用保留消息、主项占位禁用，提供重新加载会话信息 @backend | fixture | [e2e/suites/真人消息.spec.ts:188](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend context 不可用保留消息、主项占位禁用，提供重新加载会话信息 @backend' | 未知 |
-| P7 真人会话 fixture @backend > foreign/wrong-role 404 不保留上一会话残留 @backend | fixture | [e2e/suites/真人消息.spec.ts:257](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend foreign/wrong-role 404 不保留上一会话残留 @backend' | 未知 |
+| P7 真人会话 fixture @backend > foreign/wrong-role 404 不保留上一会话残留 @backend | fixture | [e2e/suites/真人消息.spec.ts:260](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend foreign/wrong-role 404 不保留上一会话残留 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 候选端发送：首答结果未知经同键重放收敛，消息只落一条 @backend | fixture | [e2e/suites/真人消息.spec.ts:106](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 候选端发送：首答结果未知经同键重放收敛，消息只落一条 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 候选端收件箱未读 → 进会话 read-through → 权威收件箱归零 @backend | fixture | [e2e/suites/真人消息.spec.ts:73](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 候选端收件箱未读 → 进会话 read-through → 权威收件箱归零 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 候选端页头身份与全屏职位层：发布方公司不冒充用人企业，电话微信诚实缺失 @backend | fixture | [e2e/suites/真人消息.spec.ts:203](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 候选端页头身份与全屏职位层：发布方公司不冒充用人企业，电话微信诚实缺失 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 招聘端经内容无关失效事件 HTTP 重拉看到候选新消息并回复 @backend | fixture | [e2e/suites/真人消息.spec.ts:129](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 招聘端经内容无关失效事件 HTTP 重拉看到候选新消息并回复 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 招聘端页头候选真名与全屏 PDF 层：授权原件正文、关闭回聊天 @backend | fixture | [e2e/suites/真人消息.spec.ts:232](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 招聘端页头候选真名与全屏 PDF 层：授权原件正文、关闭回聊天 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 断线重连无条件重拉当前角色收件箱与当前会话 @backend | fixture | [e2e/suites/真人消息.spec.ts:166](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 断线重连无条件重拉当前角色收件箱与当前会话 @backend' | 未知 |
-| P7 Mock 数据源隔离 @mock > Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock | mock | [e2e/suites/真人消息.spec.ts:355](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=mock --grep 'P7 Mock 数据源隔离 @mock Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock' | 未知 |
+| P7 Mock 数据源隔离 @mock > Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock | mock | [e2e/suites/真人消息.spec.ts:364](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=mock --grep 'P7 Mock 数据源隔离 @mock Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock' | 未知 |
 
 </details>
 
