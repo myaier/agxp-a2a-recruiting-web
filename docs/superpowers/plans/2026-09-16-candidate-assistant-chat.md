@@ -152,12 +152,12 @@ export interface 求职推荐卡属性 {
 
 Consumes：BFF客户端['请求']、连续代谈 NegotiationAgentSummary；Produces：合同 A 的 DTO/facade，并入 HTTP招聘数据源 的交集/创建组合。不得给其他域添加假实现。
 
-- [ ] 写表驱动协议测试：4 路由、无正文 retry、调用方 key 原样、GET no-store、200/202 合同、分页、三种已知 card、未知 kind 跳过、非法已知 card 拒绝。
-- [ ] 增加反例：成功无 reply、unavailable 带 cards、处理中 retryable=true、坏 ID、缺 nullable 必需键、把“中”重复1366次导致4098字节，应在发请求前失败；1365次合法。复用真实 summary decoder 对嵌套证据做校验。
-- [ ] 运行 `npm test -- src/数据/招聘数据源/助手会话.test.ts`，确认失败由未实现/合同缺口引起。
-- [ ] 最小实现 facade 和解码，导出既有 `解NegotiationAgentSummary` 不搬迁/改写整个连续代谈域。错误用现有 BFF错误，错误语义遵循 Spec §3 与 OpenAPI status/type；已接受却解码失败由上层视为提交待确认。
-- [ ] 运行 `npm test -- src/数据/招聘数据源/助手会话.test.ts src/数据/招聘数据源/连续代谈.test.ts`、`npm run typecheck`。预期全部通过，确认该导出不改变既有详情解码。
-- [ ] 仅提交本 Task 文件：`feat: add candidate assistant data source`。完成条件为调用/解码测试通过；遇后端 schema 与批准契约实质冲突停止报告。
+- [x] 写表驱动协议测试：4 路由、无正文 retry、调用方 key 原样、GET no-store、200/202 合同、分页、三种已知 card、未知 kind 跳过、非法已知 card 拒绝。
+- [x] 增加反例：成功无 reply、unavailable 带 cards、处理中 retryable=true、坏 ID、缺 nullable 必需键、把“中”重复1366次导致4098字节，应在发请求前失败；1365次合法。复用真实 summary decoder 对嵌套证据做校验。
+- [x] 运行 `npm test -- src/数据/招聘数据源/助手会话.test.ts`，确认失败由未实现/合同缺口引起。
+- [x] 最小实现 facade 和解码，导出既有 `解NegotiationAgentSummary` 不搬迁/改写整个连续代谈域。错误用现有 BFF错误，错误语义遵循 Spec §3 与 OpenAPI status/type；已接受却解码失败由上层视为提交待确认。
+- [x] 运行 `npm test -- src/数据/招聘数据源/助手会话.test.ts src/数据/招聘数据源/连续代谈.test.ts`、`npm run typecheck`。预期全部通过，确认该导出不改变既有详情解码。
+- [x] 仅提交本 Task 文件：`feat: add candidate assistant data source`。完成条件为调用/解码测试通过；遇后端 schema 与批准契约实质冲突停止报告。
 
 ### Task 2: 提取并复用原生市场岗位卡
 
@@ -170,11 +170,11 @@ Consumes：BFF客户端['请求']、连续代谈 NegotiationAgentSummary；Produ
 
 Consumes：现有市场卡 JSX/CSS、卡片分数、公司字标；Produces：合同 D 的纯展示组件。先读取现有 use适配分 与页面两种调用点，不改变字段来源。
 
-- [ ] 对原市场用例建立提取前证据：已知公司/职位/分数/薪资/头像、委托按钮状态与导航；必要时补一个缺失分/图片占位的组件行为用例，不做类名大快照。
-- [ ] 新组件测试先失败，再移入原 JSX，直接复用原 CSS；用 null 控制占位，不构造假的完整市场职位。
-- [ ] 页面保留薄包装计算真实/Mock 分值，将展示 props 与原回调传给新卡；其他页面逻辑不搬动。
-- [ ] 运行 `npm test -- src/组件/列表卡片/求职推荐卡.test.tsx src/屏幕/看市场.test.tsx src/组件/列表卡片/卡片分数.test.tsx`。预期原市场行为保持、null/0 明确区分、禁用委托不调用回调、头像失败中性回退。
-- [ ] 提交 `refactor: share existing candidate job card`。若仅靠复用无法保持既有市场已知值布局，先修提取，不用重新设计样式规避。
+- [x] 对原市场用例建立提取前证据：已知公司/职位/分数/薪资/头像、委托按钮状态与导航；必要时补一个缺失分/图片占位的组件行为用例，不做类名大快照。
+- [x] 新组件测试先失败，再移入原 JSX，直接复用原 CSS；用 null 控制占位，不构造假的完整市场职位。
+- [x] 页面保留薄包装计算真实/Mock 分值，将展示 props 与原回调传给新卡；其他页面逻辑不搬动。
+- [x] 运行 `npm test -- src/组件/列表卡片/求职推荐卡.test.tsx src/屏幕/看市场.test.tsx src/组件/列表卡片/卡片分数.test.tsx`。预期原市场行为保持、null/0 明确区分、禁用委托不调用回调、头像失败中性回退。
+- [x] 提交 `refactor: share existing candidate job card`。若仅靠复用无法保持既有市场已知值布局，先修提取，不用重新设计样式规避。
 
 ### Task 3: 简报式助手回复与三类查询结果
 
@@ -187,14 +187,14 @@ Consumes：现有市场卡 JSX/CSS、卡片分数、公司字标；Produces：�
 
 Consumes：AssistantReply、求职推荐卡、求职在谈卡、代理气泡框、简报样式、白卡/在谈阶段区；Produces：查询结果展示属性 固定签名。展示组件通过 props 回调导航，不读 Provider。
 
-- [ ] 编写三类结果与 unavailable/空列表/缺失事实测试，先运行确认失败；用自造 DTO，不引用演示业务 fixture。
-- [ ] 组合同一回复内正文+结果。岗位真实字段映射到原卡：薪资复用导出的 `薪资文案(salary_lower, salary_upper, salary_period)`，不另写格式化；标签按 `[office_location, annual_salary_months !== null 时的“n 薪”]` 顺序组成，空地点显示“地点未知”，未提供的招聘类型/办公方式不制造事实。safe_reasons 在每项附属区显示；发布人/Logo/简介/分数未知占位，委托固定 `已委托=false`、`委托禁用=true`，附属区使用现有次要文字样式显示“请进入岗位详情操作”，不得借已委托回执分支改文案。nullable 不等于非法 required 键缺失（Task 1 已负责拒绝）。
-- [ ] 在谈卡公司/分数占位，城市/薪资/职位真实；phase 映射 accepted=已受理、evaluating=评估中、evaluation_failed=评估失败、refused=未进入在谈、case_started=已进入在谈。只映射现有阶段色系，不编 S0–S3；needs_action 真才显示需要你。每个项目外加序号与“让 AI 解读”，不嵌套 button。
-- [ ] 列表 next_cursor 非 null 时显示“可继续问‘下一批’”，null 时不显示；并入组件测试验证该文案以及月/日/时薪、年薪月数与地点映射，不增加另一分页入口。
-- [ ] 详情摘要用白卡+现有阶段/文字样式，展示完整初评证据组及 next_action 的中文文案、最新条件确认；历次摘要可展开。null 区块显式暂无，内部标识 ID 不作正文结论。字段真实值优先，不用前端生成评语。
-- [ ] `availability=unavailable` 禁用该项目导航及解读；reply unavailable 只显示 text；解读禁用控制所有次级动作；列表和详情都把 record_id 交给打开在谈。
-- [ ] 运行 `npm test -- src/组件/问AI代理/查询结果展示.test.tsx src/组件/问AI代理/对话展示.test.tsx src/组件/问AI代理/简报展示.test.tsx src/组件/列表卡片/求职在谈卡.test.tsx src/数据/发现推荐映射.test.ts`。验证 cards 顺序、各自时间、无请求/状态副作用、回调精确 ID、没有假统计或假图。
-- [ ] 提交 `feat: render assistant results with existing cards`；公共签名与 Task 5 一致，否则停下校准接口而非让消费者猜测。
+- [x] 编写三类结果与 unavailable/空列表/缺失事实测试，先运行确认失败；用自造 DTO，不引用演示业务 fixture。
+- [x] 组合同一回复内正文+结果。岗位真实字段映射到原卡：薪资复用导出的 `薪资文案(salary_lower, salary_upper, salary_period)`，不另写格式化；标签按 `[office_location, annual_salary_months !== null 时的“n 薪”]` 顺序组成，空地点显示“地点未知”，未提供的招聘类型/办公方式不制造事实。safe_reasons 在每项附属区显示；发布人/Logo/简介/分数未知占位，委托固定 `已委托=false`、`委托禁用=true`，附属区使用现有次要文字样式显示“请进入岗位详情操作”，不得借已委托回执分支改文案。nullable 不等于非法 required 键缺失（Task 1 已负责拒绝）。
+- [x] 在谈卡公司/分数占位，城市/薪资/职位真实；phase 映射 accepted=已受理、evaluating=评估中、evaluation_failed=评估失败、refused=未进入在谈、case_started=已进入在谈。只映射现有阶段色系，不编 S0–S3；needs_action 真才显示需要你。每个项目外加序号与“让 AI 解读”，不嵌套 button。
+- [x] 列表 next_cursor 非 null 时显示“可继续问‘下一批’”，null 时不显示；并入组件测试验证该文案以及月/日/时薪、年薪月数与地点映射，不增加另一分页入口。
+- [x] 详情摘要用白卡+现有阶段/文字样式，展示完整初评证据组及 next_action 的中文文案、最新条件确认；历次摘要可展开。null 区块显式暂无，内部标识 ID 不作正文结论。字段真实值优先，不用前端生成评语。
+- [x] `availability=unavailable` 禁用该项目导航及解读；reply unavailable 只显示 text；解读禁用控制所有次级动作；列表和详情都把 record_id 交给打开在谈。
+- [x] 运行 `npm test -- src/组件/问AI代理/查询结果展示.test.tsx src/组件/问AI代理/对话展示.test.tsx src/组件/问AI代理/简报展示.test.tsx src/组件/列表卡片/求职在谈卡.test.tsx src/数据/发现推荐映射.test.ts`。验证 cards 顺序、各自时间、无请求/状态副作用、回调精确 ID、没有假统计或假图。
+- [x] 提交 `feat: render assistant results with existing cards`；公共签名与 Task 5 一致，否则停下校准接口而非让消费者猜测。
 
 ### Task 4: 身份隔离访问 seam 与页面轮次状态
 
@@ -207,14 +207,14 @@ Consumes：AssistantReply、求职推荐卡、求职在谈卡、代理气泡框�
 
 Consumes：助手会话数据源、现有 Provider 的 subject/role/会话代际及清账号状态；Produces：合同 C。`创建助手会话访问` 仅封装四方法的真实身份 fence；完整清理回调由 Provider 绑定既有依赖，避免再引入大型 deps 抽象。
 
-- [ ] 先写延迟 Promise + fake timers 用例：首次加载→发送→2秒轮询→成功；卸载停止；scope 变化后旧成功/401 丢弃；同账号重登代际变化也丢弃。测试未实现失败后再写代码。
-- [ ] Provider 增加 `助手会话` 属性，candidate 有效会话才提供；范围键含环境/主体/角色/会话代际。每次请求检查真实代际，当前401统一清账号状态，旧401不清新账号。对原 Provider 测试构造器作最小兼容调整，不绕过门控。
-- [ ] hook 旧到新去重分页：首读失败输入锁；成功空页允许发送。历史分页以 message_id 合并，新结果只能更新当前已知最新尝试，旧页不能覆盖已经由 retry 更新的 turn_id。首读 processing 恢复轮询。
-- [ ] 写入用 ref 同步锁，确认受理才清草稿；提交不明保存请求原 key/text 或 retry turnId。重试提交重放同一请求；业务轮次重试才生成新 key。快速双击只一个 POST，失败轮次原 message_id 更新，不重复用户气泡。
-- [ ] 轮询成功终态停止；读取失败暂停并显示错误，通过重读恢复，不擅自释放 processing 输入锁。提交待确认时重读只读历史，不生成新 key；发现该操作返回权威轮次后才解除待确认。409 in-progress 重读并跟踪活动轮次，不把未受理草稿显示为已发送。
-- [ ] 覆盖 `uncertain` 无重试、failed 不可重试、retry_not_allowed 重读、unavailable 保留草稿、当前/旧代401、503 同键、成功坏体同键、重试 POST 超时同键、两个响应乱序。
-- [ ] 运行 `npm test -- src/状态/后端/助手会话访问.test.ts src/状态/后端/use助手会话.test.tsx src/状态/应用状态.test.ts`、`npm run typecheck`。预期所有状态断言和既有 Provider 隔离通过。
-- [ ] 提交 `feat: manage assistant turns within the current session`。无法沿用现有清理或 fence 时报告具体边界，不新增独立登录状态管理。
+- [x] 先写延迟 Promise + fake timers 用例：首次加载→发送→2秒轮询→成功；卸载停止；scope 变化后旧成功/401 丢弃；同账号重登代际变化也丢弃。测试未实现失败后再写代码。
+- [x] Provider 增加 `助手会话` 属性，candidate 有效会话才提供；范围键含环境/主体/角色/会话代际。每次请求检查真实代际，当前401统一清账号状态，旧401不清新账号。对原 Provider 测试构造器作最小兼容调整，不绕过门控。
+- [x] hook 旧到新去重分页：首读失败输入锁；成功空页允许发送。历史分页以 message_id 合并，新结果只能更新当前已知最新尝试，旧页不能覆盖已经由 retry 更新的 turn_id。首读 processing 恢复轮询。
+- [x] 写入用 ref 同步锁，确认受理才清草稿；提交不明保存请求原 key/text 或 retry turnId。重试提交重放同一请求；业务轮次重试才生成新 key。快速双击只一个 POST，失败轮次原 message_id 更新，不重复用户气泡。
+- [x] 轮询成功终态停止；读取失败暂停并显示错误，通过重读恢复，不擅自释放 processing 输入锁。提交待确认时重读只读历史，不生成新 key；发现该操作返回权威轮次后才解除待确认。409 in-progress 重读并跟踪活动轮次，不把未受理草稿显示为已发送。
+- [x] 覆盖 `uncertain` 无重试、failed 不可重试、retry_not_allowed 重读、unavailable 保留草稿、当前/旧代401、503 同键、成功坏体同键、重试 POST 超时同键、两个响应乱序。
+- [x] 运行 `npm test -- src/状态/后端/助手会话访问.test.ts src/状态/后端/use助手会话.test.tsx src/状态/应用状态.test.ts`、`npm run typecheck`。预期所有状态断言和既有 Provider 隔离通过。
+- [x] 提交 `feat: manage assistant turns within the current session`。无法沿用现有清理或 fence 时报告具体边界，不新增独立登录状态管理。
 
 ### Task 5: 求职聊天页面、固定入口和原生详情返回
 
@@ -227,13 +227,13 @@ Consumes：助手会话数据源、现有 Provider 的 subject/role/会话代际
 
 Consumes：查询结果展示、use助手会话、应用状态.助手会话；Produces：可访问的完整聊天页面及 candidate-assistant 来源窄返回行为。Mock 容器不挂助手 hook。
 
-- [ ] 替换求职 Backend 的禁用输入断言为历史加载门/真实发送/轮询结果，保留 Mock 定时器隔离、真实导航与招聘端禁止输入测试。
-- [ ] Backend 页面使用现有返回栏/真输入条/我方气泡/滚动容器，成功助手回复用查询结果展示；错误/处理中/重试以现有文本按钮语义呈现。顶部加载更早按钮不遮底部输入；接近底部阈值固定80px，旧页加载前后保存 scrollHeight 差值，用户阅读旧消息时新回复不抢滚动。
-- [ ] 输入及次级解读动作服从 hook 输入禁用。解读发送 Spec §5 可见模板文本（精确可信 record_id），不混入占位事实或注入 prompt。保留原“去市场/看在谈/规则库”导航，快捷能力说明不声称自由筛选/规则修改。
-- [ ] 求职固定入口摘要改为“查看岗位推荐和在谈进展”，招聘端原文案保留；不新增时间/未读/最近消息来源，不改变P7排序、分类、搜索和已读。
-- [ ] 岗位项目跳转带 `{来源:'candidate-assistant'}`，在现有导航钩子增加与市场证据对称的窄内存标记/查询/测试复位。职位详情只有匹配来源且存在会话证据时 返回()；刷新证据丢失时助手来源替换跳转到已受保护的 路径.问AI代理，不盲退栈；普通无来源深链保持原兜底，不能借用市场标记。在谈跳转用 record_id 和现有详情返回，不要求 case_id。
-- [ ] 运行 `npm test -- src/屏幕/问AI代理.test.tsx src/屏幕/企业问AI代理.test.tsx src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/职位详情.test.tsx src/屏幕/在谈详情.test.tsx`。覆盖卡片导航、正确返回、刷新兜底、不可查看、未知提交 UI、重试按钮条件；目标页现有404无需另建错误页。
-- [ ] 提交 `feat: enable candidate assistant chat and detail navigation`。停止条件：业务页必须靠伪造来源或Mock数据才能打开时，报告真实导航约束，不掩盖。
+- [x] 替换求职 Backend 的禁用输入断言为历史加载门/真实发送/轮询结果，保留 Mock 定时器隔离、真实导航与招聘端禁止输入测试。
+- [x] Backend 页面使用现有返回栏/真输入条/我方气泡/滚动容器，成功助手回复用查询结果展示；错误/处理中/重试以现有文本按钮语义呈现。顶部加载更早按钮不遮底部输入；接近底部阈值固定80px，旧页加载前后保存 scrollHeight 差值，用户阅读旧消息时新回复不抢滚动。
+- [x] 输入及次级解读动作服从 hook 输入禁用。解读发送 Spec §5 可见模板文本（精确可信 record_id），不混入占位事实或注入 prompt。保留原“去市场/看在谈/规则库”导航，快捷能力说明不声称自由筛选/规则修改。
+- [x] 求职固定入口摘要改为“查看岗位推荐和在谈进展”，招聘端原文案保留；不新增时间/未读/最近消息来源，不改变P7排序、分类、搜索和已读。
+- [x] 岗位项目跳转带 `{来源:'candidate-assistant'}`，在现有导航钩子增加与市场证据对称的窄内存标记/查询/测试复位。职位详情只有匹配来源且存在会话证据时 返回()；刷新证据丢失时助手来源替换跳转到已受保护的 路径.问AI代理，不盲退栈；普通无来源深链保持原兜底，不能借用市场标记。在谈跳转用 record_id 和现有详情返回，不要求 case_id。
+- [x] 运行 `npm test -- src/屏幕/问AI代理.test.tsx src/屏幕/企业问AI代理.test.tsx src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/职位详情.test.tsx src/屏幕/在谈详情.test.tsx`。覆盖卡片导航、正确返回、刷新兜底、不可查看、未知提交 UI、重试按钮条件；目标页现有404无需另建错误页。
+- [x] 提交 `feat: enable candidate assistant chat and detail navigation`。停止条件：业务页必须靠伪造来源或Mock数据才能打开时，报告真实导航约束，不掩盖。
 
 ### Task 6: 聚焦浏览器旅程与展示回归
 
@@ -246,12 +246,12 @@ Consumes：查询结果展示、use助手会话、应用状态.助手会话；Pr
 
 Consumes：Spec 的可观察 UI/HTTP/导航；Produces：有 @backend 标记的聚焦旅程与截图，复用既有完成态用户 fixture，不绕 onboarding，不改全局 Playwright 配置。
 
-- [ ] 先编写失败场景：空历史发送→202→processing→三类卡片；点击原生职位/record详情并返回；加载更早消息；切页重进恢复processing；重试消息不重复。fixture 拒绝非白名单 API；不可用目标给真实404页面响应。
-- [ ] 稳定准备两个同名项目、长职位名、真实0分测试留在原生卡测试、缺图片/薪资nullable与各自查询时间；模拟“第二个”回复只证明前端承载与请求，不称为模型理解测试。
-- [ ] 更新旧求职 Backend 禁用与入口文案断言，招聘端继续断言disabled；保留两端Mock零助手请求与原简报样式。320/390视口检查页面无横溢出，嵌入原卡区域/头像/字号不重新设计，输入可见、一个消息滚动容器、无按钮嵌套。
-- [ ] 运行 `npx playwright test --config=playwright.数据源模式.config.ts e2e/助手会话.spec.ts e2e/问AI代理展示.spec.ts e2e/P1展示统一.spec.ts --project=backend-stg`。
-- [ ] 运行 `npx playwright test e2e/问AI代理展示.spec.ts e2e/P1展示统一.spec.ts --project=mobile-chromium`，复核Mock展示与原市场卡消费者。截图经 runner 输出位置保存并实际查看，不为项目另建报告文件。
-- [ ] 提交 `test: cover assistant chat cards and native navigation`。浏览器前置缺失时明确阻塞，不改端口/跳过断言拿绿；真实模型旅程仍在后续人工 final gate。
+- [x] 先编写失败场景：空历史发送→202→processing→三类卡片；点击原生职位/record详情并返回；加载更早消息；切页重进恢复processing；重试消息不重复。fixture 拒绝非白名单 API；不可用目标给真实404页面响应。
+- [x] 稳定准备两个同名项目、长职位名、真实0分测试留在原生卡测试、缺图片/薪资nullable与各自查询时间；模拟“第二个”回复只证明前端承载与请求，不称为模型理解测试。
+- [x] 更新旧求职 Backend 禁用与入口文案断言，招聘端继续断言disabled；保留两端Mock零助手请求与原简报样式。320/390视口检查页面无横溢出，嵌入原卡区域/头像/字号不重新设计，输入可见、一个消息滚动容器、无按钮嵌套。
+- [x] 运行 `npx playwright test --config=playwright.数据源模式.config.ts e2e/助手会话.spec.ts e2e/问AI代理展示.spec.ts e2e/P1展示统一.spec.ts --project=backend-stg`。
+- [x] 运行 `npx playwright test e2e/问AI代理展示.spec.ts e2e/P1展示统一.spec.ts --project=mobile-chromium`，复核Mock展示与原市场卡消费者。截图经 runner 输出位置保存并实际查看，不为项目另建报告文件。
+- [x] 提交 `test: cover assistant chat cards and native navigation`。浏览器前置缺失时明确阻塞，不改端口/跳过断言拿绿；真实模型旅程仍在后续人工 final gate。
 
 ## 实施后收尾（不计入 Task count）
 
@@ -265,7 +265,22 @@ Consumes：Spec 的可观察 UI/HTTP/导航；Produces：有 @backend 标记的�
 
 Spec §1–2/7：Global Constraints、Tasks 2/3/5；§3：Tasks 1/4/5；§4：Tasks 1/2/3；§5：Tasks 3/5/6；§6：Task 5 可见ID追问、收尾真实工具链验收；§8：每Task与收尾；§9：本Plan及文档review/双宿主prompt交付。没有增加后端实现、聊天基础设施或新样式体系。
 
-## 文档 Review 与交付记录
+## 实施记录（2026-09-16，Claude Code 宿主）
+
+执行方式：subagent-driven-development，每 Task 独立 implementer + spec/quality 双 reviewer，Plan 角色表档位（Task 1/4/5 spec reviewer opus，其余 sonnet）。
+
+|Task|提交|review 结果|
+|---|---|---|
+|1|8e5d9b9f feat: add candidate assistant data source|spec ✅/quality ✅（22+88 用例、typecheck；偏离：HTTP招聘数据源.test.ts 同步 4 方法名，先例内）|
+|2|7f97ed35 refactor: share existing candidate job card|双 ✅（82 用例回归）|
+|3|39522fb7 feat: render assistant results with existing cards|双 ✅（126 用例 + 消费方 138）|
+|4|21b44c16 + 65aaaec4（fix round 1：待确认结算基线 id 集、拍判空）|re-review clean（191 用例）|
+|5|10372111 + fba84ed4（fix round 1：解读暂存跨待确认恢复）|re-review clean（160 用例）|
+|6|ac13f7a7 + 9d98d2d8（fix round 1：布局用例补「下一批」断言、报告更正）|re-review clean（backend-stg 29 + mobile-chromium 32）|
+
+全局 review（opus whole-branch）：Ready to merge，2 Important（旧范围 finally 清新代际锁、解读暂存残留复活）+ 2 Minor，fix wave 62464f24 四条全 ADDRESSED（62 用例 + 两反例 RED 验证），scoped re-review 无新破坏。25 条 deferred minor 已逐条 triage：2 升格入 fix wave，其余可延后或裁定不作为 finding（裁决记录在 session ledger）。
+
+真实 LLM 连续追问旅程（Spec §8.6）未执行，归人工 final gate 定向验收；现有 e2e 为 HTTP fixture，不证明模型理解。
 
 模式：`WORKFLOW_DOCUMENT_REVIEW`，parent scope 已授权。冻结清单只有本 Plan 与对应 Spec；首轮候选 revision `84b56ba8a2645f573d3f331d41984d2658c37d2e`，批准 Spec revision/blob 见头部。Reviewer：独立 Claude CLI，`opus` / `high` / `permission-mode plan`。一轮完成，报告 2 Important + 3 Minor；未运行产品测试，驱动方的 status/HEAD/受审文件指纹 post-round guard 全部通过。
 
