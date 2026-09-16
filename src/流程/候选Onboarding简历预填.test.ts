@@ -5,7 +5,8 @@
 // 出生年/月 限 1970..2010 / 1..12，教育年份限 2000..2030，超界保留页面现值；
 // 非空服务端列表分区不按下标合并；附加教育只在「已有第 0 条且无更多条」时物化；
 // 临时编号以 prefill: 开头且不匹配服务端 ID grammar；parser 顺序保持；
-// 解析经历沿用 UI 新建段隐私默认 隐藏:true；internship 缺席保持未设置；
+// 解析经历沿用 UI 新建段默认 隐藏:false（契约B：企业屏蔽不再写 hidden）；
+// internship 缺席保持未设置；
 // 证书 year:null 落页面空串；个人优势只在偏好段应用。
 // 不可变 wire fixture（简历预填成功信封）经 构造映射变体基底() 深拷贝进状态（绝不改写）；
 // 正向值用 fixture 文件里标注「前端映射变体」的本地构造器；边界/缺席改写一律深拷贝副本。
@@ -416,7 +417,7 @@ describe('取工作页预填', () => {
     expect(结果.unresolvedCount).toBe(0);
   });
 
-  it('空服务端且空页面时物化解析经历：exact 行业带引用、隐藏默认开、项目保序', () => {
+  it('空服务端且空页面时物化解析经历：exact 行业带引用、隐藏默认关、项目保序', () => {
     const state = readyState(wire建议());
     const 结果 = 取工作页预填(state, 空工作页());
     expect(结果.experiences).toEqual([{
@@ -428,7 +429,8 @@ describe('取工作页预填', () => {
       开始: '2021-07',
       结束: null,
       内容: 'Implemented deterministic services.',
-      隐藏: true,
+      // 契约B：解析预填沿用新建段默认 隐藏:false（企业屏蔽改走组织屏蔽 API）
+      隐藏: false,
       实习: false,
       项目: [{
         编号: 'prefill:exp:0:proj:0',

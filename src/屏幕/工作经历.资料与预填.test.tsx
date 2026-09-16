@@ -234,12 +234,13 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     mock确认分区.mockClear();
   });
 
-  it('空服务端且空页面时物化四分区：经历卡（隐私默认隐藏）/技能标签/证书行（年份空不渲染）', () => {
+  it('空服务端且空页面时物化四分区：经历卡（隐私默认不隐藏）/技能标签/证书行（年份空不渲染）', () => {
     render工作经历({ 预填: readyWork(), ...空列表页() });
-    // 经历卡：公司/职位来自建议；结束 null + 隐藏 true → 已对该公司隐身 徽标
+    // 经历卡：公司/职位来自建议；契约B —— 徽标按有效企业屏蔽派生，物化默认 隐藏:false
+    // 且无任何屏蔽记录：不显示「已对该公司隐身」
     expect(screen.getByText('Example Systems')).toBeTruthy();
     expect(screen.getByText('Backend Engineer')).toBeTruthy();
-    expect(screen.getByText('已对该公司隐身')).toBeTruthy();
+    expect(screen.queryByText('已对该公司隐身')).toBeNull();
     // 技能标签 / 证书行（year:null → 页面空串 → 不渲染「年取得」）
     expect(screen.getByText('Go')).toBeTruthy();
     expect(screen.getByText('Synthetic Cloud Certificate')).toBeTruthy();
@@ -255,7 +256,8 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     expect(段.编号.startsWith('prefill:')).toBe(true);
     expect(/^[a-z]{2,4}_[0-9a-f]{32}$/.test(段.编号)).toBe(false);
     expect(段.行业引用).toEqual({ id: 'tax_aaaaaaaaaaaaaaaaaaaaaaaaaa', display_name: 'Software' });
-    expect(段.隐藏).toBe(true);
+    // 契约B：解析预填沿用新建段默认 隐藏:false —— 企业屏蔽不再误写成公司名遮蔽
+    expect(段.隐藏).toBe(false);
     expect(种入[0].技能).toEqual(['Go']);
     expect(种入[0].证书).toEqual([{ 编号: 'prefill:cer:0', 名称: 'Synthetic Cloud Certificate', 年份: '' }]);
   });
@@ -492,10 +494,26 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
     expect(mock轻提示).not.toHaveBeenCalledWith(expect.stringContaining('需要选择目录'));
-    // 保存携带物化条目（prefill: 临时编号 + 隐私默认 + 真实企业 ID）与物化技能
+    // 保存携带物化条目（prefill: 临时编号 + 新建默认 隐藏:false + 真实企业 ID）与物化技能
     expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
-      经历: [expect.objectContaining({ 编号: 'prefill:exp:0', 隐藏: true, 组织编号: 'org_example' })],
+      经历: [expect.objectContaining({ 编号: 'prefill:exp:0', 隐藏: false, 组织编号: 'org_example' })],
       技能: ['Go'],
+    }));
+  });
+
+  // 契约B：hidden 是既有 wire/本地字段 —— 旧经历原值在无关保存时保留，不批量清空也不顺手改写
+  it('旧经历 hidden=true 与企业屏蔽无关：保存原样携带 true', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      数据源: 'backend',
+      保存简历,
+      经历: [{ ...简历经历初始[0], 行业引用: { id: 'tax_i', display_name: '互联网' } }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      经历: [expect.objectContaining({ 隐藏: true })],
     }));
   });
 

@@ -9,7 +9,8 @@
 // 非空服务端列表分区绝不按下标合并；附加教育只在「已有第 0 条且无更多条」时物化
 // suggestion.educations.slice(1)；列表顺序保持 parser 顺序；物化条目的临时编号以
 // prefill: 开头（仅供 React key/diff，不匹配服务端 ID grammar，确定可复现）；
-// 解析经历沿用 UI 新建段的隐私默认 隐藏:true；internship 缺席保持未设置；
+// 解析经历沿用 UI 新建段的默认 隐藏:false（契约B：企业屏蔽改走组织屏蔽 API，不再把
+// 屏蔽误写成公司名遮蔽）；internship 缺席保持未设置；
 // 证书 year:null 落页面空串；summary 只在偏好段的个人优势题应用。
 // 本模块不 import React，不建立通用表单框架或统一「大 Profile」聚合。
 
@@ -244,8 +245,9 @@ function 物化经历(段: BFF简历预填建议['draft']['experiences'][number]
     // 解析没给结束月 = 页面新建段的既有默认（至今开关开）；不补当前月
     结束: 段.end_month.value,
     内容: 段.description.value ?? '',
-    // 隐藏不来自解析：沿用当前 UI 新建段的隐私默认 true，不得因预填改成公开
-    隐藏: true,
+    // 隐藏不来自解析：沿用当前 UI 新建段的默认 false（契约B：企业屏蔽改走组织屏蔽
+    // API，hidden 不再由屏蔽 UI 改写，也不因预填把公司名遮蔽误设成开）
+    隐藏: false,
   };
   // internship 缺席保持未设置（选填开关留给用户）
   if (段.internship.value !== null) 经历.实习 = 段.internship.value;
