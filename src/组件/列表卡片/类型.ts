@@ -70,3 +70,28 @@ export interface 求职在谈卡属性 {
   阶段: 在谈阶段信息;
   打开: () => void;
 }
+
+/** 求职推荐卡（Plan 合同 D）：看市场 原市场卡 JSX 的共享提取签名，求职端 Backend
+ *  推荐列表与助手查询结果共用的同一张原生卡面。纯展示 props：真实/Mock 匹配分由
+ *  看市场 薄包装经 use适配分 算好后传入，卡内不算分、不请求。合法 null ≠ 空串 ≠ 0
+ *  —— 占位只由显式 null 控制（Mock 页面既有空段渲染不变），非空分含 0 不误判未知。 */
+export interface 求职推荐卡属性 {
+  公司: string | null;
+  公司简介: string | null;
+  公司首字: string | null;
+  公司图片URL?: string | null;
+  职位: string;
+  薪资: string;
+  标签: readonly string[];
+  匹配分: number | null;
+  发布人: string | null;
+  发布人首字: string | null;
+  发布人图片URL?: string | null;
+  发布人底色: string;
+  发布人字色: string;
+  已委托: boolean;
+  已委托文字?: string;
+  委托禁用: boolean;
+  委托: () => void;
+  打开: () => void;
+}
