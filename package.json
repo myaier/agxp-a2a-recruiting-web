@@ -10,7 +10,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:data-source": "playwright test --config=playwright.数据源模式.config.ts",
+    "test:e2e:data-source": "playwright test",
     "test:watch": "vitest",
     "preview": "vite preview",
     "ui:compare": "tsx e2e/视觉回归/比较命令.ts",

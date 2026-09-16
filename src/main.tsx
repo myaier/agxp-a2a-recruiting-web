@@ -3,8 +3,8 @@
 // WKWebView 都不需要服务端 rewrite 配合，刷新任意一屏都不会 404。
 //
 // 标注工具按构建门控（Task 7）：只有 VITE_ANNOTATION_ENABLED=true 的构建
-// （标注评审专用 dev server，见 playwright.数据源模式.config.ts 端口 4183）才
-// 渲染标注层；缺省构建（Mock / Backend E2E、生产 Pages）连标注层带工具车道
+// （标注评审专用 dev server，见 playwright.config.ts 的 annotation 项目端口 4183）
+// 才渲染标注层；缺省构建（Mock / Backend E2E、生产 Pages）连标注层带工具车道
 // 一起整个缺席，业务布局一像素不动。
 
 import { StrictMode, useState } from 'react';
