@@ -135,7 +135,7 @@ PDF 用中文真实文本层，和 YAML 完全一致；经历雇主栏省略，�
 
 - [ ] 读取后端两 Skills 和 schema，复制样例合法字段后按冻结表替换，所有金额/年月/技能在 summary、description、requirements、PDF 一致。
 - [ ] 使用可用 PDF skill 生成单页简历，保存原件；用 `pdftotext docs/dogfood/fixtures/stg-matching-resume.pdf -` 校对全文，用 `pdftoppm -png -singlefile docs/dogfood/fixtures/stg-matching-resume.pdf test-results/baseline-stg-matching/resume` 渲染并实际查看，确认无缺字/裁切。生成临时代码留本任务忽略目录，不新增通用生成器。
-- [ ] 在前端根设置 `MATCHING_CONFIG="$(pwd)/docs/dogfood/fixtures/stg-matching-happy.yaml"`，进入 `AGXP_MONOREPO_DIR` 后依次执行 `tools/dev-env.sh exec -- apps/recruitment/scripts/stg-env.sh validate --config "$MATCHING_CONFIG" --offline` 与去掉 `--offline` 的在线命令。须 rc0、目录唯一解析；不安装临时后端依赖，不改变 fingerprint。
+- [ ] 在前端根设置 `MATCHING_CONFIG="$(realpath docs/dogfood/fixtures/stg-matching-happy.yaml)"`，进入 `AGXP_MONOREPO_DIR` 后依次执行 `tools/dev-env.sh exec -- apps/recruitment/scripts/stg-env.sh validate --config "$MATCHING_CONFIG" --offline` 与去掉 `--offline` 的在线命令。须 rc0、目录唯一解析；不安装临时后端依赖，不改变 fingerprint。
 - [ ] 指南写 preflight/status→validate→prepare→verify→两端浏览器→finally cleanup/status 顺序与每次新 run；标记流程细节尚待 Task 4 探索，不能提前写已通过。
 - [ ] 指南写安全输入具体做法：agent-browser 0.35.2 支持 `batch` stdin JSON 命令数组。受限本地进程读取 login.json，生成 fill 命令，经 subprocess stdin 传给具名 session 的 `batch --bail`；不把值放 shell argv，不输出 payload/登录页面快照/trace。先以非秘密假值核对 batch 输出不会回显 fill 内容；失败时隔离原始输出、不展示，报告阻塞。只保留脱敏操作结果；无安全通道不继续。
 - [ ] 记录 YAML/PDF 的 SHA256、前后端 revision、validate 结果与字典解析摘要，提交 `test(dogfood): add dedicated happy matching fixtures`。
@@ -209,3 +209,5 @@ R1（Claude Opus/high，WORKFLOW_DOCUMENT_REVIEW）：候选 `63cdb535`；Spec/P
 R2（同一 Claude Opus/high 会话）：候选 `3422179946ad`；后置 status/HEAD/文件指纹保护通过，R1 缺口确认已修复。新增 1 条 Minor / required / 契约违反：尾轮“核验其消失”可能误拒合法冻结锚点。对照批准 Spec §8 与本 Task 通用 cleanup 条件核实后接受，替换为同一 rc0/CLEANED/空 residuals/合法 retained 三方对账/占用释放/身份失效/无未收敛工作的验收，明确不要求物理消失。修复为文字口径统一，无新机制、无批准契约变化。
 
 终止裁决：两轮共 2 条 required 均已核实并修复；0 条拒绝、0 条 optional 延后、0 条未解决有效 required，按 review-loop 的“核实后无未解决 required”条件结束，并非声称 R2 原报告为 NO FINDINGS。执行提示词在此结论后生成。文档校验：源码/测试引用文件存在、5 个 Task/单一不计数收尾、无占位、git diff --check 通过；本阶段无产品测试或 STG 业务运行。
+
+交付校验：单文件双宿主 validate_prompt_grading.py 通过（5 Task、Claude Code subagent-driven-development、Codex executing-plans、高复杂度/高漂移/前沿模型）；配置路径示例改用 realpath 从仓库相对路径求运行时路径，避免校验器将拼接文本识别为固定绝对路径，行为合同不变。最终执行提示词在 docs/superpowers/prompts/2026-09-17-baseline-stg-matching.md，精确引用本 Plan 提交后的 revision/blob；仅文档交付，产品测试仍未执行。
