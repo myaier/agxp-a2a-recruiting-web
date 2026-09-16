@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - 中文文档；代码/命令保持既有约定。完整读取 `CLAUDE.md` 与 `AGENTS.md`，遵守最小改动与有证据才增加复杂度。
-- 生产 UI、数据源/decoder、状态逻辑、后端和部署均不改；不提高超时/重试掩盖失败，不更新像素基线。发现产品缺陷单列证据，不删除断言取得绿色。
+- 生产 UI、数据源/decoder、状态逻辑、后端和部署均不改；仅允许 `src/main.tsx` 的旧配置引用注释随入口改名，不改执行代码。不提高超时/重试掩盖失败，不更新像素基线。发现产品缺陷单列证据，不删除断言取得绿色。
 - 单元/组件、前端浏览器 fixture、真实 STG L3 三层；前两层不依赖 Docker、完整本地后端、STG 或账号。fixture 成功不是 STG PASS。
 - 文件加完整 runner 名称为 Case 标识，project/参数为变体；L3 保留公开 ID。不为所有单测发明编号。Case 独立准备，不能依赖先前 Case 状态。
 - 原 280 个浏览器执行变体、全部 Vitest 叶子项逐项对账为保留/拆分/合并/有依据退役；保留 revision、幂等、隐私、迟到隔离、权威回读和跨步不变量。57 项入口重复不算独立覆盖。
@@ -34,11 +34,11 @@ Codex execution: superpowers:executing-plans
 
 |Task|交付与依赖|implementer|spec reviewer|code-quality reviewer|
 |---|---|---|---|---|
-|1|按域抽取 fixture；原 spec 仍可运行|前沿（Claude Code: opus）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
-|2|业务 Suite 与长 Case 拆分；依赖 1|前沿（Claude Code: opus）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
-|3|统一浏览器入口与离线边界；依赖 2|前沿（Claude Code: opus）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
+|1|先补离线边界并统一浏览器入口|前沿（Claude Code: opus）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
+|2|按域抽取 fixture；依赖 1，原 spec 仍可运行|前沿（Claude Code: opus）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
+|3|业务 Suite 与长 Case 拆分；依赖 2|前沿（Claude Code: opus）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
 |4|第一层四个大文件分域与定向计时|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|Top 5–10（Claude Code: sonnet）|
-|5|薄清单生成与长期测试文档；依赖 2–4|Top 5–10（Claude Code: sonnet）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
+|5|薄清单生成与长期测试文档；依赖 1–4|Top 5–10（Claude Code: sonnet）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
 |6|旧 local 执行入口退役与断言归档；依赖 5|Top 5–10（Claude Code: sonnet）|前沿（Claude Code: opus）|Top 5–10（Claude Code: sonnet）|
 
 角色理由：1–3 需判断跨域状态、路由覆盖顺序与错误语义，4 涉及 mock 提升/异步生命周期，实施漂移风险较高；5–6 输出合同明确，实施档位可降低，spec reviewer 仍需核查完整性。Codex 使用宿主当前模型与通用档位，不解析 Claude alias；角色表不要求 Codex 另建 Task reviewer。
@@ -109,6 +109,8 @@ export async function 安装BFF路由(
 
 新增 `e2e/fixtures/离线边界.ts` 和 `e2e/fixtures/test.ts`，利用现有 Playwright fixture 在导航前为浏览器 context 安装最末级业务 HTTP/WS 防漏边界，普通 spec 从后者导入 `test/expect`。业务路径判定为 URL pathname 的前两个非空路径段依次为 `api`、`v1`（其后为空或继续以斜杠分段），包含 query、下载和事件流，不限制为某个 hostname。
 
+Task 1 先建立该边界，再执行任何浏览器业务 Case 或计时；不在旧未保护入口采样。独立视觉采集 spec 同样接入：功能项目名直接映射同名模式，视觉配置现有空项目名仅在该配置对应文件中取 `mock`；其他未知项目名显式失败，不加可配置模式注册机制。
+
 冻结最小接口：
 
 ```ts
@@ -119,7 +121,7 @@ export async function 安装离线边界(
 // 核对在 Case teardown 调用；发现未声明业务请求抛错，仅含 method/path。
 ```
 
-HTTP 兜底中止并记录未声明请求；业务 WS 永不 `connectToServer`，fixture/annotation 已声明的 events/live 可用空闲本地连接，未知业务 WS 记录失败；Mock 的业务 HTTP/WS 均不允许。Vite HMR 和静态资源不受影响。已有页面级域 route 优先处理；禁止 handler 用 `continue/fetch` 绕过边界请求真实业务服务。测试程序直接用 `page.request` 访问业务接口同样禁止（它不经过 browser route），原本探测本地根页面的可达性 skip 在 Task 3 删除，以 runner webServer 就绪为准。
+HTTP 兜底中止并记录未声明请求；业务 WS 永不 `connectToServer`，fixture/annotation 已声明的 events/live 可用空闲本地连接，未知业务 WS 记录失败；Mock 的业务 HTTP/WS 均不允许。Vite HMR 和静态资源不受影响。已有页面级域 route 优先处理；禁止 handler 用 `continue/fetch` 绕过边界请求真实业务服务。测试程序直接用 `page.request` 访问业务接口同样禁止（它不经过 browser route），原本探测本地根页面的可达性 skip 在 Task 1 删除，以 runner webServer 就绪为准。
 
 P7 原事件桩保留帧/断线控制，但只替换业务 WebSocket，非业务连接透传原浏览器实现；不屏蔽 Vite HMR。测试自行 `browser.newContext` 时显式安装同一边界、finally 核对并关闭，不假定默认 page 的保护覆盖第二 context。
 
@@ -153,7 +155,7 @@ P7 原事件桩保留帧/断线控制，但只替换业务 WebSocket，非业务
 
 内部最小数据形状冻结为 `{ layer, suite, file, titlePath, project, location }`；`file` 归一为仓库相对 POSIX 路径，`titlePath` 为完整名称数组，project 不适用时为空串，location 为行/列。身份键是 layer+file+titlePath+project，行号只是导航不充当去重键。业务参数若 runner 只体现在标题，保留展开标题，禁止猜测/抹除变量部分来合并；逻辑族用最近 describe/参数化声明的现有上下文呈现，无法无歧义识别时保持独立而非发明 ID。
 
-按固定目录规则分第一层 Suite（数据/状态/流程/页面/组件/配置工具），浏览器按 C6 文件表；新增未映射文件或重复身份非零失败，提示最小补映射。排序不使用 locale/time/random；Markdown 单元格转义换行、管道、反引号；路径不能越出仓库。普通 `test:list` stdout 只含文档；工具诊断走 stderr。任一收集非零、JSON不合法、空集合或身份不明，停止且不覆盖原文档；`--write` 在完整渲染成功后一次更新，不写半成品。无服务启动/认证/网络，导入阶段不建截图目录。
+第一层按固定路径前缀分类：`src/数据/`→数据契约/映射；`src/状态/`→状态；`src/流程/`→流程；`src/屏幕/`、`src/路由/` 及精确文件 `src/应用.test.tsx`→页面/接线；`src/组件/`→组件；`src/配置/`、`脚本/`、`e2e/视觉回归/` 中的 Vitest 文件→配置/工具。保留子目录、模块与 describe 作为可选择子 Suite；不把前缀目录下非 runner 收集的文件加入清单。浏览器按 C6 文件表及其补充映射；新增未映射文件或重复身份非零失败，提示最小补映射。排序不使用 locale/time/random；Markdown 单元格转义换行、管道、反引号；路径不能越出仓库。普通 `test:list` stdout 只含文档；工具诊断走 stderr。任一收集非零、JSON不合法、空集合或身份不明，停止且不覆盖原文档；`--write` 在完整渲染成功后一次更新，不写半成品。无服务启动/认证/网络，导入阶段不建截图目录。
 
 ### C6. 精确 Suite 文件迁移
 
@@ -180,6 +182,8 @@ P7 原事件桩保留帧/断线控制，但只替换业务 WebSocket，非业务
 
 保留其他七个现有 spec 的文件名，用完整 describe 作为子 Suite：`e2e/onboarding.spec.ts`、`e2e/J-PILOT-02接线.spec.ts`、`e2e/P1展示统一.spec.ts`、`e2e/展示字段接线.spec.ts`、`e2e/抽屉稳定性.spec.ts`、`e2e/换壳无闪屏.spec.ts`、`e2e/问AI代理展示.spec.ts`。这些文件的结构拆分无证据不扩张，但允许改导入/定位/共享准备以适应冻结入口，更新计时与去重职责。C6 是固定搬迁边界，不要求以独立风险不存在为由再抽第三层目录。
 
+清单补充映射：`e2e/onboarding.spec.ts`→建档接线（各 describe 保留候选/招聘责任）；`e2e/J-PILOT-02接线.spec.ts`→连续委托；其余五个保留文件→展示与交互。`e2e/离线边界.spec.ts`→登录与数据源边界，`e2e/视觉回归/采集.spec.ts`→视觉采集。后者只由视觉配置收集，不能加进功能选集。
+
 ### C7. L3 活动/归档合同
 
 活动总指南保持 `docs/dogfood/真实后端行为验收.md`，只列 STG 基础试点与 `stg-onboarding`，逐字保留原 STG 操作、凭据、占用/清理/隔离责任（允许调整章节引用），不改变业务步骤。现有 `stg-onboarding-candidate/recruiter` 的 manual/parsed 仍是四项，STG 基础试点仍需两轮，不能因整理减少第二轮反证。
@@ -196,86 +200,87 @@ P7 原事件桩保留帧/断线控制，但只替换业务 WebSocket，非业务
 
 ## 实施 Task
 
-### Task 1: 抽取业务域 fixture，保持旧 spec 消费合同
+### Task 1: 先补离线边界，收敛浏览器配置与模式隔离
 
-**目标/非目标：** 将模型/路由/helper 从巨型 spec 分域，原测试仍按旧入口可执行；不拆 Case、不修改产品、不新增模拟后端框架。依赖仅是核对冻结基线/规则。
+**目标/非目标：** 在任何浏览器业务执行/计时前实现 C3 无真实业务网络逃逸和 C1 唯一入口；保留原 spec/Case 结构与设备/视口/时区/采集职责。依赖仅为冻结基线、原生只收集结果和仓库规则。边界针对现有真实代理/WS 风险，不建通用网络代理服务。
 
 **预期编辑文件：**
 
-- 修改：`e2e/数据源模式.spec.ts`。
-- 新增：`e2e/fixtures/bff/安装BFF路由.ts`、`e2e/fixtures/bff/协议.ts`、`e2e/fixtures/bff/账号与目录.ts`、`e2e/fixtures/bff/候选建档.ts`、`e2e/fixtures/bff/招聘组织.ts`、`e2e/fixtures/bff/隐私与实名.ts`、`e2e/fixtures/bff/附件.ts`、`e2e/fixtures/bff/Agent规则.ts`、`e2e/fixtures/bff/发现推荐.ts`、`e2e/fixtures/bff/MatchCase.ts`、`e2e/fixtures/bff/真人消息.ts`、`e2e/fixtures/bff/账号控制面.ts`、`e2e/fixtures/数据源交互.ts`。
-- 新增：`docs/testing/README.md` 的迁移/测量工作区（Task 5 完善）；不另建报告文档。
-- 删除：无。
+- 修改：`playwright.config.ts`、`package.json`、`README.md`、`src/main.tsx`（仅旧配置引用注释）。
+- 新增：`e2e/fixtures/离线边界.ts`、`e2e/fixtures/test.ts`、`e2e/离线边界.spec.ts`、`docs/testing/README.md`（迁移/测量工作区，Task 5 完善）。
+- 修改：`e2e/数据源模式.spec.ts`、`e2e/onboarding.spec.ts`、`e2e/J-PILOT-02接线.spec.ts`、`e2e/P1展示统一.spec.ts`、`e2e/展示字段接线.spec.ts`、`e2e/抽屉稳定性.spec.ts`、`e2e/换壳无闪屏.spec.ts`、`e2e/问AI代理展示.spec.ts`、`e2e/视觉回归/采集.spec.ts`。
+- 修改：`e2e/fixtures/P1展示统一.ts`、`e2e/fixtures/展示字段接线.ts`。
+- 删除：`playwright.数据源模式.config.ts`。
 
-**消费者/生产者：** 消费原 spec 全部类型/工厂/安装函数；提供 C2 的同形入口及已有符号。协议文件只承载信封/multipart/请求记录等重复基础；域间仅共享明确状态引用。交互 helper 按现有调用迁出，不包装整条业务流程为黑箱。
+**接口：** C1 命令/project/端口，C3 `安装离线边界` 与原生扩展 `test`。此时 BFF 装配与 P7 事件桩还在原 `数据源模式.spec.ts`，先原地修边界，Task 2 才抽取。不新增 Vite 产品配置。
 
-- [ ] 保存原 list JSON、HEAD、命令与 runtime 到 `test-results/test-layering/`；建立旧 fullTitle→目标路径→断言保留的对账表，不能仅比较总数。
-- [ ] 先提取纯样本/类型/工厂，再分域处理器，最后装配路由；每步只搬迁当前负责代码，不增加分支和宽泛成功响应。原先末尾 null 兜底暂留至 Task 3 收口，记录为暂存兼容债。
-- [ ] 遵守 C2 跨域状态关系、覆盖先后顺序；测试自持 fixture 与 handler 共用同一对象。序号/Map/Set 每次安装独立，不模块级泄漏。
-- [ ] 完成后运行旧数据源 list，确认原 256 项标识与参数逐项相等；定向执行候选 onboarding、P6、P3、P4 委托、P5 handoff、P7、P8 举报覆盖域交接。
+- [ ] 保存旧两入口 list JSON、HEAD、runtime 到 `test-results/test-layering/`；建立旧 fullTitle/project→去重责任表。只做收集，不在未保护的旧入口执行业务 Case。
+- [ ] 先增加本地浏览器反例：未声明 HTTP、下载/带 query、业务 WS、新 context 均被阻止并记录；已声明 route 可应答；HMR/静态不受影响；Mock 业务请求记录非空要失败。用本地 context 的 `核对()` 异常作为可断言结果，不调用真实远端验证；这些反例只用本地受控目标。
+- [ ] 安装 context 级末级路由与 teardown 核对，全部功能/视觉 spec 导入统一 test；P7 假 WebSocket 限定业务路径；J-PILOT-02 第二 context 显式安装/核对/关闭。边界自身测试可从原生 Playwright 导入并独立调用 helper，以断言预期违例；这是唯一无自动检查的明确例外。
+- [ ] 原地移除 BFF 通用 200-null 兜底，逐个把故意无资料/解码失败消费改为精确路径的受控响应。未声明请求不能被新增宽泛 default、无限白名单或忽略错误掩盖。保持原业务断言、Case 拆分前结构不动。
+- [ ] 按 C1 合并配置，取消对原数据源 spec/J-PILOT-02 的排除及可达性探测 skip；服务不启动时由 runner 报基础设施失败。保留 browser/viewport/timezone，CI 不强制本机 Chrome。无需过渡期 suites 排除、双配置或旧新 project 映射。
+- [ ] 更新 alias/README/旧配置注释；list 对账为 280 原责任加边界反例，差额逐项解释，原双角色/双宽度不丢。无单个叶子混入两个项目。
+- [ ] 确认边界反例通过后才执行登录、P7、跨 context 接线和缺响应的实际消费者；缺应答只修测试定义，不改产品。Task 2/3 计时以这个离线、安全且尚未拆分的版本为起点；不把离线修复本身算作拆分提速。
 
 ```bash
-npx playwright test --config=playwright.数据源模式.config.ts --list --reporter=json
-npm run test:e2e:data-source -- e2e/数据源模式.spec.ts --project=backend-stg --grep '候选 onboarding 完整保存|P6 全链路|P3 隐私读写|候选委托：|completed 移交两步|招聘端经内容无关|举报屏蔽暂不可用' --workers=4 --retries=0
+npm run test:e2e -- --list --reporter=json
+npm run test:e2e -- e2e/离线边界.spec.ts --workers=4 --retries=0
+npm run test:e2e -- e2e/数据源模式.spec.ts e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'Backend 数据源 fixture|P7|J-PILOT-02' --workers=4 --retries=0
+npm run test:e2e:data-source -- --list
 ```
 
-**完成/停止：** 入口符号和选集相同、所选跨域链路实际通过，无新增状态串扰。若需改 production decoder 或共享对象语义才能搬迁，停止受影响项并报告契约冲突；不复制 fixture 绕过。提交当前独立变更并将对账记录就地写入长期文档。
+视觉原文件导入期目录约束尚待 Task 5 消除，本 Task 不提前运行它的无目录 list；首次实际采集仍需原有显式目录。最终 Task 5 验证视觉边界与输出协议。
 
-### Task 2: 拆业务浏览器 Suite 与多目标长 Case
+**完成/停止：** 无真实业务连接；等价 alias；模式/标注互不混跑；未声明请求可定位失败，HMR 不受损。未经保护的入口不运行；故意错误消费须显式保持错误语义，不能改成成功 fixture。
 
-**目标/非目标：** 把原 162 个数据源收集项按 C6 搬迁，并实施 C4 的长 Case 裁剪；保留独有链路，不为每个 click 建 Case。不做入口重命名（Task 3）。依赖 Task 1 已有 C2 路由/域状态和原选集对账。
+### Task 2: 抽取业务域 fixture，保持原 spec 消费合同
+
+**目标/非目标：** 将模型/路由/helper 从巨型 spec 分域，原 Case 继续可执行；不拆 Case、不修改产品、不新增模拟后端框架。依赖 Task 1 的 C1/C3 入口、离线保证与原责任对账。
+
+**预期编辑文件：**
+
+- 修改：`e2e/数据源模式.spec.ts`、`docs/testing/README.md`。
+- 新增：`e2e/fixtures/bff/安装BFF路由.ts`、`e2e/fixtures/bff/协议.ts`、`e2e/fixtures/bff/账号与目录.ts`、`e2e/fixtures/bff/候选建档.ts`、`e2e/fixtures/bff/招聘组织.ts`、`e2e/fixtures/bff/隐私与实名.ts`、`e2e/fixtures/bff/附件.ts`、`e2e/fixtures/bff/Agent规则.ts`、`e2e/fixtures/bff/发现推荐.ts`、`e2e/fixtures/bff/MatchCase.ts`、`e2e/fixtures/bff/真人消息.ts`、`e2e/fixtures/bff/账号控制面.ts`、`e2e/fixtures/数据源交互.ts`。
+- 删除：无。
+
+**消费者/生产者：** 消费原 spec 全部类型/工厂/安装函数；提供 C2 同形入口及已有符号，继承 Task 1 精确错误应答和业务 WS 隔离。协议文件只承载重复信封/multipart/请求记录；域间仅共享明确状态引用。交互 helper 按现有调用迁出，不包装整条业务流程为黑箱。
+
+- [ ] 保存搬迁前 list；建立旧 fullTitle→目标路径→断言保留对账表，不能仅比较总数。
+- [ ] 先提取纯样本/类型/工厂，再分域处理器，最后装配路由；每步只搬迁当前负责代码，不增加分支，不恢复已移除的通用 null 兜底。
+- [ ] 遵守 C2 跨域状态关系/覆盖先后顺序；测试自持 fixture 与 handler 共用同一对象，序号/Map/Set 每次安装独立。
+- [ ] list 确认与 Task 1 选集标识/参数逐项相等；定向执行候选 onboarding、P6、P3、P4 委托、P5 handoff、P7、P8 举报覆盖域交接。将相同环境下的 C4 原长链路时间作为拆分前样本，避免 Task 3 重跑同一有效样本。
+
+```bash
+npm run test:e2e -- --list --reporter=json
+npm run test:e2e -- e2e/数据源模式.spec.ts --project=fixture --grep '候选 onboarding 完整保存|P6 全链路|P3 隐私读写|候选委托：|completed 移交两步|招聘端经内容无关|举报屏蔽暂不可用' --workers=4 --retries=0
+```
+
+**完成/停止：** 入口符号和选集相同、所选跨域链路实际通过，无新增状态串扰。若需改 production decoder 或共享对象语义才能搬迁，停止受影响项并报告；不复制 fixture 绕过。提交独立变更，对账记录就地写入长期文档。
+
+### Task 3: 拆业务浏览器 Suite 与多目标长 Case
+
+**目标/非目标：** 把原 162 个数据源收集项按 C6 搬迁，并实施 C4 长 Case 裁剪；保留独有链路，不为每个 click 建 Case。依赖 Task 1 的统一离线入口和 Task 2 的 C2 路由/域状态；不再改名入口或新增配置。
 
 **预期编辑文件：**
 
 - 新增：`e2e/suites/登录与数据源.spec.ts`、`e2e/suites/招聘组织.spec.ts`、`e2e/suites/隐私与实名.spec.ts`、`e2e/suites/Agent规则.spec.ts`、`e2e/suites/发现推荐.spec.ts`、`e2e/suites/简历与附件.spec.ts`、`e2e/suites/求职意向.spec.ts`、`e2e/suites/岗位编辑.spec.ts`、`e2e/suites/候选建档.spec.ts`、`e2e/suites/招聘建档与JD.spec.ts`、`e2e/suites/MatchCase.spec.ts`、`e2e/suites/连续委托.spec.ts`、`e2e/suites/真人消息.spec.ts`、`e2e/suites/账号与支持.spec.ts`、`e2e/suites/展示与交互.spec.ts`、`e2e/suites/标注.spec.ts`。
-- 修改：`e2e/fixtures/数据源交互.ts`、`e2e/fixtures/bff/候选建档.ts`、`e2e/fixtures/bff/招聘组织.ts`、`e2e/fixtures/bff/隐私与实名.ts`、`e2e/fixtures/bff/Agent规则.ts`；`e2e/J-PILOT-02接线.spec.ts`、`e2e/onboarding.spec.ts`；`playwright.config.ts`；`docs/testing/README.md`。
+- 修改：`e2e/fixtures/数据源交互.ts`、`e2e/fixtures/bff/候选建档.ts`、`e2e/fixtures/bff/招聘组织.ts`、`e2e/fixtures/bff/隐私与实名.ts`、`e2e/fixtures/bff/Agent规则.ts`、`e2e/J-PILOT-02接线.spec.ts`、`e2e/onboarding.spec.ts`、`docs/testing/README.md`。
 - 删除：`e2e/数据源模式.spec.ts`，仅在全部迁移对账后删除。
 
-**接口：** Case 选择用 C6 的文件+完整 title，保留 `@mock/@backend/@annotation`。合法目标状态由域 fixture 选项准备；不向产品增加测试专用入口或 globals。
+**接口：** Case 选择用 C6 文件+完整 title，保留 `@mock/@backend/@annotation` 和统一 test 导入。合法目标状态由域 fixture 选项准备；不向产品增加测试专用入口或 globals。
 
-- [ ] 修改前仅对 C4 原长链路取定向时长样本：P3、P6、JD、候选 onboarding，记录准备/等待与实际交互占比；运行失败不能当速度基线。
-- [ ] 先等价迁移 describe 和其 hooks/helper，再按 C4 拆操作责任；各新 Case 构造自己的可变状态。删除重复建档准备时保留社招/学生/招聘冒烟、首次意向唯一性、附件版本关联与跨刷新未知结果 Case。
-- [ ] JD 第二条独立 Case 提供已成功导入建议快照并经产品正常合并/确认入口走发布，不只往 DOM 填最终结果；解析授权与轮询由第一条实际覆盖。
-- [ ] 对原 Job/教育/行业等超长 Case，将互不依赖的目录与日常编辑目标拆开；一个完整竞态不拆。保持请求 body/ID/If-Match、取消零写、重入回读。
-- [ ] 过渡期旧默认配置暂排除 `**/suites/**`，保证本 Task 新的 4181/4182 Case 不误入仅 4173 的旧默认服务；数据源配置继续按原标签执行新文件。Task 3 删除该过渡排除。
-- [ ] 每个新 Case 单选通过，并以固定 4 workers/零重试复验受影响 Suite；比较同风险集合而非每项平均值。记录原→新 fullTitle、保留/删除断言、耗时与原因，再移除旧 spec。
-
-```bash
-npm run test:e2e:data-source -- e2e/suites/隐私与实名.spec.ts e2e/suites/Agent规则.spec.ts e2e/suites/招聘建档与JD.spec.ts e2e/suites/候选建档.spec.ts --project=backend-stg --workers=4 --retries=0
-npm run test:e2e:data-source -- e2e/suites/连续委托.spec.ts e2e/suites/简历与附件.spec.ts --project=backend-stg --workers=4 --retries=0
-```
-
-**完成/停止：** 所有原叶子有去向；原生单 Case 可选择且不依赖顺序；长链路分解后跨步不变量有证据；不抬 timeout。若必要 UI 等待不能在测试边界降低，保留计时/理由，不改产品等待或制造提速结论。
-
-### Task 3: 收敛浏览器配置、补离线边界和模式隔离
-
-**目标/非目标：** C1 唯一入口、C3 无业务网络逃逸；保留现有设备/视口/时区与采集职责。依赖 Task 2 全部新文件、Task 1 C2。这里新增边界只因现有真实代理/WS 逃逸风险，不建通用网络代理服务。
-
-**预期编辑文件：**
-
-- 修改：`playwright.config.ts`、`package.json`、`README.md`、`docs/testing/README.md`。
-- 新增：`e2e/fixtures/离线边界.ts`、`e2e/fixtures/test.ts`、`e2e/离线边界.spec.ts`。
-- 修改：`e2e/suites/登录与数据源.spec.ts`、`e2e/suites/招聘组织.spec.ts`、`e2e/suites/隐私与实名.spec.ts`、`e2e/suites/Agent规则.spec.ts`、`e2e/suites/发现推荐.spec.ts`、`e2e/suites/简历与附件.spec.ts`、`e2e/suites/求职意向.spec.ts`、`e2e/suites/岗位编辑.spec.ts`、`e2e/suites/候选建档.spec.ts`、`e2e/suites/招聘建档与JD.spec.ts`、`e2e/suites/MatchCase.spec.ts`、`e2e/suites/连续委托.spec.ts`、`e2e/suites/真人消息.spec.ts`、`e2e/suites/账号与支持.spec.ts`、`e2e/suites/展示与交互.spec.ts`、`e2e/suites/标注.spec.ts`。
-- 修改：`e2e/onboarding.spec.ts`、`e2e/J-PILOT-02接线.spec.ts`、`e2e/P1展示统一.spec.ts`、`e2e/展示字段接线.spec.ts`、`e2e/抽屉稳定性.spec.ts`、`e2e/换壳无闪屏.spec.ts`、`e2e/问AI代理展示.spec.ts`。
-- 修改：`e2e/fixtures/bff/安装BFF路由.ts`、`e2e/fixtures/bff/账号与目录.ts`、`e2e/fixtures/bff/真人消息.ts`、`e2e/fixtures/P1展示统一.ts`、`e2e/fixtures/展示字段接线.ts`。
-- 删除：`playwright.数据源模式.config.ts`。
-
-**接口：** C1 命令/project/端口，C3 `安装离线边界` 与原生扩展 `test`。不新增 Vite 产品配置；显式 WebSocket 桩沿用 P7 注入帧接口。
-
-- [ ] 先增加离线边界的本地浏览器反例：未声明 HTTP、下载/带 query、业务 WS、新 context 均被阻止并记录；已声明 route 可应答；HMR/静态不受影响；Mock 业务请求记录非空要失败。用本地 context 的 `核对()` 异常作为可断言结果，不调用真实远端验证。
-- [ ] 安装 context 级末级路由与 teardown 核对，普通 spec 导入统一 test；P7 假 WebSocket 限定业务路径；J-PILOT-02 第二 context 显式安装/核对/关闭。边界自身测试可从原生 Playwright 导入并独立调用 helper，以断言预期违例；这是唯一无自动检查的明确例外。
-- [ ] 移除 BFF 通用 200-null 兜底，逐个把已有故意无资料/解码失败消费改为精确路径的受控响应。未声明请求不能被新增宽泛 default、无限白名单或忽略错误掩盖。
-- [ ] 按 C1 合并配置，移除旧过渡 `suites` 排除，取消 J-PILOT-02 的探测 skip；服务不启动时由 runner 报基础设施失败，不能静默跳过。保留已有 browser/viewport/timezone，CI 不强制使用不存在的本机 Chrome。
-- [ ] 更新 npm alias/README，原生 list 对账到 280 原责任的搬迁结果加真实新增边界测试，差额逐项解释；同一叶子只选一个项目，原双角色/双宽度保持。
-- [ ] 本地用 4 workers 执行边界、登录、P7、跨 context 接线，再补实际受影响的其他 route 消费者；缺 fixture 应答只修测试定义，不能改产品。
+- [ ] 修改前对 C4 原长链路补齐有效定向时长：P3、P6、JD、候选 onboarding；复用 Task 2 匹配的证据，只补缺项。记录准备/等待/交互占比，运行失败不能当速度基线。
+- [ ] 先等价迁移 describe/hooks/helper，再按 C4 拆责任；各新 Case 构造自己的可变状态。删除重复准备时保留社招/学生/招聘冒烟、首次意向唯一性、附件版本关联与跨刷新未知结果。
+- [ ] JD 第二条独立 Case 提供已成功导入建议快照，并经正常合并/确认入口走发布，不只填最终结果；授权与轮询由第一条实际覆盖。
+- [ ] 对 Job/教育/行业等超长 Case，拆开独立目录与日常编辑目标；完整竞态不拆。保持 body/ID/If-Match、取消零写、重入回读。
+- [ ] 新旧文件搬迁时不得同时保留重复叶子；每个新 Case 单选通过，再固定 4 workers/零重试复验受影响 Suite。比较同风险集合，记录原→新 fullTitle、断言去向、耗时/原因，再移除旧 spec。
 
 ```bash
-npm run test:e2e -- --list --reporter=json
-npm run test:e2e -- e2e/离线边界.spec.ts e2e/suites/登录与数据源.spec.ts e2e/suites/真人消息.spec.ts e2e/J-PILOT-02接线.spec.ts --workers=4 --retries=0
-npm run test:e2e:data-source -- --list
+npm run test:e2e -- e2e/suites/隐私与实名.spec.ts e2e/suites/Agent规则.spec.ts e2e/suites/招聘建档与JD.spec.ts e2e/suites/候选建档.spec.ts --project=fixture --workers=4 --retries=0
+npm run test:e2e -- e2e/suites/连续委托.spec.ts e2e/suites/简历与附件.spec.ts --project=fixture --workers=4 --retries=0
 ```
 
-**完成/停止：** 无真实业务连接；等价 alias；模式/标注互不混跑；未声明请求为可定位失败，HMR 不受损。新发现故意触发错误的消费必须显式保持错误语义，不能把它改成成功 fixture。
+**完成/停止：** 原叶子均有去向；原生单 Case 可选且不依赖顺序；跨步不变量有证据；不抬 timeout。必要 UI 等待不能在测试边界降低时，保留计时/理由，不改产品等待或制造提速结论。
 
 ### Task 4: 四个第一层大文件按责任拆 Suite，处理已证实慢等待
 
@@ -291,6 +296,8 @@ npm run test:e2e:data-source -- --list
 - 修改：`src/屏幕/城市查询钩子.test.ts`、`src/屏幕/企业实名认证.test.tsx`（仅实测等待成本/受控时钟适用时修改）；`docs/testing/README.md`。无 vitest 全局配置改动。
 
 **冻结归属：** 应用状态 reducer→归约，登录/切主体/目录水合/历史 review 会话边界→会话，资料写入/意向选择恢复/建档草稿→资料与建档，P2/P4/P5/P6/P8/接触记录运行时→运行域。发布岗位按文件后缀职责归属，错误文案与确认门→提交；工作经历预填保存→资料与预填、公司 canonical ID→行业与企业、证书技能→作品集与标签；MatchCase S0记录呈现/Tab/attention→展示与隐私，叮嘱/S0–S3命令→阶段动作，PDF/发布前后移交→附件与移交，pre-Case及未知核对→连续委托。
+
+消歧规则优先于上述关键词：应用状态「招聘方岗位写操作」→资料与建档，「接触记录会话边界」和「P6 会话水合与清理」→运行域，「委托待核对运行时接线」→运行域。发布岗位「Backend 选择器」整个 describe→目录（保留其混合提交/城市断言，不为纯分类再拆叶子）；「全远程地址与 Catalog 门禁」→薪资地点；「无效编辑坐标与 A→B 生命周期」及「职位要求 Tab 删『硬性条件』展示」→提交。MatchCase「控制收口（Task 9）」整个 describe→阶段动作。未显式命名的 describe 在这四组既定文件中按主要断言主体就近归属，记录迁移理由；不新增目标文件/层次，不删除或改写断言；出现真实冲突才停止确认。
 
 **接口/隔离：** helper 只提取真正共用 DTO/构造/渲染函数。`vi.mock` hoisting 保留在需要的文件或使用 Vitest 已有 `vi.hoisted` 合法形态，不能导出一个进程级 mutable 应用状态让不同文件共用。每 Case 新建 fixture，afterEach 恢复时钟/spy/全局 DOM，保留现有 storage 降级场景，不全局清除其故意状态。
 
@@ -309,7 +316,7 @@ npm run typecheck
 
 ### Task 5: 原生 Case 清单与测试总文档
 
-**目标/非目标：** 完整列出实际叶子而非手抄概要；提供稳定生成/检查入口与最小执行命令。不新建注册服务、调度层或结果数据库。依赖 Tasks 2–4 的最终文件/project 语义与迁移表。
+**目标/非目标：** 完整列出实际叶子而非手抄概要；提供稳定生成/检查入口与最小执行命令。不新建注册服务、调度层或结果数据库。依赖 Tasks 1–4 的最终文件/project 语义与迁移表。
 
 **预期编辑文件：**
 
@@ -324,7 +331,7 @@ npm run typecheck
 - [ ] 视觉采集 spec 将目录必填检查和 mkdir 移至实际测试执行期，`--list` 不需要 `UI_CAPTURE_DIR`，执行仍在缺少必需目录时清楚失败。P1/展示接线无显式目录仍使用原 testInfo.outputPath；有目录保持原 scene ID/JSON/PNG 协议。
 - [ ] 完善 README Suite 表、拆前拆后映射与计时、Case 扩展步骤；生成全部第一/二层明细。L3 手写区只列现有四个 onboarding 组合和基础试点范围，静态清单不登记永久 PASS。
 - [ ] 两次生成结果字节相同，`--check` 通过；临时改一个标题或清单自动区时 check 必须非零（在脚本测试临时目录内验证，不改产品源码作实验）。核对 CLI 成功但零项、未知文件都不能产成功空清单。
-- [ ] 运行一次原 18 场景实际采集及 P1/展示接线显式目录子集，验证移动目录初始化没有改变消费者输入；已有完整浏览器选集证据可复用不再全跑。
+- [ ] 运行一次原 18 场景实际采集及 P1/展示接线显式目录子集，包含 `P1_BACKEND_CAPTURE_DIR` 的 fixture 采集分支，验证移动目录初始化没有改变消费者输入；已有完整浏览器选集证据可复用不再全跑。
 
 ```bash
 npm test -- 脚本/测试清单.test.mjs e2e/视觉回归/场景.test.ts e2e/视觉回归/比较器.test.ts 脚本/UI回归核心.test.mjs
@@ -332,6 +339,7 @@ npm run test:list -- --write
 npm run test:list -- --check
 UI_CAPTURE_DIR=test-results/test-layering/visual npm run ui:capture
 P1_CAPTURE_DIR=test-results/test-layering/p1 WIRING_CAPTURE_DIR=test-results/test-layering/wiring npm run test:e2e -- e2e/P1展示统一.spec.ts e2e/展示字段接线.spec.ts --project=mock --workers=1 --retries=0
+P1_BACKEND_CAPTURE_DIR=test-results/test-layering/p1-backend npm run test:e2e -- e2e/P1展示统一.spec.ts --project=fixture --workers=1 --retries=0
 ```
 
 显式采集 workers=1 是既有相同目录协议的执行约束，不用于掩盖功能并发问题。输出目录由本次 invocation 独占，不复用他人运行目录。专用比较器用既有单测验证 JSON/PNG 读取消费，不为本次重构重新采集历史 main 或更新基线。
@@ -390,4 +398,12 @@ npm run test:list -- --check
 
 本节记录 planning review，不替代实施代码 review。review 模式固定 `WORKFLOW_DOCUMENT_REVIEW`、`scope_approved_by_parent_workflow: true`；scope 仅当前 Spec 与本 Plan，精确候选由 Git revision/blob 冻结。reviewer 为独立 headless Claude，`opus/high`、plan permission mode，禁止测试/写入/扩大分支 diff；共用合同从 skill 真实目录解析。
 
-首轮在本 Plan 提交后执行。每轮先保存 status/HEAD/两文件指纹，结束先核对未变化再读 findings。接受/拒绝/可选延后逐项就地记录，无新的范围批准不得改变已批准 Spec 正文。最终 prompt 只绑定完成裁决后的 Plan 精确版本，未完成 review 不生成执行 prompt。
+每轮先保存 status/HEAD/两文件指纹，结束先核对未变化再读 findings。批准 Spec 始终固定为本文开头的 `c60dca14` / `06a9dd72`，候选 Spec 仅含批准记录更新。最终 prompt 只绑定完成裁决后的 Plan 精确版本，未完成 review 不生成执行 prompt。
+
+### Round 1 与修订裁决
+
+- 冻结候选：revision `df45303cd76fff8292f74381937b799a12079dec`；Spec blob `06503c9395c6c280994c83d0299fefc98a457966`；Plan blob `2ee961e0c7ef055046dac7a25946421cca035c8f`。reviewer `opus/high`，正常返回，轮后 status/HEAD/两文件指纹均与轮前一致。
+- 报告为 4 条 Minor：1 required、3 optional。主控按 receiving-code-review 独立核实后全部采纳，均不改变批准 Spec：①补 Task 4 歧义 describe 的明确后缀及有限兜底规则；②补 C5/C6 非 src/视觉/边界文件归属；③仅补 `src/main.tsx` 的退役配置引用注释；④补实际受影响的 `P1_BACKEND_CAPTURE_DIR` 采集验证。①②④复杂度不变，③降低悬空引用；没有新增基础设施。
+- 主控自检补充：原顺序在离线边界安装前执行业务 Case，违反本地验证隔离目标。将原入口/边界任务前移为 Task 1，抽 fixture/拆 Case 顺延，删除临时 suites 排除和双配置过渡；离线保证同时覆盖视觉采集。Task 总数仍为 6；实现复杂度降低。
+- 范围偏差：reviewer 为核验事实读取了 scope 外实现文件，违反本轮仅 Spec/Plan＋仓库规则的读取边界；未修改文件、未跑测试、未做分支 diff review。此轮不能记作完全守约审查。主控独立核实上述事实，下一轮仅复审冻结文档修订，禁止读取任何实现文件或外部实现资料。
+- 本阶段产品测试 `NOT_RUN`；只做文档/源码只读核实。修订提交后冻结候选，复用同一 reviewer session 做第二轮文档审查；是否结束遵循 review-loop 裁决规则。
