@@ -6,7 +6,11 @@ import { expect, test } from '../fixtures/test';
 import { 装P5候选, 装P5招聘, 装P5双角色, 断言纵序, hash直达 } from '../fixtures/数据源交互';
 import { 标记 } from '../fixtures/bff/账号与目录';
 import { P6标记 } from '../fixtures/bff/Agent规则';
-import { P5编号, P5标记, P5连续编号, 种连续探针记录, 创建P5MatchCasefixture } from '../fixtures/bff/MatchCase';
+import {
+  P5编号, P5标记, P5连续编号, P5摘要样本, P5详情wire, P5连续详情wire,
+  种连续探针记录, 创建P5MatchCasefixture,
+} from '../fixtures/bff/MatchCase';
+import { 信封 } from '../fixtures/bff/协议';
 import { P7会话编号 } from '../fixtures/bff/真人消息';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -515,6 +519,168 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     expect(P5请求数()).toBe(登出后);
   });
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// DF-005 DF-016 dogfood 前端修复回归 @backend：发布人头像键缺席不再让详情整页失败
+// （decoder 只在 publisher_profile 对象边界归一 null），并在同一修复上回归招聘详情
+// 画像/在线简历同源、合法摘要变 null 清旧画像、身份数据零渲染。键删除只发生在本组
+// 用例的响应覆盖里，共享 fixture 默认不动；两端都从正常列表导航进入缺键详情。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** SafeJobDetail 25 键闭合 wire（该空为 null 给显式 null）；发布人档案四键齐备，
+ *  avatar_url 的「缺席」由用例的响应覆盖制造，构造处不缺键。 */
+function 冻结职位wire(发布人档案: Record<string, unknown>): Record<string, unknown> {
+  return {
+    title: null, description: null, requirements: null, recruitment_type: null,
+    category: null, location: null, office_location: null, workplace_mode: null,
+    salary_lower: null, salary_upper: null, salary_period: null,
+    annual_salary_months: null, campus_cohort: null, internship_months: null,
+    onsite_days_per_week: null, experience_requirement: null, education_requirement: null,
+    hard_requirements: null, structured_requirements_confirmed: null, keywords: null,
+    organization: null, company_intro: null, office_address: null,
+    benefit_codes: null, publisher_profile: 发布人档案,
+  };
+}
+
+/** 从详情 wire 的冻结职位里删除 publisher_profile.avatar_url 键（响应该键缺席）。 */
+function 略发布人头像键(
+  wire: Record<string, unknown>,
+  成员: 'case_detail' | 'job_detail',
+): Record<string, unknown> {
+  const 载体 = wire[成员] as Record<string, unknown>;
+  const 岗位 = { ...(载体.job_detail as Record<string, unknown>) };
+  const 档案 = { ...(岗位.publisher_profile as Record<string, unknown>) };
+  delete 档案.avatar_url;
+  岗位.publisher_profile = 档案;
+  return { ...wire, [成员]: 成员 === 'job_detail' ? 岗位 : { ...载体, job_detail: 岗位 } };
+}
+
+/** 发布人档案 wire（四键齐备）；avatar_url 的「缺席」只由响应覆盖制造。 */
+function 发布人档案wire(): Record<string, unknown> {
+  return {
+    public_name: P5标记.冻结发布人,
+    title: 'P5 Fixture 发布人职务',
+    personal_verification_status: 'verified',
+    avatar_url: null,
+  };
+}
+
+test.describe('DF-005 DF-016 dogfood 回归 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('DF-005 DF-016 候选从列表打开缺头像键详情：整页可读、发布人档案原位显示 @backend @dogfood-frontend', async ({ page }) => {
+    const fixture = 创建P5MatchCasefixture();
+    fixture.cases[P5编号.丁]!.jobDetail = 冻结职位wire(发布人档案wire());
+    await 装P5候选(page, {
+      fixture,
+      // 响应覆盖（只在本用例）：详情聚合应答删除嵌套 Case 冻结职位的发布人头像键
+      覆盖: {
+        [`GET /api/v1/me/negotiations/${P5连续编号.丁}`]: () => ({
+          status: 200,
+          头: { 'Cache-Control': 'no-store' },
+          响应: 信封(略发布人头像键(
+            P5连续详情wire(fixture.cases, fixture.连续记录[P5连续编号.丁]!) as Record<string, unknown>,
+            'case_detail',
+          )),
+        }),
+      },
+    });
+
+    // 正常列表导航：在谈卡 → 缺键详情
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    const 卡 = page.getByTestId('求职在谈卡');
+    await expect(卡).toHaveCount(1, { timeout: 15_000 });
+    await 卡.click();
+    await expect(page).toHaveURL(new RegExp(`#/deal/${P5连续编号.丁}$`), { timeout: 15_000 });
+    // DF-005：缺头像键不再整页失败 —— 顶栏职位名照常渲染
+    await expect(page.getByText(P5标记.丁职位名).first()).toBeVisible({ timeout: 15_000 });
+
+    // 发布人档案（decoder 归一 avatar_url=null）在资料 Tab 原位显示：姓名/职务在场，
+    // 头像位给缺失占位（不生成姓名首字、不冒充已披露）
+    await page.getByRole('button', { name: '职位详情', exact: true }).click();
+    await expect(page.getByText('对接人', { exact: true })).toBeVisible();
+    await expect(page.getByText(P5标记.冻结发布人).first()).toBeVisible();
+    await expect(page.getByText('P5 Fixture 发布人职务').first()).toBeVisible();
+    await expect(page.getByRole('img', { name: '对接人头像缺失' })).toBeVisible();
+  });
+
+  test('DF-005 DF-016 招聘从列表打开缺头像键详情：画像与在线简历同源、摘要清旧、身份零渲染 @backend @dogfood-frontend', async ({ page }) => {
+    const 身份头像请求: string[] = [];
+    page.on('request', (请求) => {
+      if (请求.url().includes('cdn.fixture.example')) 身份头像请求.push(请求.url());
+    });
+    const fixture = 创建P5MatchCasefixture();
+    const 甲 = fixture.cases[P5编号.甲]!;
+    // 身份数据在场（disclosed wire 带姓名/头像 URL）：只验证解码事实，UI 零渲染零请求
+    甲.身份 = 'disclosed';
+    // 同一响应 candidate_resume 携带安全摘要 → 顶栏画像与在线简历正文同源
+    甲.candidateResume = {
+      summary: P5摘要样本('甲'),
+      self_description: null,
+      skills: null,
+      experiences: null,
+      educations: null,
+      expectation: null,
+      compensation_relationship: 'unknown' as const,
+    };
+    甲.jobDetail = 冻结职位wire(发布人档案wire());
+    await 装P5招聘(page, { fixture });
+    // 装P5招聘 的共用安装器不带响应覆盖（本任务只读依赖）：测试内补一条只覆盖本用例
+    // 详情应答的 route（后注册者优先），删除 job_detail.publisher_profile.avatar_url，
+    // fixture 默认不动。
+    await page.route(`**/api/v1/recruiter/match-cases/${P5编号.甲}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: { 'Cache-Control': 'no-store' },
+        json: 信封(略发布人头像键(
+          P5详情wire(fixture.cases[P5编号.甲]!, 'recruiter') as Record<string, unknown>,
+          'job_detail',
+        )),
+      });
+    });
+
+    // 正常列表导航：在谈卡 → 缺键详情
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    const 卡 = page.getByTestId('招聘在谈卡').first();
+    await expect(卡).toBeVisible({ timeout: 15_000 });
+    await 卡.click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/candidate/${P5编号.甲}$`), { timeout: 15_000 });
+    // DF-005：缺头像键不再整页失败 —— 岗位上下文（冻结职位 · 城市 · 薪资带）照常渲染
+    await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · ${P5标记.薪资带}`).first())
+      .toBeVisible({ timeout: 15_000 });
+
+    // 顶栏画像来自同一响应 candidate_resume 的安全摘要（性别/年限/学历/求职状态 + 最近工作行）
+    await expect(page.getByRole('img', { name: '男' }).first()).toBeVisible();
+    await expect(page.getByText('6 年').first()).toBeVisible();
+    await expect(page.getByText('P5 本科').first()).toBeVisible();
+    await expect(page.getByText('在职看机会').first()).toBeVisible();
+    await expect(page.getByText(`P5 Fixture 公司 · ${P5标记.现职.甲}`).first()).toBeVisible();
+    // 身份数据在场也不触发姓名渲染
+    await expect(page.getByText('P5 Fixture 候选真名')).toHaveCount(0);
+
+    // 在线简历正文头区 = 同一份摘要（顶栏 + 正文各一份，无第二来源）
+    await page.getByRole('button', { name: '在线简历', exact: true }).click();
+    await expect(page.getByText('在职看机会')).toHaveCount(2);
+    await expect(page.getByText(`P5 Fixture 公司 · ${P5标记.现职.甲}`)).toHaveCount(2);
+
+    // 摘要合法变 null：经既有 3 秒权威重读清旧画像（不清缓存、不手动刷新代劳）
+    甲.candidateResume = undefined;
+    await expect(page.getByText('经验缺失').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('学历缺失').first()).toBeVisible();
+    await expect(page.getByText('求职状态缺失').first()).toBeVisible();
+    await expect(page.getByRole('img', { name: '性别未知' }).first()).toBeVisible();
+    await expect(page.getByText('在职看机会')).toHaveCount(0);
+    await expect(page.getByText(`P5 Fixture 公司 · ${P5标记.现职.甲}`)).toHaveCount(0);
+    await expect(page.getByText('匿名画像缺失').first()).toBeVisible();
+    // 冻结职位事实（岗位上下文行）不受摘要清空影响
+    await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · ${P5标记.薪资带}`).first()).toBeVisible();
+    // 全程身份零渲染、身份头像 URL 零请求
+    await expect(page.getByText('P5 Fixture 候选真名')).toHaveCount(0);
+    expect(身份头像请求).toEqual([]);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // P5 Mock 数据源隔离 @mock：记录每个含 /match-cases 的浏览器请求，Mock 旅程下
 // 这份清单必须为空（空列表），整段会话也没有任何 /api/v1 请求。

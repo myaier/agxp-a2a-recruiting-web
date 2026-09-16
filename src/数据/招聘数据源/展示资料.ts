@@ -176,7 +176,13 @@ function 可空企业媒体(值: unknown): BFF企业媒体 | null {
 }
 
 function 解发布人档案(input: unknown): BFF公开发布人档案 {
-  const raw = 要求闭合对象(input, ['public_name', 'title', 'personal_verification_status', 'avatar_url']);
+  // DF-005：发布人头像在 wire 上可省略（CandidateJob 家族 avatar_url 非必需）——只在本
+  // 对象边界对「record 且键缺席」补 null 再走原闭合 guard；显式 undefined 不视作缺席，
+  // 坏值/未知键/其余必需键缺席照旧拒绝。内部类型仍 avatar_url: string | null。
+  const 归一 = 是记录(input) && !('avatar_url' in input)
+    ? { ...input, avatar_url: null }
+    : input;
+  const raw = 要求闭合对象(归一, ['public_name', 'title', 'personal_verification_status', 'avatar_url']);
   return {
     public_name: 要求字符串(raw.public_name),
     title: 要求字符串(raw.title),
