@@ -230,7 +230,8 @@ export function use助手会话(访问: 助手会话访问 | null) {
       设错误(首读失败文案);
       if (!首读完成引用.current) 设首读阶段('失败');
     } finally {
-      读在飞.current = false;
+      // 范围已换代不复位：复位局部 已把读锁归零，旧读落定不得清新代首读的在飞锁
+      if (本地代际.current === 代际) 读在飞.current = false;
     }
   };
 
@@ -277,8 +278,12 @@ export function use助手会话(访问: 助手会话访问 | null) {
       }
       设错误(取后端错误文案(错误)); // 明确拒绝：显示文案，保留草稿
     } finally {
-      写锁.current = false;
-      设写在飞(false);
+      // 范围已换代不复位（fix：finally 必然执行）：复位局部 已把写锁归零，旧请求落定
+      // 不得清新代在飞写操作的锁，否则破坏「一个在飞写操作」不变量（可双 POST、输入提前解禁）
+      if (本地代际.current === 代际) {
+        写锁.current = false;
+        设写在飞(false);
+      }
     }
   };
 
@@ -327,8 +332,11 @@ export function use助手会话(访问: 助手会话访问 | null) {
       }
       设错误(取后端错误文案(错误));
     } finally {
-      写锁.current = false;
-      设写在飞(false);
+      // 同 发送：范围已换代不复位，不清新代在飞写操作的锁
+      if (本地代际.current === 代际) {
+        写锁.current = false;
+        设写在飞(false);
+      }
     }
   };
 
@@ -392,8 +400,11 @@ export function use助手会话(访问: 助手会话访问 | null) {
       设待确认(false);
       设错误(取后端错误文案(错误));
     } finally {
-      写锁.current = false;
-      设写在飞(false);
+      // 同 发送：范围已换代不复位，不清新代在飞写操作的锁
+      if (本地代际.current === 代际) {
+        写锁.current = false;
+        设写在飞(false);
+      }
     }
   };
 
@@ -418,8 +429,11 @@ export function use助手会话(访问: 助手会话访问 | null) {
       if (是会话中断(错误)) return;
       设错误(加载更早失败文案);
     } finally {
-      加载更早中引用.current = false;
-      设加载更早中状态(false);
+      // 同 重读内部：范围已换代不复位，不清新代加载更早的在飞标志
+      if (本地代际.current === 代际) {
+        加载更早中引用.current = false;
+        设加载更早中状态(false);
+      }
     }
   };
 

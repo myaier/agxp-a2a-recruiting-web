@@ -173,11 +173,15 @@ describe('查询结果展示 · 岗位推荐结果', () => {
     expect(宿主.container.querySelectorAll('img')).toHaveLength(0);
   });
 
-  it('月/日/时薪三档、年薪月数缺席不假设薪数、空地点显示地点未知', () => {
+  it('月/日/时薪三档、年薪月数缺席不假设薪数、空地点显示地点未知、safe_reasons 空出占位', () => {
     渲染([岗位卡([
       造岗位项({ job_id: 'job-1', salary_period: 'month', annual_salary_months: null, office_location: '上海' }),
       造岗位项({ job_id: 'job-2', salary_lower: 300, salary_upper: 500, salary_period: 'day', annual_salary_months: null, office_location: ' ' }),
       造岗位项({ job_id: 'job-3', salary_lower: 80, salary_upper: 120, salary_period: 'hour', annual_salary_months: 13, office_location: '北京' }),
+      造岗位项({
+        job_id: 'job-4', salary_lower: 10, salary_upper: 12,
+        annual_salary_months: null, office_location: '深圳', safe_reasons: [],
+      }),
     ])]);
     expect(screen.getByText('20–35K')).toBeTruthy();
     expect(screen.getByText('300–500 元/天')).toBeTruthy();
@@ -187,6 +191,8 @@ describe('查询结果展示 · 岗位推荐结果', () => {
     // 缺年薪月数不假设 12/13 薪
     expect(screen.queryByText('12 薪')).toBeNull();
     expect(screen.queryByText('15 薪')).toBeNull();
+    // safe_reasons 真实为空：出「暂无推荐理由」占位，不编造理由
+    expect(screen.getByText('暂无推荐理由')).toBeTruthy();
   });
 
   it("next_cursor 非 null 显示可继续问'下一批'；null 不显示；不新增分页按钮", () => {

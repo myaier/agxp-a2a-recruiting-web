@@ -408,6 +408,46 @@ describe('问AI代理 · Backend 真实聊天接线（use助手会话）', () =>
     expect(输入.value).toBe('');
   });
 
+  it('无关重试的待确认解除不复活旧解读暂存：直接受理残留 + 用户改稿后不被旧暂存覆盖（fix 2 反例）', async () => {
+    const 可重试 = 消息DTO({ status: 'failed', retryable: true, error_code: 'assistant_downstream_error', reply: null });
+    桩.api.读取助手历史.mockResolvedValue({
+      items: [
+        可重试,
+        消息DTO({ status: 'succeeded', reply: { text: '查到了', visibility: 'available', cards: [在谈卡] } }),
+      ],
+      next_cursor: null,
+    });
+    render(<问AI代理 />);
+    await 冲();
+    const 输入 = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // 一次直接受理的解读：草稿已恢复，暂存 ref 残留
+    fireEvent.change(输入, { target: { value: '旧暂存草稿' } });
+    桩.api.发送助手消息.mockResolvedValueOnce(消息DTO({ status: 'succeeded' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '让 AI 解读' })[0]);
+    await 冲();
+    expect(输入.value).toBe('旧暂存草稿');
+    // 用户改稿；随后一条无关的重试轮次落入待确认再解除（重试解除不清草稿）
+    fireEvent.change(输入, { target: { value: '用户最新草稿' } });
+    桩.api.重试助手轮次.mockRejectedValueOnce(new BFF错误(503, 'operation_outcome_unknown', 'unknown'));
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    await 冲();
+    expect(screen.getByText('上一条消息的提交结果待确认')).toBeTruthy();
+    expect(输入.value).toBe('用户最新草稿');
+    桩.api.重试助手轮次.mockResolvedValueOnce({
+      ...可重试,
+      turn_id: 种子ID('ast_', 'rr'),
+      status: 'succeeded',
+      retryable: false,
+      error_code: null,
+      reply: { text: '重试成功', visibility: 'available', cards: [] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '重试提交' }));
+    await 冲();
+    expect(screen.queryByText('上一条消息的提交结果待确认')).toBeNull();
+    // 解除后输入框是用户自己的最新稿，不是被旧暂存覆盖回去的「旧暂存草稿」
+    expect(输入.value).toBe('用户最新草稿');
+  });
+
   it('失败/重试条件：只有 failed && retryable 出重试；uncertain 不自动重跑；重试原位替换', async () => {
     const 可重试 = 消息DTO({ status: 'failed', retryable: true, error_code: 'assistant_downstream_error', reply: null });
     桩.api.读取助手历史.mockResolvedValue({

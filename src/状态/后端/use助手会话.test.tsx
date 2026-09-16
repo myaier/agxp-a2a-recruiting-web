@@ -203,6 +203,51 @@ describe('use助手会话', () => {
     expect(result.current.输入禁用).toBe(false);
   });
 
+  it('旧范围挂起的写落定不清新代际的写锁：输入不提前解禁、新代仍单飞（fix：finally 复位加代际守卫）', async () => {
+    vi.useFakeTimers();
+    const { 访问: 旧访问, api: 旧api } = 创建访问桩('stg|sub_1|candidate|3');
+    const { 访问: 新访问, api: 新api } = 创建访问桩('stg|sub_1|candidate|4');
+    旧api.读取助手历史.mockResolvedValueOnce({ items: [], next_cursor: null });
+    新api.读取助手历史.mockResolvedValueOnce({ items: [], next_cursor: null });
+    const { result, rerender } = renderHook(
+      (访问参数: 助手会话访问 | null) => use助手会话(访问参数),
+      { initialProps: 旧访问 },
+    );
+    await 冲();
+    // 旧范围发起写操作且受理迟迟不回（挂起跨换代）
+    const 旧受理 = deferred<AssistantMessage>();
+    旧api.发送助手消息.mockReturnValueOnce(旧受理.promise);
+    let 旧发送承诺!: Promise<void>;
+    await act(async () => { 旧发送承诺 = result.current.发送('旧范围消息'); });
+    expect(旧api.发送助手消息).toHaveBeenCalledTimes(1);
+    // 换范围：复位局部 清锁换代；随后新代完成首读并发起自己的写操作（也在飞挂起）
+    rerender(新访问);
+    await 冲();
+    const 新受理 = deferred<AssistantMessage>();
+    新api.发送助手消息.mockReturnValueOnce(新受理.promise);
+    let 新发送承诺!: Promise<void>;
+    await act(async () => { 新发送承诺 = result.current.发送('新范围消息'); });
+    expect(新api.发送助手消息).toHaveBeenCalledTimes(1);
+    expect(result.current.输入禁用).toBe(true);
+    // 旧请求此刻才落定：其 finally 不得清新代在飞写锁
+    await act(async () => {
+      旧受理.resolve(处理中({ text: '旧范围消息' }));
+      await 旧发送承诺;
+    });
+    expect(result.current.消息).toEqual([]); // 旧结果整包丢弃
+    expect(result.current.输入禁用).toBe(true); // 无守卫时此处被旧 finally 解禁
+    // 新代写锁仍在：同刻的第二次发送仍被单飞拦截
+    await act(async () => { await result.current.发送('再发一条'); });
+    expect(新api.发送助手消息).toHaveBeenCalledTimes(1);
+    // 新代写操作落定：锁正常释放，processing 进入轮询（输入仍锁）
+    await act(async () => {
+      新受理.resolve(处理中({ text: '新范围消息' }));
+      await 新发送承诺;
+    });
+    expect(result.current.消息.at(-1)!.text).toBe('新范围消息');
+    expect(result.current.输入禁用).toBe(true);
+  });
+
   it('首读失败锁输入并显示错误；重读成功空页后允许发送', async () => {
     vi.useFakeTimers();
     const { 访问, api } = 创建访问桩();
