@@ -7,6 +7,7 @@
 //   · 授权 context 不在场 / 补读失败只降级资料，不透出旧身份、不阻断消息。
 // 受控 promise 验证迟到资料不污染新会话；快照失败不消费缓存旧身份（手动重读同口径）。
 
+import { StrictMode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { use真人会话资料 } from './use真人会话资料';
@@ -289,5 +290,112 @@ describe('use真人会话资料 · 本轮读取门槛（review-r1 F2）', () => 
     await waitFor(() => expect(result.current.标题).toBe('C-07')); // 重读在飞：退回占位
     第二轮();
     await waitFor(() => expect(result.current.标题).toBe('陈屿'));
+  });
+});
+
+
+// ── 异构 review-r2 F1/F2：本轮门槛的提前结算与公司链 ──
+describe('use真人会话资料 · review-r2 修复', () => {
+  it('F1：读锁让路的提前结算不放行刷新中的旧快照（StrictMode 双挂）', async () => {
+    // 第一次 effect 发起真实读取（不结算）；StrictMode 二次 setup 的调用被操作层
+    // 读锁挡回并立即兑现 —— 本轮被标 ok，但快照仍在刷新中
+    mock应用状态.操作.读取详情 = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>(() => {}))
+      .mockResolvedValueOnce(undefined);
+    const 旧身份 = {
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      candidateIdentity: { state: 'disclosed', name: '旧缓存真名', avatar_url: null, disclosed_at: null },
+    };
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] = {
+      阶段: '成功', 刷新中: true, error: null, generation: 2, detail: 旧身份,
+    };
+    const { result, rerender } = renderHook(() => use真人会话资料('recruiter', 会话()), {
+      wrapper: StrictMode,
+    });
+    await waitFor(() => expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(2));
+    // 本轮虽已提前结算，刷新中的旧身份仍不出场
+    expect(result.current.标题).toBe('C-07');
+    expect(result.current.资料状态).toBe('loading');
+    // 真实读取落地（刷新结束 + 新身份）后才消费
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] = 快照({
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      candidateIdentity: { state: 'disclosed', name: '新读取真名', avatar_url: null, disclosed_at: null },
+    });
+    rerender();
+    await waitFor(() => expect(result.current.标题).toBe('新读取真名'));
+  });
+
+  it('F2：公司链本轮门槛 —— 岗位/企业在飞或失败都显示「公司暂未提供」，双落地才显示', async () => {
+    let 岗位结算!: (值?: unknown) => void;
+    let 企业结算!: (值?: unknown) => void;
+    mock应用状态.操作.读取候选岗位详情 = vi.fn(
+      () => new Promise((完成, 拒绝) => { 岗位结算 = 完成; void 拒绝; }),
+    );
+    mock应用状态.操作.读取公开企业 = vi.fn(
+      () => new Promise((完成, 拒绝) => { 企业结算 = 完成; void 拒绝; }),
+    );
+    // 预置旧缓存：旧岗位坐标 + 旧企业名（本轮落地前不得透出）
+    mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', 'mc_3003')] = 快照({
+      ...候选详情DTO(),
+      state: 状态({ caseId: 'mc_3003' }),
+      jobDetail: {
+        ...BFF安全职位资料样本,
+        publisher_profile: { public_name: '林澈', title: '招聘负责人', personal_verification_status: 'verified', avatar_url: null },
+      },
+    });
+    mock应用状态.后端状态.候选岗位详情.job_3003 = { organization: null, publisher_organization_ref: 'org-pub' };
+    mock应用状态.状态.公开企业表['org-pub'] = {
+      organization_id: 'org-pub', legal_name: null, display_name: '旧缓存公司',
+      verified_at: null, profile: null, active_verified_job_count: 0,
+    };
+    const { result } = renderHook(() => use真人会话资料('candidate', 会话()));
+    await waitFor(() => expect(result.current.标题).toBe('林澈'));
+    // 岗位在飞：旧公司不出场
+    expect(result.current.副标题).toBe('公司暂未提供 · 招聘负责人');
+    岗位结算();
+    // 岗位落地、企业在飞：仍不出场
+    await waitFor(() => expect(mock应用状态.操作.读取公开企业).toHaveBeenCalled());
+    expect(result.current.副标题).toBe('公司暂未提供 · 招聘负责人');
+    企业结算();
+    // 双落地后才显示表中的公司名
+    await waitFor(() => expect(result.current.副标题).toBe('旧缓存公司 · 招聘负责人'));
+  });
+
+  it('F2：岗位或企业读取失败 —— 旧缓存公司持续不可见', async () => {
+    let 岗位拒绝!: (因: unknown) => void;
+    mock应用状态.操作.读取候选岗位详情 = vi.fn(
+      () => new Promise((_完成, 拒绝) => { 岗位拒绝 = 拒绝; }),
+    );
+    mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', 'mc_3003')] = 快照({
+      ...候选详情DTO(),
+      state: 状态({ caseId: 'mc_3003' }),
+      jobDetail: {
+        ...BFF安全职位资料样本,
+        publisher_profile: { public_name: '林澈', title: '招聘负责人', personal_verification_status: 'verified', avatar_url: null },
+      },
+    });
+    mock应用状态.后端状态.候选岗位详情.job_3003 = { organization: null, publisher_organization_ref: 'org-pub' };
+    mock应用状态.状态.公开企业表['org-pub'] = {
+      organization_id: 'org-pub', legal_name: null, display_name: '旧缓存公司',
+      verified_at: null, profile: null, active_verified_job_count: 0,
+    };
+    const 岗位失败 = renderHook(() => use真人会话资料('candidate', 会话()));
+    await waitFor(() => expect(岗位失败.result.current.标题).toBe('林澈'));
+    岗位拒绝(new Error('服务暂不可用'));
+    await waitFor(() => expect(岗位失败.result.current.副标题).toBe('公司暂未提供 · 招聘负责人'));
+    岗位失败.unmount();
+
+    // 岗位成功但企业失败：同样不可见
+    let 企业拒绝!: (因: unknown) => void;
+    mock应用状态.操作.读取候选岗位详情 = vi.fn().mockResolvedValue(undefined);
+    mock应用状态.操作.读取公开企业 = vi.fn(
+      () => new Promise((_完成, 拒绝) => { 企业拒绝 = 拒绝; }),
+    );
+    const 企业失败 = renderHook(() => use真人会话资料('candidate', 会话()));
+    await waitFor(() => expect(mock应用状态.操作.读取公开企业).toHaveBeenCalled());
+    企业拒绝(new Error('服务暂不可用'));
+    await waitFor(() => expect(企业失败.result.current.副标题).toBe('公司暂未提供 · 招聘负责人'));
   });
 });

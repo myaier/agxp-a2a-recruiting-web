@@ -48,6 +48,12 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   // 不消费任何缓存身份（含上一轮成功快照），页头回落 P7 授权标签。落地跟的是
   // 本轮强制读取的 promise 结算，不是快照形状：预置/旧的成功快照不替代本轮读取。
   const [本轮, 设本轮] = useState<{ 键: string; 态: 'pending' | 'ok' } | null>(null);
+  /** 公司链本轮分相（review-r2 F2）：岗位/企业各记 pending/ok/失败；企业无需求 = 岗位无发布方坐标。 */
+  const [公司轮, 设公司轮] = useState<{
+    键: string;
+    岗位: 'pending' | 'ok' | '失败';
+    企业: 'pending' | 'ok' | '失败' | '无需求';
+  } | null>(null);
   const 快照 = caseId !== '' ? 后端状态.P5详情[P5范围键.detail(角色, caseId)] : undefined;
 
   // 进会话（换会话/换角色）强制一次定向 P5 读取 + 候选端当前岗位读取（发布方公司
@@ -70,12 +76,31 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
     };
   }, [范围, 角色, caseId, 操作]);
   useEffect(() => {
-    if (!(角色 === 'candidate' && jobRef !== null)) return;
-    void 操作.读取候选岗位详情(jobRef, true).catch(() => undefined);
+    if (!(角色 === 'candidate' && jobRef !== null)) {
+      设公司轮(null);
+      return;
+    }
+    const 键 = `${角色}:${jobRef}`;
+    // 公司链本轮分相（review-r2 F2）：岗位强制读取 settle（成功/失败分开记）之前，
+    // 不消费缓存里的旧岗位坐标与旧企业名；404 走操作层的删缓存+标记，无需本地态。
+    设公司轮({ 键, 岗位: 'pending', 企业: '无需求' });
+    let 有效 = true;
+    void 操作.读取候选岗位详情(jobRef, true).then(
+      () => {
+        if (有效) 设公司轮((旧) => (旧?.键 === 键 && 旧.岗位 === 'pending' ? { ...旧, 岗位: 'ok' } : 旧));
+      },
+      () => {
+        if (有效) 设公司轮((旧) => (旧?.键 === 键 && 旧.岗位 === 'pending' ? { ...旧, 岗位: '失败' } : 旧));
+      },
+    );
+    return () => {
+      有效 = false;
+    };
   }, [角色, jobRef, 操作]);
 
-  // 候选端公司链：岗位读取落地后按 publisher_organization_ref 读公开企业
-  //（不可用编号不落旧缓存；失败局部显示缺失，不自动重试风暴）。
+  // 候选端公司链：本轮岗位读取成功后按 publisher_organization_ref 读公开企业
+  //（不可用编号不落旧缓存）；企业读取同样分相 —— pending/失败一律「公司暂未提供」，
+  // 不消费旧缓存企业名。
   const 发布方编号 = (() => {
     if (!(角色 === 'candidate' && jobRef !== null)) return null;
     const 岗位 = 后端状态.候选岗位详情[jobRef];
@@ -84,15 +109,30 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   })();
   useEffect(() => {
     if (发布方编号 === null) return;
-    void 操作.读取公开企业(发布方编号).catch(() => undefined);
-  }, [发布方编号, 操作]);
+    const 键 = `${角色}:${jobRef}`;
+    设公司轮((旧) => (旧?.键 === 键 && 旧.企业 !== 'pending' ? { ...旧, 企业: 'pending' } : 旧));
+    void 操作.读取公开企业(发布方编号).then(
+      () => {
+        设公司轮((旧) => (旧?.键 === 键 && 旧.企业 === 'pending' ? { ...旧, 企业: 'ok' } : 旧));
+      },
+      () => {
+        设公司轮((旧) => (旧?.键 === 键 && 旧.企业 === 'pending' ? { ...旧, 企业: '失败' } : 旧));
+      },
+    );
+    // jobRef 在键里参与依赖；公司轮引用不进依赖（只按编号与范围驱动）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [发布方编号, 角色, jobRef, 操作]);
 
-  // 消费：本轮就绪 + 快照成功无错 + detail 在场才出身份（失败/未落地都不出）
+  // 消费：本轮就绪 + 快照成功无错且不在刷新中 + detail 在场才出身份（失败/未落地/
+  // 在途刷新都不出 —— review-r2 F1：读锁让路的提前结算不得放行旧快照）。
   const 本轮就绪 = 本轮 !== null && 本轮.键 === 范围 && 本轮.态 === 'ok';
   const 明细 = 本轮就绪 && 快照 !== undefined && 快照.阶段 === '成功' && 快照.error === null
-    && 快照.detail !== null
+    && !快照.刷新中 && 快照.detail !== null
     ? 快照.detail
     : null;
+  // 公司链消费：本轮岗位成功 + 本轮企业成功 + 表项在场；否则一律「公司暂未提供」
+  const 公司键 = 角色 === 'candidate' && jobRef !== null ? `${角色}:${jobRef}` : '';
+  const 公司链就绪 = 公司轮 !== null && 公司轮.键 === 公司键 && 公司轮.岗位 === 'ok' && 公司轮.企业 === 'ok';
   const 资料状态 = !授权在场
     ? 'unavailable'
     : 明细 !== null
@@ -118,7 +158,7 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   let 职位资料: 职位资料信息 | null = null;
 
   if (明细 !== null) {
-    const 发布方公司 = 发布方编号 !== null && 状态.公开企业表[发布方编号] !== undefined
+    const 发布方公司 = 公司链就绪 && 发布方编号 !== null && 状态.公开企业表[发布方编号] !== undefined
       ? 非空(状态.公开企业表[发布方编号].display_name)
       : null;
     if (明细.role === 'recruiter') {
@@ -149,7 +189,8 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
 
   const 重读资料 = useCallback(() => {
     if (caseId === '') return;
-    // 手动重读同样按本轮结果判定：重读期间退回占位，本次落地后才恢复身份
+    // 手动重读同样按本轮结果判定：重读期间退回占位，本次落地后才恢复身份；
+    // 候选端公司链一并复位（岗位/企业重读期间同样「公司暂未提供」）。
     设本轮({ 键: 范围, 态: 'pending' });
     void 操作.读取详情(角色, caseId, true)
       .catch(() => undefined)
@@ -157,8 +198,18 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
         设本轮((旧) => (旧?.键 === 范围 && 旧.态 === 'pending' ? { 键: 范围, 态: 'ok' } : 旧));
       });
     if (角色 === 'candidate' && jobRef !== null) {
-      void 操作.读取候选岗位详情(jobRef, true).catch(() => undefined);
-      if (发布方编号 !== null) void 操作.读取公开企业(发布方编号).catch(() => undefined);
+      const 键 = `${角色}:${jobRef}`;
+      设公司轮((旧) => (旧?.键 === 键 ? { 键, 岗位: 'pending', 企业: 'pending' } : 旧));
+      void 操作.读取候选岗位详情(jobRef, true).then(
+        () => 设公司轮((旧) => (旧?.键 === 键 && 旧.岗位 === 'pending' ? { ...旧, 岗位: 'ok' } : 旧)),
+        () => 设公司轮((旧) => (旧?.键 === 键 && 旧.岗位 === 'pending' ? { ...旧, 岗位: '失败' } : 旧)),
+      );
+      if (发布方编号 !== null) {
+        void 操作.读取公开企业(发布方编号).then(
+          () => 设公司轮((旧) => (旧?.键 === 键 && 旧.企业 === 'pending' ? { ...旧, 企业: 'ok' } : 旧)),
+          () => 设公司轮((旧) => (旧?.键 === 键 && 旧.企业 === 'pending' ? { ...旧, 企业: '失败' } : 旧)),
+        );
+      }
     }
   }, [角色, caseId, 范围, jobRef, 发布方编号, 操作]);
 

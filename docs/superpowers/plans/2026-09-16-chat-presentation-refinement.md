@@ -203,6 +203,10 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
   3. 全屏层 PDF 正文塌陷（契约违反/Important/required/复杂度不变）→ 修复：原始PDF正文 增加可选 类名，页面传 `.PDF全高`（height:100%）让纸底在非 flex 正文区获得确定高度；e2e 断言 iframe 高度 >400px。
   4. 真人长气泡丢失对侧留白（契约违反/Minor/required/复杂度不变）→ 修复：消息行传 `我方消息行/对方消息行` 行类 + `对侧留白` 气泡类（后代选择器抬高特异性，不依赖模块加载顺序、不收窄基础样式），我方让 41px/对方让 35px（与直聊镜像净空同口径）；e2e 双侧长消息对侧边距 ≥40px。
 - R1 修复提交：见 git log `fix(review-r1)`；轮间轻量检查 = 受影响单测 40 passed + typecheck/lint 0 + 真人消息 fixture e2e 11/11（未跑全层）。
+- R2（同 thread resume）：2 项 finding，全部裁决接受（required 2 / optional 0，拒绝 0）：
+  1. 读锁让路使「本轮就绪」提前放行刷新中的旧快照（StrictMode 双挂/同 scope 在飞；契约违反/Important/required/复杂度不变）→ 修复：消费条件追加 `快照.刷新中 === false`；新增 StrictMode 双挂反例（真实读取在飞期间只显示回落标签，落地后才消费新身份）。
+  2. 候选侧发布方公司仍直接消费岗位/企业旧缓存（R1-F2 残余范围；契约违反/Important/required/复杂度增加——公司轮次局部状态防旧发布方公司误披露，收益足以抵偿）→ 修复：hook 内公司链按 `角色:jobRef` 分相跟踪（岗位 pending/ok/失败 → 企业 pending/ok/失败），任一 pending/失败一律「公司暂未提供」，手动重读同步复位；新增双落地序列与两条失败路径反例。
+- R2 修复提交：见 git log `fix(review-r2)`；轮间轻量检查 = hook+页面单测 41 passed + typecheck/lint 0 + 真人消息 fixture e2e 11/11（未跑全层）。
 
 ## 文档审查记录
 
