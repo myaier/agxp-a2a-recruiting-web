@@ -134,7 +134,14 @@ export async function 走完后端发岗向导(page: Page) {
 
 
 /** 已知时序类（README「已知事项」）：主壳水合期的在飞 replace 会把紧随其后的 hash 直达
- *  吞回落点路由。重试直达直到路由真正落定（只修测试导航，不放宽任何断言）。
+ *  吞回落点路由 —— 产品缺陷，README 已知事项保持记录，不改产品。C4：测试侧不用固定
+ *  sleep / 重导航掩盖竞态，改为「可观察预等待 → 单次 goto → 有界段形验证」：
+ *   ① 预等待：应用壳已挂载（#根节点 有子节点）且 hash 已离开登录路由 '/'——那发会吞
+ *      导航的落点 replace 只在路由离开 '/' 后才算落定，此后才不存在在飞水合导航；
+ *   ② 单次 page.goto(哈希)，被吞不静默重来；
+ *   ③ expect.poll 有界断言段形落定，被吞就以失败显形（不放宽任何断言）。
+ *  about:blank（装完 fixture 的首次直达）时 goto 本身就是首载，hash 随首载生效、没有
+ *  在飞 replace 可吞，跳过预等待直接单次 goto。
  *  Task 3（C4）：从 隐私与实名/Agent规则 两个 Suite 下沉为共享 helper。 */
 export async function hash直达(page: Page, 哈希: string): Promise<void> {
   // 路由段形（首段 + 段数）：P5 详情等深链会被应用改写成 canonical ID（段值变、段形不变），
@@ -144,12 +151,14 @@ export async function hash直达(page: Page, 哈希: string): Promise<void> {
     const 段们 = 路径.split('/').filter(Boolean);
     return `${段们[0] ?? ''}(${段们.length})`;
   };
-  for (let 次 = 0; 次 < 5; 次 += 1) {
-    await page.goto(哈希);
-    await page.waitForTimeout(400);
-    if (段形(page.url()) === 段形(哈希)) return;
+  if (page.url() !== 'about:blank') {
+    await expect.poll(() => page.evaluate(() => {
+      const 路径 = location.hash.split('?')[0] ?? '';
+      return Boolean(document.querySelector('#根节点 > *')) && 路径 !== '' && 路径 !== '#/';
+    }), { timeout: 20_000 }).toBe(true);
   }
-  throw new Error(`hash 直达被在飞水合导航连续吞掉：${哈希}`);
+  await page.goto(哈希);
+  await expect.poll(() => 段形(page.url()), { timeout: 5_000 }).toBe(段形(哈希));
 }
 
 export const 是APIv1路径 = (url: URL) => /^\/api\/v1(?:\/|$)/.test(url.pathname);

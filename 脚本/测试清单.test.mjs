@@ -85,6 +85,8 @@ describe('解析：Vitest list JSON', () => {
     expect(项们[0].file).toBe('src/数据/算术.test.ts');
     expect(项们[0].project).toBe('');
     expect(项们[0].location).toBeNull();
+    // review r1（C5 修复 a）：runner 扁平名逐字保留（titlePath 只是 best-effort 展示拆分）
+    expect(项们[0].全名).toBe('算术 > 求和校验 [1+1]');
   });
 
   it('空集合与坏 JSON 显式失败', () => {
@@ -281,9 +283,37 @@ describe('渲染与排序', () => {
       { 层: '第一层', 项们: [{ file: 'src/数据/甲.test.ts', titlePath: ['甲块', '用例一'], project: '', location: null }] },
       { 层: '第二层', 项们: [{ file: 'e2e/suites/MatchCase.spec.ts', titlePath: ['P5', '用例二'], project: 'fixture', location: { line: 9, column: 3 } }] },
     ]));
-    expect(自动区).toContain("npm test -- src/数据/甲.test.ts -t '甲块 用例一'");
+    expect(自动区).toContain("npm test -- src/数据/甲.test.ts -t '甲块 (> )?用例一'");
     expect(自动区).toContain("npm run test:e2e -- e2e/suites/MatchCase.spec.ts --project=fixture --grep 'P5 用例二'");
     expect(自动区).toContain('未知');
+  });
+
+  it('标题含字面「 > 」时 -t 坐标以 全名 为源保留字面符，不再按段拼接丢「>」（C5 修复 a）', () => {
+    // 实仓既有形状（src/数据/列表卡片映射.test.ts）：叶子标题自身含 ' > '。
+    // vitest list 的 name = '从P5到阶段 > 徽标优先级保留：需要你 > 需注意 > 代理处理中…'，
+    // 其中第一处 ' > ' 是段分隔、后两处是标题字面 —— 按段 split 后 join 会丢字面 '>'。
+    const 全名 = '从P5到阶段 > 徽标优先级保留：需要你 > 需注意 > 代理处理中；待办恒 false（不新增 Mock 呼吸点）';
+    const 项们 = 解析vitest清单(vitest样例([
+      { name: 全名, file: `${假根目录}/src/数据/列表卡片映射.test.ts` },
+    ]), 假根目录);
+    const 自动区 = 渲染自动区(组装清单([{ 层: '第一层', 项们 }]));
+    // 展示列维持 best-effort 拆分（cosmetic）；坐标列以转义后的 全名 为源，
+    // 每处 ' > ' 放宽为 ' (> )?'：段分隔位匹配 runner 匹配全名的单空格、
+    // 字面位匹配 ' > '（实测该 -t 在源文件上恰好选中目标叶 1 例）。
+    expect(自动区).toContain('从P5到阶段 > 徽标优先级保留：需要你 > 需注意 > 代理处理中；待办恒 false（不新增 Mock 呼吸点）');
+    expect(自动区).toContain(
+      "npm test -- src/数据/列表卡片映射.test.ts -t '从P5到阶段 (> )?徽标优先级保留：需要你 (> )?需注意 (> )?代理处理中；待办恒 false（不新增 Mock 呼吸点）'",
+    );
+  });
+
+  it('视觉采集行渲染整条可执行命令：UI_CAPTURE_DIR 前缀显式给出，不再拼「（需 UI_CAPTURE_DIR）」（C5 修复 b）', () => {
+    const 自动区 = 渲染自动区(组装清单([{ 层: '第二层', 项们: [
+      { file: 'e2e/视觉回归/采集.spec.ts', titlePath: ['采集 candidate-salary'], project: '', location: null },
+    ] }]));
+    expect(自动区).toContain(
+      "UI_CAPTURE_DIR=test-results/visual npm run ui:capture -- --grep '采集 candidate-salary'",
+    );
+    expect(自动区).not.toContain('需 UI_CAPTURE_DIR');
   });
 });
 

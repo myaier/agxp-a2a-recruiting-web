@@ -102,10 +102,6 @@ function 裸露的注册流帧(序列: 帧快照[], 源屏文字: string) {
   );
 }
 
-// 走本机装好的 Chrome，不依赖 playwright 自带的 chromium 分发包（本机没装那份）。
-// channel 会强制新建 worker，playwright 只允许写在文件顶层，不能塞进 describe 里。
-test.use({ channel: 'chrome' });
-
 // 串行跑，不与别的 spec 抢 worker。这两条是**逐帧采样**：要在 history.go 到
 // replace 落地这几十毫秒里连续抓帧，判断有没有裸露的注册流帧。
 // fullyParallel 下多 worker 抢同一个 dev server，采样窗口被拖慢就会漏帧 ——

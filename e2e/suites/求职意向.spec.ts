@@ -436,9 +436,10 @@ test.describe('核心编辑 城市 @backend', () => {
     await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
 
     // 取消：✕ 关闭不写草稿；重进为空（0/9 无 chip）
-    // 先等选中落草稿的异步写收尾再取消：取消清理若先于在途草稿写执行，重进会残留
-    // 旧选中（疑似产品侧取消/草稿写竞态；只修测试时序并记录，不改产品）
-    await page.waitForTimeout(400);
+    // C4（review r1）：取消不再用固定 400ms sleep 掩盖时序。核实产品侧：Backend 城市选中
+    // 只落本页 React state（无网络草稿写；草稿仅 保存 时同步派发），其收尾的可观察条件
+    // 就是同一 state 渲染出的计数 —— 上方「2/9」可见与「保存」可见即选中已收尾的可观察
+    // 等待，关闭前无需再等。疑似取消/草稿写竞态仍按 README「已知事项」记录（不改产品）。
     await page.getByRole('button', { name: '关闭' }).click();
     await expect(page).toHaveURL(/#\/app$/, { timeout: 10_000 });
     await hash直达(page, '/#/intentions/cities');

@@ -367,11 +367,17 @@ export function P4分页(
   return { recommendations: 余下, next_cursor: null };
 }
 
-let P4批次序 = 0;
-export function P4发现批次(direction: 'candidate_jobs' | 'recruiter_candidates', scopeRef: string): P4发现批次形 {
-  P4批次序 += 1;
+export function P4发现批次(
+  状态: P4安装状态形,
+  direction: 'candidate_jobs' | 'recruiter_candidates',
+  scopeRef: string,
+): P4发现批次形 {
+  // C2（review r1 修复）：批次/偏好序号归每次安装独立的 P4安装状态（跨请求存活、
+  // 不跨安装共享），不再是模块级计数 —— 否则同一 worker 的第二次安装会从上次的
+  // 计数继续走，违反「序号/Map/Set 每次安装独立」的冻结线。
+  状态.p4批次序 += 1;
   return {
-    batch_id: `bat_p4fixture${P4批次序}`,
+    batch_id: `bat_p4fixture${状态.p4批次序}`,
     direction,
     scope_ref: scopeRef,
     ranking_version: 'discovery-ranking.v1',
@@ -380,14 +386,13 @@ export function P4发现批次(direction: 'candidate_jobs' | 'recruiter_candidat
   };
 }
 
-let P4偏好序 = 0;
-export function P4发现偏好(覆盖: Partial<P4偏好形> = {}): P4偏好形 {
-  P4偏好序 += 1;
+export function P4发现偏好(状态: P4安装状态形, 覆盖: Partial<P4偏好形> = {}): P4偏好形 {
+  状态.p4偏好序 += 1;
   return {
     favorite: false,
     rejected: false,
     rejection_reason: null,
-    revision: 1 + P4偏好序,
+    revision: 1 + 状态.p4偏好序,
     updated_at: '2026-08-27T09:30:00Z',
     ...覆盖,
   };
@@ -563,12 +568,15 @@ export function P4发现fixture(分支: P4发现分支形 = {}): P4发现fixture
 
 // ── 安装态与路由 handler（C2 阶段二迁入）──
 
-/** P4 域的每次安装独立状态：委托登记表与受控重试/失败键（跨请求存活，不跨安装共享）。 */
+/** P4 域的每次安装独立状态：委托登记表、受控重试/失败键与批次/偏好序号
+ *  （跨请求存活，不跨安装共享 —— 序号同归安装态，review r1 修复）。 */
 export interface P4安装状态形 {
   p4委托表: Map<string, { 回执: P4委托回执形; role: 'candidate' | 'recruiter'; 读数: number }>;
   p4刷新503键: Set<string>;
   p4委托503键: Set<string>;
   p4不感兴趣失败键: Set<string>;
+  p4批次序: number;
+  p4偏好序: number;
 }
 
 export function 创建P4安装状态(): P4安装状态形 {
@@ -577,6 +585,8 @@ export function 创建P4安装状态(): P4安装状态形 {
     p4刷新503键: new Set(),
     p4委托503键: new Set(),
     p4不感兴趣失败键: new Set(),
+    p4批次序: 0,
+    p4偏好序: 0,
   };
 }
 
@@ -642,7 +652,7 @@ export async function 处理发现推荐域(
     if ((P4域.候选推荐[意向] ?? []).length === 0) {
       P4域.候选推荐[意向] = [P4候选卡({ batch_id: `bat_p4fixture_c${P4域.刷新次数.candidate + 1}` })];
     }
-    await route.fulfill({ status: 200, json: 信封(P4发现批次('candidate_jobs', 意向)) });
+    await route.fulfill({ status: 200, json: 信封(P4发现批次(状态, 'candidate_jobs', 意向)) });
     return true;
   }
 
@@ -660,7 +670,7 @@ export async function 处理发现推荐域(
     for (const 意向 of Object.keys(P4域.候选推荐)) {
       P4域.候选推荐[意向] = P4域.候选推荐[意向]!.filter((卡) => 卡.recommendation_id !== 推荐编号);
     }
-    await route.fulfill({ status: 200, json: 信封(P4发现偏好({ rejected: true, rejection_reason: 'not_interested' })) });
+    await route.fulfill({ status: 200, json: 信封(P4发现偏好(状态, { rejected: true, rejection_reason: 'not_interested' })) });
     return true;
   }
 
@@ -772,7 +782,7 @@ export async function 处理发现推荐域(
       return true;
     }
     卡.favorite = method === 'PUT';
-    await route.fulfill({ status: 200, json: 信封(P4发现偏好({ favorite: 卡.favorite, rejected: 卡.rejected, rejection_reason: 卡.rejection_reason })) });
+    await route.fulfill({ status: 200, json: 信封(P4发现偏好(状态, { favorite: 卡.favorite, rejected: 卡.rejected, rejection_reason: 卡.rejection_reason })) });
     return true;
   }
   if (P4淘汰匹配 && (method === 'PUT' || method === 'DELETE')) {
@@ -796,7 +806,7 @@ export async function 处理发现推荐域(
       P4域.招聘已筛[岗位编号] = (P4域.招聘已筛[岗位编号] ?? []).filter((条) => 条.recommendation_id !== 卡.recommendation_id);
       P4域.招聘可用[岗位编号] = [...(P4域.招聘可用[岗位编号] ?? []).filter((条) => 条.recommendation_id !== 卡.recommendation_id), 卡];
     }
-    await route.fulfill({ status: 200, json: 信封(P4发现偏好({ favorite: 卡.favorite, rejected: 卡.rejected, rejection_reason: 卡.rejection_reason })) });
+    await route.fulfill({ status: 200, json: 信封(P4发现偏好(状态, { favorite: 卡.favorite, rejected: 卡.rejected, rejection_reason: 卡.rejection_reason })) });
     return true;
   }
   if (P4招聘详情匹配 && method === 'GET') {
@@ -815,7 +825,7 @@ export async function 处理发现推荐域(
     记录P4变更(path);
     P4域.刷新次数.recruiter += 1;
     const 岗位编号 = (body as { job_id?: string }).job_id ?? '';
-    await route.fulfill({ status: 200, json: 信封(P4发现批次('recruiter_candidates', 岗位编号)) });
+    await route.fulfill({ status: 200, json: 信封(P4发现批次(状态, 'recruiter_candidates', 岗位编号)) });
     return true;
   }
 
