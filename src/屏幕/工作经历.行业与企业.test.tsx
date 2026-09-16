@@ -1193,6 +1193,37 @@ describe('工作经历 · 经历企业屏蔽（契约B）', () => {
     expect(保存简历).not.toHaveBeenCalled();
   });
 
+  // review fix-1（Important spec#1）：数未完成项 只统计 prefill: 物化条目 —— 缺组织编号
+  // 的遗留自建行（无 prefill 前缀）漏到 保存简历 映射层才抛错；此时隐私写已发出，违反
+  // 「校验失败零写」。混合场景：A 行完整且带待提交屏蔽意图 + B 行缺组织编号 → 整份保存
+  // 先被写前完备性预检拦下，零隐私写、零简历保存、意图保留。
+  it('缺组织编号的遗留行先拦整份保存：A 行有待提交屏蔽意图也零隐私写（写前守卫）', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 添加组织屏蔽 = vi.fn(async () => {});
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 保存简历, 添加组织屏蔽,
+      经历: [
+        完整经历('org_a'),
+        {
+          编号: 'exp_legacy', 公司: '旧自建公司', 行业: '互联网',
+          行业引用: { id: 'tax_i', display_name: '互联网' },
+          职位: '工程师', 开始: '2020-01', 结束: '2021-01', 内容: '', 隐藏: true,
+        },
+      ],
+    });
+    await 用户.click(screen.getAllByText('示例公司')[0]);
+    await 用户.click(开关键());
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('还有 1 段经历需要选择公司或补充必填项');
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock轻提示).not.toHaveBeenCalledWith('简历已保存');
+    // 意图保留（未成功不丢弃）
+    expect(screen.getByText('企业屏蔽待保存')).toBeTruthy();
+  });
+
   it('新建经历默认 hidden=false，企业屏蔽开关不再改写该字段', async () => {
     const 搜索组织 = vi.fn(async () => ({
       items: [{ organization_id: 'org_fresh', display_name: '新公司', legal_name: null, verification_status: 'unverified' as const }],
