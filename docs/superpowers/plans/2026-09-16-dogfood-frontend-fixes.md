@@ -267,4 +267,4 @@ npm run test:e2e -- e2e/suites/发现推荐.spec.ts --project=mock --grep '独�
 |R1-4 Minor：招聘无上下文可能传 undefined|当前正常视图亮点为必有 string[]；无卡走加载/不可用，不存在该假设的正常页|不新增无上下文页面；明确有效详情的空/未知原因传 []、无卡保留原错误/加载、undefined 仅 Mock/Case|
 |R1-5 Minor：恢复建议更新初值来源超出 Spec|Spec §8 仅允许实际初值来源；恢复时新增状态更新无必要|接受并删去：来源只初始化，恢复按钮不改来源标记；保留恢复行为测试|
 
-上述修订不改变批准 Spec；提交后恢复同一个 reviewer session 复审修订 Plan。审查结束前不生成执行提示词。执行交付仅一个 `docs/superpowers/prompts/2026-09-16-dogfood-frontend-fixes.md`，含 Claude Code/Codex 两节，各自完整 text 代码框；绑定最终文档 revision/blob，用 development-workflow 的 `scripts/validate_prompt_grading.py --plan ... --prompt ...` 校验。规划 session 不执行上述产品 Task。
+上述修订不改变批准 Spec。第二轮恢复同一 Claude Opus/high reviewer session，审查 revision `2996c9c37f634958b4989dd9f4bf7f1aaa041202`、Plan blob `0203cb666126656a000c2832a341270d7c1c6713`，返回精确 `NO FINDINGS`；只读 guard 通过，未运行测试，无未解决 required。文档 review 共 2 轮，第一轮 2 Important / 3 Minor，三项接受修订、两项核实前提后澄清边界；第二轮无新问题。本次追加审查结束记录，不改变已审查的 Task 或行为契约。执行交付仅一个 `docs/superpowers/prompts/2026-09-16-dogfood-frontend-fixes.md`，含 Claude Code/Codex 两节，各自完整 text 代码框；绑定最终文档 revision/blob，用 development-workflow 的 `scripts/validate_prompt_grading.py --plan ... --prompt ...` 校验。规划 session 不执行上述产品 Task。
