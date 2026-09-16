@@ -17,9 +17,9 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 5715 例 · 254 文件
+## 第一层 · 单元/组件（Vitest） · 5767 例 · 256 文件
 
-### 数据契约/映射 · 1561 例 · 53 文件
+### 数据契约/映射 · 1565 例 · 53 文件
 
 <details>
 <summary>展开明细</summary>
@@ -464,6 +464,10 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 判断P4招聘组织前提 > undefined owner snapshot is unknown |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '判断P4招聘组织前提 (> )?undefined owner snapshot is unknown' | 未知 |
 | 判断P4招聘组织前提 > unverified + non-blank ref is ready（认证状态不参与判定） |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '判断P4招聘组织前提 (> )?unverified \+ non-blank ref is ready（认证状态不参与判定）' | 未知 |
 | 判断P4招聘组织前提 > verified + non-blank ref is ready（认证状态不参与判定） |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '判断P4招聘组织前提 (> )?verified \+ non-blank ref is ready（认证状态不参与判定）' | 未知 |
+| 助手匹配理由（Spec §10.3 卡内中文理由；与招聘卡亮点同一份闭表） > constructor 等原型名不能命中闭表：按自然语言保留、不加勾 |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '助手匹配理由（Spec §10\.3 卡内中文理由；与招聘卡亮点同一份闭表） (> )?constructor 等原型名不能命中闭表：按自然语言保留、不加勾' | 未知 |
+| 助手匹配理由（Spec §10.3 卡内中文理由；与招聘卡亮点同一份闭表） > 全被过滤后是空数组（卡面据此出「暂无推荐理由」） |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '助手匹配理由（Spec §10\.3 卡内中文理由；与招聘卡亮点同一份闭表） (> )?全被过滤后是空数组（卡面据此出「暂无推荐理由」）' | 未知 |
+| 助手匹配理由（Spec §10.3 卡内中文理由；与招聘卡亮点同一份闭表） > 四项已知码译为中文并带肯定勾，保留传入原序 |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '助手匹配理由（Spec §10\.3 卡内中文理由；与招聘卡亮点同一份闭表） (> )?四项已知码译为中文并带肯定勾，保留传入原序' | 未知 |
+| 助手匹配理由（Spec §10.3 卡内中文理由；与招聘卡亮点同一份闭表） > 未知机器码不透出不猜译；空白项过滤；既有自然语言保留原文且不加肯定勾 |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '助手匹配理由（Spec §10\.3 卡内中文理由；与招聘卡亮点同一份闭表） (> )?未知机器码不透出不猜译；空白项过滤；既有自然语言保留原文且不加肯定勾' | 未知 |
 | 市场卡公司摘要落位（Spec §5.1） > claim-only 摘要（声明样本）：公司名/简介/图与市场卡逐字一致，不添已知段 |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '市场卡公司摘要落位（Spec §5\.1） (> )?claim-only 摘要（声明样本）：公司名/简介/图与市场卡逐字一致，不添已知段' | 未知 |
 | 市场卡公司摘要落位（Spec §5.1） > 公司名优先合法 organization.display_name，短行由 融资·规模·行业 经现有码表拼出 |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '市场卡公司摘要落位（Spec §5\.1） (> )?公司名优先合法 organization\.display_name，短行由 融资·规模·行业 经现有码表拼出' | 未知 |
 | 市场卡公司摘要落位（Spec §5.1） > 公司槽携带 organization 摘要原对象（独立职位先展示摘要）；缺席给 null（Spec §6.1） |  | [src/数据/发现推荐映射.test.ts](../../src/数据/发现推荐映射.test.ts) | npm test -- src/数据/发现推荐映射.test.ts -t '市场卡公司摘要落位（Spec §5\.1） (> )?公司槽携带 organization 摘要原对象（独立职位先展示摘要）；缺席给 null（Spec §6\.1）' | 未知 |
@@ -3046,7 +3050,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 组件 · 477 例 · 56 文件
+### 组件 · 510 例 · 57 文件
 
 <details>
 <summary>展开明细</summary>
@@ -3188,6 +3192,9 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null） > 匹配分 null 走卡片分数未知占位：不画环；真实 0 分仍画 0 分环，不误判未知 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null） (> )?匹配分 null 走卡片分数未知占位：不画环；真实 0 分仍画 0 分环，不误判未知' | 未知 |
 | 求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null） > 委托禁用时去谈键不可点：点击不调用委托回调 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null） (> )?委托禁用时去谈键不可点：点击不调用委托回调' | 未知 |
 | 求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null） > 空串不是 null：市场页既有空段渲染逐字不变，不出占位文字 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null） (> )?空串不是 null：市场页既有空段渲染逐字不变，不出占位文字' | 未知 |
+| 求职推荐卡 · 匹配理由区（Spec §10.3：仅助手结果显式传入，市场页不传零变化） > 不传时完全没有新区域：无理由节点、无「暂无推荐理由」，按钮数不变 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · 匹配理由区（Spec §10\.3：仅助手结果显式传入，市场页不传零变化） (> )?不传时完全没有新区域：无理由节点、无「暂无推荐理由」，按钮数不变' | 未知 |
+| 求职推荐卡 · 匹配理由区（Spec §10.3：仅助手结果显式传入，市场页不传零变化） > 已匹配项为绿色对勾加文字，自然语言项为普通说明无勾；区域插在标签行之后 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · 匹配理由区（Spec §10\.3：仅助手结果显式传入，市场页不传零变化） (> )?已匹配项为绿色对勾加文字，自然语言项为普通说明无勾；区域插在标签行之后' | 未知 |
+| 求职推荐卡 · 匹配理由区（Spec §10.3：仅助手结果显式传入，市场页不传零变化） > 空数组显示卡内「暂无推荐理由」中性提示，不编造匹配结论 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · 匹配理由区（Spec §10\.3：仅助手结果显式传入，市场页不传零变化） (> )?空数组显示卡内「暂无推荐理由」中性提示，不编造匹配结论' | 未知 |
 | 求职推荐卡 · 原市场卡已知值（合同 D 提取基准） > 卡主体与 › 都只调 打开；已委托态换状态标、去谈键退场 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · 原市场卡已知值（合同 D 提取基准） (> )?卡主体与 › 都只调 打开；已委托态换状态标、去谈键退场' | 未知 |
 | 求职推荐卡 · 原市场卡已知值（合同 D 提取基准） > 已知卡：公司头行 + 右列[分+薪资] → 职位 → 标签 → 底行，发布人只留身份段 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · 原市场卡已知值（合同 D 提取基准） (> )?已知卡：公司头行 \+ 右列\[分\+薪资\] → 职位 → 标签 → 底行，发布人只留身份段' | 未知 |
 | 求职推荐卡 · 发布人头像（展示本地状态） > Mock 未传图片 URL 保持原语义：无图请求，公司字标/发布人首字位照旧 |  | [src/组件/列表卡片/求职推荐卡.test.tsx](../../src/组件/列表卡片/求职推荐卡.test.tsx) | npm test -- src/组件/列表卡片/求职推荐卡.test.tsx -t '求职推荐卡 · 发布人头像（展示本地状态） (> )?Mock 未传图片 URL 保持原语义：无图请求，公司字标/发布人首字位照旧' | 未知 |
@@ -3203,6 +3210,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 历史代谈外壳 · 壳只持展示（Spec §4.1 固定说明条） > 返回栏 + 数量说明副标题 + 固定说明条 + children；滚动内边距 14px 18px 24px |  | [src/组件/历史代谈展示.test.tsx](../../src/组件/历史代谈展示.test.tsx) | npm test -- src/组件/历史代谈展示.test.tsx -t '历史代谈外壳 · 壳只持展示（Spec §4\.1 固定说明条） (> )?返回栏 \+ 数量说明副标题 \+ 固定说明条 \+ children；滚动内边距 14px 18px 24px' | 未知 |
 | 历史代谈外壳 · 壳只持展示（Spec §4.1 固定说明条） > 返回键触发 返回 回调 |  | [src/组件/历史代谈展示.test.tsx](../../src/组件/历史代谈展示.test.tsx) | npm test -- src/组件/历史代谈展示.test.tsx -t '历史代谈外壳 · 壳只持展示（Spec §4\.1 固定说明条） (> )?返回键触发 返回 回调' | 未知 |
 | 原始PDF层 > 渲染 dialog、文件名与 PDF iframe，关闭回调生效 |  | [src/组件/原始PDF层.test.tsx](../../src/组件/原始PDF层.test.tsx) | npm test -- src/组件/原始PDF层.test.tsx -t '原始PDF层 (> )?渲染 dialog、文件名与 PDF iframe，关闭回调生效' | 未知 |
+| 原始PDF正文（Spec §11.3：全屏层内嵌的纯正文出口） > 不自带弹层壳：只出纸底 + 租约地址 iframe，供全屏层直接内嵌 |  | [src/组件/原始PDF层.test.tsx](../../src/组件/原始PDF层.test.tsx) | npm test -- src/组件/原始PDF层.test.tsx -t '原始PDF正文（Spec §11\.3：全屏层内嵌的纯正文出口） (> )?不自带弹层壳：只出纸底 \+ 租约地址 iframe，供全屏层直接内嵌' | 未知 |
 | 共享规则真实交互 > 全幅左滑仅揭开删除，右滑收起；取消确认不删除 |  | [src/组件/可编辑规则行.test.tsx](../../src/组件/可编辑规则行.test.tsx) | npm test -- src/组件/可编辑规则行.test.tsx -t '共享规则真实交互 (> )?全幅左滑仅揭开删除，右滑收起；取消确认不删除' | 未知 |
 | 共享规则真实交互 > 失焦不保存、取消弃稿，启停不进入编辑 |  | [src/组件/可编辑规则行.test.tsx](../../src/组件/可编辑规则行.test.tsx) | npm test -- src/组件/可编辑规则行.test.tsx -t '共享规则真实交互 (> )?失焦不保存、取消弃稿，启停不进入编辑' | 未知 |
 | 共享规则真实交互 > 组合输入和229键不提交，普通回车只提交一次 |  | [src/组件/可编辑规则行.test.tsx](../../src/组件/可编辑规则行.test.tsx) | npm test -- src/组件/可编辑规则行.test.tsx -t '共享规则真实交互 (> )?组合输入和229键不提交，普通回车只提交一次' | 未知 |
@@ -3424,6 +3432,24 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 简历预览层 · 候选原件投影 > 招聘方原件使用当前候选自己的身份、联系方式和履历 |  | [src/组件/简历预览层.test.tsx](../../src/组件/简历预览层.test.tsx) | npm test -- src/组件/简历预览层.test.tsx -t '简历预览层 · 候选原件投影 (> )?招聘方原件使用当前候选自己的身份、联系方式和履历' | 未知 |
 | 简历预览层 · 候选原件投影 > 没有 S1 原件投影的候选仍显示代号和打码联系方式 |  | [src/组件/简历预览层.test.tsx](../../src/组件/简历预览层.test.tsx) | npm test -- src/组件/简历预览层.test.tsx -t '简历预览层 · 候选原件投影 (> )?没有 S1 原件投影的候选仍显示代号和打码联系方式' | 未知 |
 | 简历预览层 · 候选原件投影 > 简历纸身 候选原件分支不读求职端全局经历 |  | [src/组件/简历预览层.test.tsx](../../src/组件/简历预览层.test.tsx) | npm test -- src/组件/简历预览层.test.tsx -t '简历预览层 · 候选原件投影 (> )?简历纸身 候选原件分支不读求职端全局经历' | 未知 |
+| 聊天时间 > 无效时间只返回空字符串，不生成当前时间 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天时间 (> )?无效时间只返回空字符串，不生成当前时间' | 未知 |
+| 聊天时间 > 月/日/时/分补零 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天时间 (> )?月/日/时/分补零' | 未知 |
+| 聊天时间 > 本地 17:07 构造的输入在本地时区显示 09-16 17:07（显式当前年 2026） |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天时间 (> )?本地 17:07 构造的输入在本地时区显示 09-16 17:07（显式当前年 2026）' | 未知 |
+| 聊天时间 > 跨年消息带年份（YYYY-MM-DD HH:mm） |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天时间 (> )?跨年消息带年份（YYYY-MM-DD HH:mm）' | 未知 |
+| 聊天正文 · markdown > 危险链接不产生可执行 href，安全链接保留正常语义 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · markdown (> )?危险链接不产生可执行 href，安全链接保留正常语义' | 未知 |
+| 聊天正文 · markdown > 原始 HTML 不执行：script 元素不进 DOM，也不碰全局 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · markdown (> )?原始 HTML 不执行：script 元素不进 DOM，也不碰全局' | 未知 |
+| 聊天正文 · markdown > 图片标记仅呈现 alt 文本，不加载外部图片 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · markdown (> )?图片标记仅呈现 alt 文本，不加载外部图片' | 未知 |
+| 聊天正文 · markdown > 多个空行分段：两段是两个段落节点，不被折成一段 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · markdown (> )?多个空行分段：两段是两个段落节点，不被折成一段' | 未知 |
+| 聊天正文 · markdown > 渲染 strong / 标题 / 列表 / 分割线 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · markdown (> )?渲染 strong / 标题 / 列表 / 分割线' | 未知 |
+| 聊天正文 · markdown > 行内代码与代码块渲染为 code/pre，不依赖 HTML |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · markdown (> )?行内代码与代码块渲染为 code/pre，不依赖 HTML' | 未知 |
+| 聊天正文 · text > text 类名挂纯文本样式（pre-wrap 换行在 CSS 源码钉住） |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · text (> )?text 类名挂纯文本样式（pre-wrap 换行在 CSS 源码钉住）' | 未知 |
+| 聊天正文 · text > 普通换行保留为换行，多段不被折成一段 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · text (> )?普通换行保留为换行，多段不被折成一段' | 未知 |
+| 聊天正文 · text > 纯文本不解析 Markdown，** 原样显示 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天正文 · text (> )?纯文本不解析 Markdown，\*\* 原样显示' | 未知 |
+| 聊天气泡 > CSS 几何：短气泡 fit-content 不 grow、时间列不拉伸气泡、我方时间右对齐 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天气泡 (> )?CSS 几何：短气泡 fit-content 不 grow、时间列不拉伸气泡、我方时间右对齐' | 未知 |
+| 聊天气泡 > 合法时间：dateTime 保留原串，显示文本与 格式化聊天时间 一致 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天气泡 (> )?合法时间：dateTime 保留原串，显示文本与 格式化聊天时间 一致' | 未知 |
+| 聊天气泡 > 宽内容与自定义类名挂到对应元素，默认不挂宽内容 |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天气泡 (> )?宽内容与自定义类名挂到对应元素，默认不挂宽内容' | 未知 |
+| 聊天气泡 > 对方头像在气泡前、我方头像在气泡后（DOM 顺序即视觉顺序） |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天气泡 (> )?对方头像在气泡前、我方头像在气泡后（DOM 顺序即视觉顺序）' | 未知 |
+| 聊天气泡 > 无时间不产生空时间节点（省略 / null / 空串 / 无效串） |  | [src/组件/聊天气泡.test.tsx](../../src/组件/聊天气泡.test.tsx) | npm test -- src/组件/聊天气泡.test.tsx -t '聊天气泡 (> )?无时间不产生空时间节点（省略 / null / 空串 / 无效串）' | 未知 |
 | 历史day薪资打开直接确认无截断 |  | [src/组件/薪资区间层.test.tsx](../../src/组件/薪资区间层.test.tsx) | npm test -- src/组件/薪资区间层.test.tsx -t '历史day薪资打开直接确认无截断' | 未知 |
 | 历史hour薪资打开直接确认无截断 |  | [src/组件/薪资区间层.test.tsx](../../src/组件/薪资区间层.test.tsx) | npm test -- src/组件/薪资区间层.test.tsx -t '历史hour薪资打开直接确认无截断' | 未知 |
 | 历史month薪资打开直接确认无截断 |  | [src/组件/薪资区间层.test.tsx](../../src/组件/薪资区间层.test.tsx) | npm test -- src/组件/薪资区间层.test.tsx -t '历史month薪资打开直接确认无截断' | 未知 |
@@ -3469,12 +3495,16 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 真输入条 · 默认（不传 禁用）语义保持 > textarea 与发送键可用：输入回调 改变，发送键只回调 发送 |  | [src/组件/通用.test.tsx](../../src/组件/通用.test.tsx) | npm test -- src/组件/通用.test.tsx -t '真输入条 · 默认（不传 禁用）语义保持 (> )?textarea 与发送键可用：输入回调 改变，发送键只回调 发送' | 未知 |
 | 真输入条 · 默认（不传 禁用）语义保持 > 中文输入法回车上屏（isComposing）不当发送；Shift+Enter 留换行；Enter 发送 |  | [src/组件/通用.test.tsx](../../src/组件/通用.test.tsx) | npm test -- src/组件/通用.test.tsx -t '真输入条 · 默认（不传 禁用）语义保持 (> )?中文输入法回车上屏（isComposing）不当发送；Shift\+Enter 留换行；Enter 发送' | 未知 |
 | 代理气泡 > 两种外观都渲染内容，且收到新 props 直接更新 |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡 (> )?两种外观都渲染内容，且收到新 props 直接更新' | 未知 |
-| 代理气泡框 · 简报宽度覆盖 > CSS 必须用后代选择器 .求职 .简报气泡 盖过收缩宽度（防死选择器回归） |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡框 · 简报宽度覆盖 (> )?CSS 必须用后代选择器 \.求职 \.简报气泡 盖过收缩宽度（防死选择器回归）' | 未知 |
+| 代理气泡 > 正文格式=markdown：解析加粗，同一内容不落纯文本类 |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡 (> )?正文格式=markdown：解析加粗，同一内容不落纯文本类' | 未知 |
+| 代理气泡 > 默认纯文本：** 原样显示（Mock 与招聘端既有行为不变） |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡 (> )?默认纯文本：\*\* 原样显示（Mock 与招聘端既有行为不变）' | 未知 |
+| 代理气泡框 · 简报宽度覆盖 > CSS 必须用后代选择器 .求职 .简报气泡 盖过镜像净空（防死选择器回归） |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡框 · 简报宽度覆盖 (> )?CSS 必须用后代选择器 \.求职 \.简报气泡 盖过镜像净空（防死选择器回归）' | 未知 |
 | 代理气泡框 · 简报宽度覆盖 > 招聘+简报：不挂简报类，保持基础气泡宽度 |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡框 · 简报宽度覆盖 (> )?招聘\+简报：不挂简报类，保持基础气泡宽度' | 未知 |
-| 代理气泡框 · 简报宽度覆盖 > 求职+简报：气泡挂简报类，行根带求职外观类 |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡框 · 简报宽度覆盖 (> )?求职\+简报：气泡挂简报类，行根带求职外观类' | 未知 |
+| 代理气泡框 · 简报宽度覆盖 > 求职+简报：气泡挂简报类，行根带求职外观类（行 > 气泡列 > 气泡） |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '代理气泡框 · 简报宽度覆盖 (> )?求职\+简报：气泡挂简报类，行根带求职外观类（行 (> )?气泡列 (> )?气泡）' | 未知 |
 | 快捷操作行 > 点击只调用被点那一项的回调 |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '快捷操作行 (> )?点击只调用被点那一项的回调' | 未知 |
 | 我方气泡 > 有头像URL用图，改传 null 立即回落首字 |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '我方气泡 (> )?有头像URL用图，改传 null 立即回落首字' | 未知 |
-| 查询结果展示 · 同一回复多卡（Spec §2） > cards 按原序内嵌、各自查询时间、列表游标提示；无假统计/假图/简报标题，渲染零回调 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 同一回复多卡（Spec §2） (> )?cards 按原序内嵌、各自查询时间、列表游标提示；无假统计/假图/简报标题，渲染零回调' | 未知 |
+| 气泡时间（适配层透传） > 不传时间不产生空时间节点（既有 Mock 调用零变化） |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '气泡时间（适配层透传） (> )?不传时间不产生空时间节点（既有 Mock 调用零变化）' | 未知 |
+| 气泡时间（适配层透传） > 代理气泡框与我方气泡都把时间渲染在气泡外下方（列内兄弟节点） |  | [src/组件/问AI代理/对话展示.test.tsx](../../src/组件/问AI代理/对话展示.test.tsx) | npm test -- src/组件/问AI代理/对话展示.test.tsx -t '气泡时间（适配层透传） (> )?代理气泡框与我方气泡都把时间渲染在气泡外下方（列内兄弟节点）' | 未知 |
+| 查询结果展示 · 同一回复多卡（Spec §2） > cards 按原序内嵌、各组标题数量、列表游标提示；无假统计/假图/简报标题，渲染零回调 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 同一回复多卡（Spec §2） (> )?cards 按原序内嵌、各组标题数量、列表游标提示；无假统计/假图/简报标题，渲染零回调' | 未知 |
 | 查询结果展示 · 在谈列表结果 > availability=unavailable：整卡禁点、解读禁用、卡面显示岗位信息不可查看、缺失职位/薪资/城市占位 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 在谈列表结果 (> )?availability=unavailable：整卡禁点、解读禁用、卡面显示岗位信息不可查看、缺失职位/薪资/城市占位' | 未知 |
 | 查询结果展示 · 在谈列表结果 > phase 五枚举映射冻结标题；只映射现有阶段色系，不编 S0–S3 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 在谈列表结果 (> )?phase 五枚举映射冻结标题；只映射现有阶段色系，不编 S0–S3' | 未知 |
 | 查询结果展示 · 在谈列表结果 > 公司/分数占位、城市/薪资/职位真实；needs_action 真才显示需要你 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 在谈列表结果 (> )?公司/分数占位、城市/薪资/职位真实；needs_action 真才显示需要你' | 未知 |
@@ -3486,11 +3516,18 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 查询结果展示 · 在谈详情摘要 > 初评与条件确认完整呈现：证据三组全出（空组显式无）、next_action 中文、最新条件确认 + 历次摘要原生展开、内部 ID 不作正文 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 在谈详情摘要 (> )?初评与条件确认完整呈现：证据三组全出（空组显式无）、next_action 中文、最新条件确认 \+ 历次摘要原生展开、内部 ID 不作正文' | 未知 |
 | 查询结果展示 · 在谈详情摘要 > 详情岗位不可查看：整卡禁点、解读禁用、显示岗位信息不可查看 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 在谈详情摘要 (> )?详情岗位不可查看：整卡禁点、解读禁用、显示岗位信息不可查看' | 未知 |
 | 查询结果展示 · 岗位推荐结果 > next_cursor 非 null 显示可继续问'下一批'；null 不显示；不新增分页按钮 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 岗位推荐结果 (> )?next_cursor 非 null 显示可继续问'\''下一批'\''；null 不显示；不新增分页按钮' | 未知 |
-| 查询结果展示 · 岗位推荐结果 > 月/日/时薪三档、年薪月数缺席不假设薪数、空地点显示地点未知、safe_reasons 空出占位 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 岗位推荐结果 (> )?月/日/时薪三档、年薪月数缺席不假设薪数、空地点显示地点未知、safe_reasons 空出占位' | 未知 |
-| 查询结果展示 · 岗位推荐结果 > 真实字段映射原市场卡：薪资/标签[地点,n 薪]、未知占位、委托禁用、safe_reasons 原序、打开岗位送精确 job_id |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 岗位推荐结果 (> )?真实字段映射原市场卡：薪资/标签\[地点,n 薪\]、未知占位、委托禁用、safe_reasons 原序、打开岗位送精确 job_id' | 未知 |
+| 查询结果展示 · 岗位推荐结果 > 月/日/时薪三档、年薪月数缺席不假设薪数、空地点显示地点未知、理由全过滤出卡内占位 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 岗位推荐结果 (> )?月/日/时薪三档、年薪月数缺席不假设薪数、空地点显示地点未知、理由全过滤出卡内占位' | 未知 |
+| 查询结果展示 · 岗位推荐结果 > 真实字段映射原市场卡：薪资/标签[地点,n 薪]、未知占位、委托禁用、卡内中文理由原序、打开岗位送精确 job_id |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 岗位推荐结果 (> )?真实字段映射原市场卡：薪资/标签\[地点,n 薪\]、未知占位、委托禁用、卡内中文理由原序、打开岗位送精确 job_id' | 未知 |
 | 查询结果展示 · 岗位推荐结果 > 空列表显示真实空态：不填充演示行、无序号 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 岗位推荐结果 (> )?空列表显示真实空态：不填充演示行、无序号' | 未知 |
-| 查询结果展示 · 纯文本与不可用回复（合同 B） > visibility=unavailable：只显示服务端提示文本，不渲染任何卡片区域 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 纯文本与不可用回复（合同 B） (> )?visibility=unavailable：只显示服务端提示文本，不渲染任何卡片区域' | 未知 |
-| 查询结果展示 · 纯文本与不可用回复（合同 B） > 无 cards：只出普通代理气泡正文，无结果区、无查询时间、无任何卡 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 纯文本与不可用回复（合同 B） (> )?无 cards：只出普通代理气泡正文，无结果区、无查询时间、无任何卡' | 未知 |
+| 查询结果展示 · 消息时间（Spec §10.4） > 多卡也只显示一次 Agent 时间，取 created_at 不取 queried_at，位置在全部结果之后 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 消息时间（Spec §10\.4） (> )?多卡也只显示一次 Agent 时间，取 created_at 不取 queried_at，位置在全部结果之后' | 未知 |
+| 查询结果展示 · 消息时间（Spec §10.4） > 无卡回复同样带时间；不可见提示回复也遵循此布局 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 消息时间（Spec §10\.4） (> )?无卡回复同样带时间；不可见提示回复也遵循此布局' | 未知 |
+| 查询结果展示 · 类型标题与数量（Spec §10.2） > 三类各自返回：标题一一对应，两列表带实际数量、详情不显示数量 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 类型标题与数量（Spec §10\.2） (> )?三类各自返回：标题一一对应，两列表带实际数量、详情不显示数量' | 未知 |
+| 查询结果展示 · 类型标题与数量（Spec §10.2） > 有已知卡片才显示结果分割线；查询时间不展示（queried_at 只解码不上屏） |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 类型标题与数量（Spec §10\.2） (> )?有已知卡片才显示结果分割线；查询时间不展示（queried_at 只解码不上屏）' | 未知 |
+| 查询结果展示 · 类型标题与数量（Spec §10.2） > 混排与重复类型：cards 原序、重复类型不合并各出标题，正文后只有一条结果分割线 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 类型标题与数量（Spec §10\.2） (> )?混排与重复类型：cards 原序、重复类型不合并各出标题，正文后只有一条结果分割线' | 未知 |
+| 查询结果展示 · 类型标题与数量（Spec §10.2） > 空列表仍显示正确标题与真实空态 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 类型标题与数量（Spec §10\.2） (> )?空列表仍显示正确标题与真实空态' | 未知 |
+| 查询结果展示 · 纯文本与不可用回复（合同 B） > visibility=unavailable：只显示服务端提示文本（Markdown），不渲染任何卡片区域 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 纯文本与不可用回复（合同 B） (> )?visibility=unavailable：只显示服务端提示文本（Markdown），不渲染任何卡片区域' | 未知 |
+| 查询结果展示 · 纯文本与不可用回复（合同 B） > 无 cards：只出普通代理气泡 Markdown 正文，无结果区、无分割线、无查询时间、无任何卡 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 纯文本与不可用回复（合同 B） (> )?无 cards：只出普通代理气泡 Markdown 正文，无结果区、无分割线、无查询时间、无任何卡' | 未知 |
+| 查询结果展示 · 纯文本与不可用回复（合同 B） > 无卡回复按 Markdown 渲染 Spec §10.5 完整样本：加粗/标题/列表/分割线都在正文容器内 |  | [src/组件/问AI代理/查询结果展示.test.tsx](../../src/组件/问AI代理/查询结果展示.test.tsx) | npm test -- src/组件/问AI代理/查询结果展示.test.tsx -t '查询结果展示 · 纯文本与不可用回复（合同 B） (> )?无卡回复按 Markdown 渲染 Spec §10\.5 完整样本：加粗/标题/列表/分割线都在正文容器内' | 未知 |
 | 简报展示 > 同实例 rerender：统计 0→12、正文、漏斗人数/宽度依次直接更新 |  | [src/组件/问AI代理/简报展示.test.tsx](../../src/组件/问AI代理/简报展示.test.tsx) | npm test -- src/组件/问AI代理/简报展示.test.tsx -t '简报展示 (> )?同实例 rerender：统计 0→12、正文、漏斗人数/宽度依次直接更新' | 未知 |
 | 简报展示 > 处理文案 null 与数值 0 不混淆：null 出双按钮，文案送入才替换，统计 0 不受牵连 |  | [src/组件/问AI代理/简报展示.test.tsx](../../src/组件/问AI代理/简报展示.test.tsx) | npm test -- src/组件/问AI代理/简报展示.test.tsx -t '简报展示 (> )?处理文案 null 与数值 0 不混淆：null 出双按钮，文案送入才替换，统计 0 不受牵连' | 未知 |
 | 简报展示 > 外壳是代理气泡框：内容包在气泡里，端差外观容器挂在本模块外观类上 |  | [src/组件/问AI代理/简报展示.test.tsx](../../src/组件/问AI代理/简报展示.test.tsx) | npm test -- src/组件/问AI代理/简报展示.test.tsx -t '简报展示 (> )?外壳是代理气泡框：内容包在气泡里，端差外观容器挂在本模块外观类上' | 未知 |
@@ -3584,7 +3621,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2200 例 · 100 文件
+### 页面/接线 · 2215 例 · 101 文件
 
 <details>
 <summary>展开明细</summary>
@@ -3766,16 +3803,18 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | Backend会话列表 > 错误带缓存 + 搜索：错误与无匹配共存；AI 行命中时不出无匹配 |  | [src/屏幕/P7/Backend会话列表.test.tsx](../../src/屏幕/P7/Backend会话列表.test.tsx) | npm test -- src/屏幕/P7/Backend会话列表.test.tsx -t 'Backend会话列表 (> )?错误带缓存 \+ 搜索：错误与无匹配共存；AI 行命中时不出无匹配' | 未知 |
 | Backend会话列表 > 首读进行中显示正在读入，成功空页显示还没有真人会话，失败显示重试 |  | [src/屏幕/P7/Backend会话列表.test.tsx](../../src/屏幕/P7/Backend会话列表.test.tsx) | npm test -- src/屏幕/P7/Backend会话列表.test.tsx -t 'Backend会话列表 (> )?首读进行中显示正在读入，成功空页显示还没有真人会话，失败显示重试' | 未知 |
 | Backend真人会话 > Enter 发送 trim 后正文、Shift+Enter 换行不发送、code point 上限按 Array.from 计 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?Enter 发送 trim 后正文、Shift\+Enter 换行不发送、code point 上限按 Array\.from 计' | 未知 |
-| Backend真人会话 > context 不可用：隐藏上下文动作，保留「重新加载会话信息」，消息仍渲染 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?context 不可用：隐藏上下文动作，保留「重新加载会话信息」，消息仍渲染' | 未知 |
+| Backend真人会话 > context 不可用：主项占位禁用、保留「重新加载会话信息」，消息仍渲染 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?context 不可用：主项占位禁用、保留「重新加载会话信息」，消息仍渲染' | 未知 |
 | Backend真人会话 > read-through：只提交最新渲染的 user_text，重渲染不重复提交；system 行零提交 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?read-through：只提交最新渲染的 user_text，重渲染不重复提交；system 行零提交' | 未知 |
 | Backend真人会话 > read-through：只有 system 行时零提交 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?read-through：只有 system 行时零提交' | 未知 |
 | Backend真人会话 > reason=in_progress 显示「消息仍在处理中，请稍后重试」，不提供放弃 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?reason=in_progress 显示「消息仍在处理中，请稍后重试」，不提供放弃' | 未知 |
 | Backend真人会话 > sender 对齐：本端右侧气泡、对端左侧气泡、system 行中性胶囊（双端各验一次） |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?sender 对齐：本端右侧气泡、对端左侧气泡、system 行中性胶囊（双端各验一次）' | 未知 |
 | Backend真人会话 > unknown/outcome_unknown 可放弃：显示重新确认与放弃；放弃保留在编草稿并清该意图 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?unknown/outcome_unknown 可放弃：显示重新确认与放弃；放弃保留在编草稿并清该意图' | 未知 |
-| Backend真人会话 > 候选端「看职位」只在 context available 且 job_ref 在场时出现，点击走权威岗位路由 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?候选端「看职位」只在 context available 且 job_ref 在场时出现，点击走权威岗位路由' | 未知 |
+| Backend真人会话 > 候选端「看职位」盖全屏层（不再路由跳转）：电话/微信诚实缺失占位，无复制 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?候选端「看职位」盖全屏层（不再路由跳转）：电话/微信诚实缺失占位，无复制' | 未知 |
 | Backend真人会话 > 发送不乐观追加：确认后清草稿，权威快照出现新消息；无确认弹窗文案 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?发送不乐观追加：确认后清草稿，权威快照出现新消息；无确认弹窗文案' | 未知 |
-| Backend真人会话 > 招聘端「看简历」只在 resume_ref 在场时出现：点击才取 Case PDF，关闭/卸载回收租约 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?招聘端「看简历」只在 resume_ref 在场时出现：点击才取 Case PDF，关闭/卸载回收租约' | 未知 |
+| Backend真人会话 > 招聘端「看简历」开层才取 Case PDF：加载→授权原件正文，继续沟通关层回收租约 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?招聘端「看简历」开层才取 Case PDF：加载→授权原件正文，继续沟通关层回收租约' | 未知 |
+| Backend真人会话 > 招聘页头读 Case 身份：disclosed 有名显真名、副标题为 Case 职位名 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?招聘页头读 Case 身份：disclosed 有名显真名、副标题为 Case 职位名' | 未知 |
 | Backend真人会话 > 时间序渲染 + next_cursor 在场时提供「加载更早」；游标已尽不渲染 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?时间序渲染 \+ next_cursor 在场时提供「加载更早」；游标已尽不渲染' | 未知 |
+| Backend真人会话 > 消息行共用气泡与 markdown：时间取每条 createdAt 本地格式化，不再 UTC 截取 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?消息行共用气泡与 markdown：时间取每条 createdAt 本地格式化，不再 UTC 截取' | 未知 |
 | Backend真人会话 > 直达注册可见会话并读取详情+最新消息，卸载注销 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?直达注册可见会话并读取详情\+最新消息，卸载注销' | 未知 |
 | Backend真人会话 > 详情 404 清空旧内容；消息 503 保留旧成功快照只落错误 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 (> )?详情 404 清空旧内容；消息 503 保留旧成功快照只落错误' | 未知 |
 | Backend真人会话 review-r1 修复 > F6b：拒绝到达时若用户未再编辑，失败正文原样回填草稿 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 review-r1 修复 (> )?F6b：拒绝到达时若用户未再编辑，失败正文原样回填草稿' | 未知 |
@@ -3787,6 +3826,16 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | Backend真人会话 · P8 会话举报 > ⋯ 是键盘可达控件：点击 / Enter / Space 都打开同一个举报层 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 · P8 会话举报 (> )?⋯ 是键盘可达控件：点击 / Enter / Space 都打开同一个举报层' | 未知 |
 | Backend真人会话 · P8 会话举报 > 举报绝不本地拉黑；目标不是 match_case（P8 没有为 MatchCase 加举报按钮） |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 · P8 会话举报 (> )?举报绝不本地拉黑；目标不是 match_case（P8 没有为 MatchCase 加举报按钮）' | 未知 |
 | Backend真人会话 · P8 会话举报 > 提交举报：target 是不可变会话坐标，确认后强制重读该会话 |  | [src/屏幕/P7/Backend真人会话.test.tsx](../../src/屏幕/P7/Backend真人会话.test.tsx) | npm test -- src/屏幕/P7/Backend真人会话.test.tsx -t 'Backend真人会话 · P8 会话举报 (> )?提交举报：target 是不可变会话坐标，确认后强制重读该会话' | 未知 |
+| use真人会话资料 · 候选页头（发布人档案 + 发布方公司） > 发布人档案缺席：姓名/职务给缺失占位，不挖 PDF 或拼身份坐标 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 候选页头（发布人档案 \+ 发布方公司） (> )?发布人档案缺席：姓名/职务给缺失占位，不挖 PDF 或拼身份坐标' | 未知 |
+| use真人会话资料 · 候选页头（发布人档案 + 发布方公司） > 岗位/企业缺场或不可用：公司显示「公司暂未提供」，发布人姓名/职务仍按 Case 冻结档案 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 候选页头（发布人档案 \+ 发布方公司） (> )?岗位/企业缺场或不可用：公司显示「公司暂未提供」，发布人姓名/职务仍按 Case 冻结档案' | 未知 |
+| use真人会话资料 · 候选页头（发布人档案 + 发布方公司） > 标题 = 发布人姓名，副标题 = 发布方公司 · 职务；公司读公开企业 display_name，不用用人企业 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 候选页头（发布人档案 \+ 发布方公司） (> )?标题 = 发布人姓名，副标题 = 发布方公司 · 职务；公司读公开企业 display_name，不用用人企业' | 未知 |
+| use真人会话资料 · 招聘页头（Case candidateIdentity） > disclosed 有名：标题 = 候选真名、副标题 = Case 职位名、头像 = 已披露 avatar_url |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 招聘页头（Case candidateIdentity） (> )?disclosed 有名：标题 = 候选真名、副标题 = Case 职位名、头像 = 已披露 avatar_url' | 未知 |
+| use真人会话资料 · 招聘页头（Case candidateIdentity） > disclosed 缺名：显示「候选人姓名暂未提供」，anonymous：保留 Case 代号、不显被遮蔽姓名 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 招聘页头（Case candidateIdentity） (> )?disclosed 缺名：显示「候选人姓名暂未提供」，anonymous：保留 Case 代号、不显被遮蔽姓名' | 未知 |
+| use真人会话资料 · 读取与失败降级 > jobDetail 缺席：职位资料为 null（弹层显示不可用），不拿当前岗位替代历史资料 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?jobDetail 缺席：职位资料为 null（弹层显示不可用），不拿当前岗位替代历史资料' | 未知 |
+| use真人会话资料 · 读取与失败降级 > 快照缺席 = loading；上下文不可用 = unavailable（回落 P7 标签，不透出旧身份） |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?快照缺席 = loading；上下文不可用 = unavailable（回落 P7 标签，不透出旧身份）' | 未知 |
+| use真人会话资料 · 读取与失败降级 > 授权在场进会话做一次定向 P5 读取（不加轮询）；候选端补读当前岗位与公开企业 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?授权在场进会话做一次定向 P5 读取（不加轮询）；候选端补读当前岗位与公开企业' | 未知 |
+| use真人会话资料 · 读取与失败降级 > 补读失败不消费缓存旧身份（有 detail 也有 error 一并按失败降级）；重读走 force |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?补读失败不消费缓存旧身份（有 detail 也有 error 一并按失败降级）；重读走 force' | 未知 |
+| use真人会话资料 · 读取与失败降级 > 迟到资料不污染新会话：旧 case 的补读落地只写旧范围键 |  | [src/屏幕/P7/use真人会话资料.test.tsx](../../src/屏幕/P7/use真人会话资料.test.tsx) | npm test -- src/屏幕/P7/use真人会话资料.test.tsx -t 'use真人会话资料 · 读取与失败降级 (> )?迟到资料不污染新会话：旧 case 的补读落地只写旧范围键' | 未知 |
 | 个人信息 · Backend 候选头像 > 选择 JPG 走真实头像操作，不把 data URL 派发进账号状态 |  | [src/屏幕/个人信息.test.tsx](../../src/屏幕/个人信息.test.tsx) | npm test -- src/屏幕/个人信息.test.tsx -t '个人信息 · Backend 候选头像 (> )?选择 JPG 走真实头像操作，不把 data URL 派发进账号状态' | 未知 |
 | 个人信息 · Backend 披露联系方式只读 > Backend 全屏零「存联系方式」派发（本地联系方式切片不被写入） |  | [src/屏幕/个人信息.test.tsx](../../src/屏幕/个人信息.test.tsx) | npm test -- src/屏幕/个人信息.test.tsx -t '个人信息 · Backend 披露联系方式只读 (> )?Backend 全屏零「存联系方式」派发（本地联系方式切片不被写入）' | 未知 |
 | 个人信息 · Backend 披露联系方式只读 > 披露手机/邮箱/微信各一行独立「未接入」，无编辑入口，掩码绝不落在披露手机行 |  | [src/屏幕/个人信息.test.tsx](../../src/屏幕/个人信息.test.tsx) | npm test -- src/屏幕/个人信息.test.tsx -t '个人信息 · Backend 披露联系方式只读 (> )?披露手机/邮箱/微信各一行独立「未接入」，无编辑入口，掩码绝不落在披露手机行' | 未知 |
@@ -5140,8 +5189,10 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 真人会话 · P7 模式分支 > Backend 访问无参路由 fail closed 成「会话不可用」，绝不读默认 J-01 |  | [src/屏幕/真人会话.test.tsx](../../src/屏幕/真人会话.test.tsx) | npm test -- src/屏幕/真人会话.test.tsx -t '真人会话 · P7 模式分支 (> )?Backend 访问无参路由 fail closed 成「会话不可用」，绝不读默认 J-01' | 未知 |
 | 真人会话 · P7 模式分支 > Mock 无参路由保留 J-01 剧情 |  | [src/屏幕/真人会话.test.tsx](../../src/屏幕/真人会话.test.tsx) | npm test -- src/屏幕/真人会话.test.tsx -t '真人会话 · P7 模式分支 (> )?Mock 无参路由保留 J-01 剧情' | 未知 |
 | 真人会话 · review-r3 scope 隔离合同 > 双端父屏按 conversationId key 重挂 Backend 真人会话；卸载敏感代际用 useLayoutEffect |  | [src/屏幕/真人会话.test.tsx](../../src/屏幕/真人会话.test.tsx) | npm test -- src/屏幕/真人会话.test.tsx -t '真人会话 · review-r3 scope 隔离合同 (> )?双端父屏按 conversationId key 重挂 Backend 真人会话；卸载敏感代际用 useLayoutEffect' | 未知 |
-| P7 判别联合属性 > Backend：无联系方式时不渲染电话/微信；主项按下直接回调，不盖层 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t 'P7 判别联合属性 (> )?Backend：无联系方式时不渲染电话/微信；主项按下直接回调，不盖层' | 未知 |
-| P7 判别联合属性 > 主项内容（Mock）仍盖全屏层且行为不变 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t 'P7 判别联合属性 (> )?主项内容（Mock）仍盖全屏层且行为不变' | 未知 |
+| P7 Backend 增量 > 主项内容（Mock）仍盖全屏层且行为不变 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t 'P7 Backend 增量 (> )?主项内容（Mock）仍盖全屏层且行为不变' | 未知 |
+| P7 Backend 增量 > 主项打开在层打开时回调一次；继续沟通与 Escape 关层都回调 主项关闭（租约回收时机归调用方） |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t 'P7 Backend 增量 (> )?主项打开在层打开时回调一次；继续沟通与 Escape 关层都回调 主项关闭（租约回收时机归调用方）' | 未知 |
+| P7 Backend 增量 > 主项禁用：缺授权坐标时入口占位禁用，点击不开层、不触发打开回调 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t 'P7 Backend 增量 (> )?主项禁用：缺授权坐标时入口占位禁用，点击不开层、不触发打开回调' | 未知 |
+| P7 Backend 增量 > 联系方式占位：电话/微信入口在场，展开显示「暂未提供」，无号码无复制动作 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t 'P7 Backend 增量 (> )?联系方式占位：电话/微信入口在场，展开显示「暂未提供」，无号码无复制动作' | 未知 |
 | 主项的全屏详情层 > 三项互斥：点主项开层会把展开的联系卡收掉（标注 2026-08-24） |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t '主项的全屏详情层 (> )?三项互斥：点主项开层会把展开的联系卡收掉（标注 2026-08-24）' | 未知 |
 | 主项的全屏详情层 > 底部「继续沟通」关掉层，回到聊天 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t '主项的全屏详情层 (> )?底部「继续沟通」关掉层，回到聊天' | 未知 |
 | 主项的全屏详情层 > 点主项就地盖一层，正文是调用方传进来的那份档案 |  | [src/屏幕/真人会话操作栏.test.tsx](../../src/屏幕/真人会话操作栏.test.tsx) | npm test -- src/屏幕/真人会话操作栏.test.tsx -t '主项的全屏详情层 (> )?点主项就地盖一层，正文是调用方传进来的那份档案' | 未知 |
@@ -5650,6 +5701,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 问AI代理 · Backend 真实聊天接线（use助手会话） > 新回复接近底部（80px 阈值）才跟随；阅读旧消息时不抢滚动 |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?新回复接近底部（80px 阈值）才跟随；阅读旧消息时不抢滚动' | 未知 |
 | 问AI代理 · Backend 真实聊天接线（use助手会话） > 无关重试的待确认解除不复活旧解读暂存：直接受理残留 + 用户改稿后不被旧暂存覆盖（fix 2 反例） |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?无关重试的待确认解除不复活旧解读暂存：直接受理残留 \+ 用户改稿后不被旧暂存覆盖（fix 2 反例）' | 未知 |
 | 问AI代理 · Backend 真实聊天接线（use助手会话） > 普通发送的待确认解除不复活解读暂存：发出去的是草稿本身，清稿是正常契约 |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?普通发送的待确认解除不复活解读暂存：发出去的是草稿本身，清稿是正常契约' | 未知 |
+| 问AI代理 · Backend 真实聊天接线（use助手会话） > 消息时间与正文 Markdown：两侧同轮共用同条 created_at，不取 queried_at；成功回复正文按 Markdown 渲染 |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?消息时间与正文 Markdown：两侧同轮共用同条 created_at，不取 queried_at；成功回复正文按 Markdown 渲染' | 未知 |
 | 问AI代理 · Backend 真实聊天接线（use助手会话） > 真实发送：新幂等键受理上屏、2 秒定向轮询、成功回复用查询结果展示渲染、终态停表 |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?真实发送：新幂等键受理上屏、2 秒定向轮询、成功回复用查询结果展示渲染、终态停表' | 未知 |
 | 问AI代理 · Backend 真实聊天接线（use助手会话） > 解读不吞草稿：受理清掉显式文本草稿后原样恢复用户的输入 |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?解读不吞草稿：受理清掉显式文本草稿后原样恢复用户的输入' | 未知 |
 | 问AI代理 · Backend 真实聊天接线（use助手会话） > 解读次级动作：发送 Spec §5 可见模板文本（精确 record_id），不导航；写操作在飞期间服从输入禁用 |  | [src/屏幕/问AI代理.test.tsx](../../src/屏幕/问AI代理.test.tsx) | npm test -- src/屏幕/问AI代理.test.tsx -t '问AI代理 · Backend 真实聊天接线（use助手会话） (> )?解读次级动作：发送 Spec §5 可见模板文本（精确 record_id），不导航；写操作在飞期间服从输入禁用' | 未知 |
@@ -5794,7 +5846,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-## 第二层 · 浏览器（Playwright） · 329 例 · 26 文件
+## 第二层 · 浏览器（Playwright） · 335 例 · 26 文件
 
 ### Agent规则 · 11 例 · 1 文件
 
@@ -5855,20 +5907,22 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 助手会话 · 7 例 · 1 文件
+### 助手会话 · 9 例 · 1 文件
 
 <details>
 <summary>展开明细</summary>
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| 助手会话 Backend 390 @backend > 切页重进恢复processing轮询 @backend | fixture | [e2e/suites/助手会话.spec.ts:376](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 切页重进恢复processing轮询 @backend' | 未知 |
-| 助手会话 Backend 390 @backend > 加载更早消息保持阅读位置 @backend | fixture | [e2e/suites/助手会话.spec.ts:322](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 加载更早消息保持阅读位置 @backend' | 未知 |
-| 助手会话 Backend 390 @backend > 卡片点原生详情并返回 @backend | fixture | [e2e/suites/助手会话.spec.ts:247](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 卡片点原生详情并返回 @backend' | 未知 |
-| 助手会话 Backend 390 @backend > 失败重试不重复用户消息 @backend | fixture | [e2e/suites/助手会话.spec.ts:421](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 失败重试不重复用户消息 @backend' | 未知 |
-| 助手会话 Backend 390 @backend > 空历史发送到三类卡片 @backend | fixture | [e2e/suites/助手会话.spec.ts:144](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 空历史发送到三类卡片 @backend' | 未知 |
-| 助手会话 布局回归 320 @backend > 富卡片布局不变式 @backend | fixture | [e2e/suites/助手会话.spec.ts:485](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 布局回归 320 @backend 富卡片布局不变式 @backend' | 未知 |
-| 助手会话 布局回归 390 @backend > 富卡片布局不变式 @backend | fixture | [e2e/suites/助手会话.spec.ts:485](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 布局回归 390 @backend 富卡片布局不变式 @backend' | 未知 |
+| 助手会话 Backend 390 @backend > 切页重进恢复processing轮询 @backend | fixture | [e2e/suites/助手会话.spec.ts:394](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 切页重进恢复processing轮询 @backend' | 未知 |
+| 助手会话 Backend 390 @backend > 加载更早消息保持阅读位置 @backend | fixture | [e2e/suites/助手会话.spec.ts:340](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 加载更早消息保持阅读位置 @backend' | 未知 |
+| 助手会话 Backend 390 @backend > 卡片点原生详情并返回 @backend | fixture | [e2e/suites/助手会话.spec.ts:264](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 卡片点原生详情并返回 @backend' | 未知 |
+| 助手会话 Backend 390 @backend > 失败重试不重复用户消息 @backend | fixture | [e2e/suites/助手会话.spec.ts:439](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 失败重试不重复用户消息 @backend' | 未知 |
+| 助手会话 Backend 390 @backend > 空历史发送到三类卡片 @backend | fixture | [e2e/suites/助手会话.spec.ts:147](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 Backend 390 @backend 空历史发送到三类卡片 @backend' | 未知 |
+| 助手会话 布局回归 320 @backend > 富卡片布局不变式 @backend | fixture | [e2e/suites/助手会话.spec.ts:503](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 布局回归 320 @backend 富卡片布局不变式 @backend' | 未知 |
+| 助手会话 布局回归 390 @backend > 富卡片布局不变式 @backend | fixture | [e2e/suites/助手会话.spec.ts:503](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 布局回归 390 @backend 富卡片布局不变式 @backend' | 未知 |
+| 助手会话 消息时间源 Asia/Shanghai @backend > 消息时间取 created_at 而非 queried_at（Asia/Shanghai） @backend | fixture | [e2e/suites/助手会话.spec.ts:644](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 消息时间源 Asia/Shanghai @backend 消息时间取 created_at 而非 queried_at（Asia/Shanghai） @backend' | 未知 |
+| 助手会话 消息时间源 UTC @backend > 消息时间取 created_at 而非 queried_at（UTC） @backend | fixture | [e2e/suites/助手会话.spec.ts:644](../../e2e/suites/助手会话.spec.ts) | npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture --grep '助手会话 消息时间源 UTC @backend 消息时间取 created_at 而非 queried_at（UTC） @backend' | 未知 |
 
 </details>
 
@@ -6180,21 +6234,25 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 真人消息 · 8 例 · 1 文件
+### 真人消息 · 12 例 · 1 文件
 
 <details>
 <summary>展开明细</summary>
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| P7 真人会话 fixture @backend > P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display | fixture | [e2e/suites/真人消息.spec.ts:216](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display' | 未知 |
-| P7 真人会话 fixture @backend > context 不可用保留消息、隐藏上下文动作，提供重新加载会话信息 @backend | fixture | [e2e/suites/真人消息.spec.ts:188](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend context 不可用保留消息、隐藏上下文动作，提供重新加载会话信息 @backend' | 未知 |
-| P7 真人会话 fixture @backend > foreign/wrong-role 404 不保留上一会话残留 @backend | fixture | [e2e/suites/真人消息.spec.ts:201](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend foreign/wrong-role 404 不保留上一会话残留 @backend' | 未知 |
+| P7 消息时间与短气泡几何 Asia/Shanghai @backend > 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend | fixture | [e2e/suites/真人消息.spec.ts:306](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 消息时间与短气泡几何 Asia/Shanghai @backend 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend' | 未知 |
+| P7 消息时间与短气泡几何 UTC @backend > 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend | fixture | [e2e/suites/真人消息.spec.ts:306](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 消息时间与短气泡几何 UTC @backend 每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend' | 未知 |
+| P7 真人会话 fixture @backend > P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display | fixture | [e2e/suites/真人消息.spec.ts:272](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend P5 发布后招聘端「开始私聊」进入企业参数路由 @backend @s0-s3-display' | 未知 |
+| P7 真人会话 fixture @backend > context 不可用保留消息、主项占位禁用，提供重新加载会话信息 @backend | fixture | [e2e/suites/真人消息.spec.ts:188](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend context 不可用保留消息、主项占位禁用，提供重新加载会话信息 @backend' | 未知 |
+| P7 真人会话 fixture @backend > foreign/wrong-role 404 不保留上一会话残留 @backend | fixture | [e2e/suites/真人消息.spec.ts:257](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend foreign/wrong-role 404 不保留上一会话残留 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 候选端发送：首答结果未知经同键重放收敛，消息只落一条 @backend | fixture | [e2e/suites/真人消息.spec.ts:106](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 候选端发送：首答结果未知经同键重放收敛，消息只落一条 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 候选端收件箱未读 → 进会话 read-through → 权威收件箱归零 @backend | fixture | [e2e/suites/真人消息.spec.ts:73](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 候选端收件箱未读 → 进会话 read-through → 权威收件箱归零 @backend' | 未知 |
+| P7 真人会话 fixture @backend > 候选端页头身份与全屏职位层：发布方公司不冒充用人企业，电话微信诚实缺失 @backend | fixture | [e2e/suites/真人消息.spec.ts:203](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 候选端页头身份与全屏职位层：发布方公司不冒充用人企业，电话微信诚实缺失 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 招聘端经内容无关失效事件 HTTP 重拉看到候选新消息并回复 @backend | fixture | [e2e/suites/真人消息.spec.ts:129](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 招聘端经内容无关失效事件 HTTP 重拉看到候选新消息并回复 @backend' | 未知 |
+| P7 真人会话 fixture @backend > 招聘端页头候选真名与全屏 PDF 层：授权原件正文、关闭回聊天 @backend | fixture | [e2e/suites/真人消息.spec.ts:232](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 招聘端页头候选真名与全屏 PDF 层：授权原件正文、关闭回聊天 @backend' | 未知 |
 | P7 真人会话 fixture @backend > 断线重连无条件重拉当前角色收件箱与当前会话 @backend | fixture | [e2e/suites/真人消息.spec.ts:166](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture --grep 'P7 真人会话 fixture @backend 断线重连无条件重拉当前角色收件箱与当前会话 @backend' | 未知 |
-| P7 Mock 数据源隔离 @mock > Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock | mock | [e2e/suites/真人消息.spec.ts:238](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=mock --grep 'P7 Mock 数据源隔离 @mock Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock' | 未知 |
+| P7 Mock 数据源隔离 @mock > Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock | mock | [e2e/suites/真人消息.spec.ts:355](../../e2e/suites/真人消息.spec.ts) | npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=mock --grep 'P7 Mock 数据源隔离 @mock Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock' | 未知 |
 
 </details>
 

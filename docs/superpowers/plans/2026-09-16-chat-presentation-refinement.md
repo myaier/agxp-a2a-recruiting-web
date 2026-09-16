@@ -160,16 +160,19 @@ hook 读取现有 provider 状态；允许几个局部 ref/state 记录本次范
 
 PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件名,地址})`（或等价同文件纯正文出口），原 `原始PDF层` 内复用它，其他消费者不变；真人全屏层嵌正文，不嵌另一层弹层。不要复制 iframe 和租约逻辑。
 
-- [ ] 先核对现有操作/状态字段、资料映射以及 PDF 文件与测试；上述修改文件在基线均已存在，不新建第二份测试文件。
-- [ ] 追加资料 hook/页面反例：disclosed 有名/缺名/anonymous、候选招聘者及发布方和用人企业不同、缺资料/请求失败、不阻断发消息、换会话/角色/账号/context unavailable 不透出旧身份；使用受控 promise 验证迟到资料不污染新页，不运行真 API。
-- [ ] 先跑 `npm test -- src/屏幕/P7/Backend真人会话.test.tsx src/屏幕/P7/use真人会话资料.test.tsx`，确认现有页面无法满足新页头/占位行为；旧“按 job_ref 跳转”“无电话微信”断言改为批准的新行为，不删消息读写与隔离断言。
-- [ ] 实现局部资料 hook 和 Backend 页接线。针对补读使用当前范围 guard 与原 provider 代际，不建立新生命周期框架；context 失效时关闭资料弹层、清理 PDF，保留消息可读写和重读入口。
-- [ ] 扩展操作栏最小属性，复用原 CSS 全屏层。候选内容显示现有 Case 职位资料；招聘开层先展示加载，按原 Case 取 PDF，成功嵌正文，失败提供本层重试。主项授权坐标缺失禁用占位，电话微信仍可看缺失说明；切换操作互斥。关闭/切会话/卸载/失权递增现有 PDF 代际，撤销已有租约，迟到回执不能重开层。
-- [ ] 真人消息行改用 Task 1 的 `聊天气泡` + markdown `聊天正文`，时间传 `行.createdAt`，保留 `data-侧` 与系统消息分支；不改 senderRole 左右判定或消息键，不修改发送的 content。删除本页重复气泡 JSX/UTC 取短时间函数；不全局改旧直聊 CSS，以免改动 Mock/A2A。
-- [ ] 在统一真人消息 fixture 显式加入新增 Case/岗位/企业读取；复用各域 handlers 与统一安装入口，遗漏请求必须被离线边界拒绝。用真实 PDF fixture 覆盖全屏展示、关闭/失权回收、迟到响应；不因新资料读取而放行真实网。
-- [ ] 执行 `npm test -- src/屏幕/P7/use真人会话资料.test.tsx src/屏幕/P7/Backend真人会话.test.tsx src/屏幕/真人会话操作栏.test.tsx src/组件/原始PDF层.test.tsx src/屏幕/真人会话.test.tsx src/屏幕/企业真人会话.test.tsx`；`npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture` 验双角色和交互，另按实际 Mock 用例选择 `--project=mock` 同 Suite，禁止以空选择记通过。
-- [ ] 浏览器保存 320px/390px 双侧短/长消息与弹层截图，检查短气泡实际 bounding box 随文字缩短、长文不溢出、关闭后滚动/草稿/URL 不变，电话微信缺失不可复制。真人时间同样用两个显式 `timezoneId` describe（Asia/Shanghai 和 UTC）各一条聚焦用例，冻结当前年 2026；分别给对方/我方不同的 createdAt（如 09:07Z/09:09Z），断言本地两条时间分别为 17:07/17:09，UTC 对照为 09:07/09:09，不误用 AI 整轮时间。通过标准 test fixture 建上下文，避免绕过离线边界。按 Spec 不把截图称为真栈通过。
-- [ ] 全部 Case 修改收敛后运行 `npm run test:list -- --write` 与 `npm run test:list -- --check`；核对只更新生成区。记录证据与提交。若新增文件不在清单映射规则内才调整映射表并提前更新 intent；通常 `src/屏幕/`、`src/组件/` 前缀已覆盖，不新增配置。
+- [x] 先核对现有操作/状态字段、资料映射以及 PDF 文件与测试；上述修改文件在基线均已存在，不新建第二份测试文件。
+- [x] 追加资料 hook/页面反例：disclosed 有名/缺名/anonymous、候选招聘者及发布方和用人企业不同、缺资料/请求失败、不阻断发消息、换会话/角色/账号/context unavailable 不透出旧身份；使用受控 promise 验证迟到资料不污染新页，不运行真 API。
+- [x] 先跑 `npm test -- src/屏幕/P7/Backend真人会话.test.tsx src/屏幕/P7/use真人会话资料.test.tsx`，确认现有页面无法满足新页头/占位行为；旧“按 job_ref 跳转”“无电话微信”断言改为批准的新行为，不删消息读写与隔离断言。
+- [x] 实现局部资料 hook 和 Backend 页接线。针对补读使用当前范围 guard 与原 provider 代际，不建立新生命周期框架；context 失效时关闭资料弹层、清理 PDF，保留消息可读写和重读入口。
+- [x] 扩展操作栏最小属性，复用原 CSS 全屏层。候选内容显示现有 Case 职位资料；招聘开层先展示加载，按原 Case 取 PDF，成功嵌正文，失败提供本层重试。主项授权坐标缺失禁用占位，电话微信仍可看缺失说明；切换操作互斥。关闭/切会话/卸载/失权递增现有 PDF 代际，撤销已有租约，迟到回执不能重开层。
+- [x] 真人消息行改用 Task 1 的 `聊天气泡` + markdown `聊天正文`，时间传 `行.createdAt`，保留 `data-侧` 与系统消息分支；不改 senderRole 左右判定或消息键，不修改发送的 content。删除本页重复气泡 JSX/UTC 取短时间函数；不全局改旧直聊 CSS，以免改动 Mock/A2A。
+- [x] 在统一真人消息 fixture 显式加入新增 Case/岗位/企业读取；复用各域 handlers 与统一安装入口，遗漏请求必须被离线边界拒绝。用真实 PDF fixture 覆盖全屏展示、关闭/失权回收、迟到响应；不因新资料读取而放行真实网。
+- [x] 执行 `npm test -- src/屏幕/P7/use真人会话资料.test.tsx src/屏幕/P7/Backend真人会话.test.tsx src/屏幕/真人会话操作栏.test.tsx src/组件/原始PDF层.test.tsx src/屏幕/真人会话.test.tsx src/屏幕/企业真人会话.test.tsx`；`npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture` 验双角色和交互，另按实际 Mock 用例选择 `--project=mock` 同 Suite，禁止以空选择记通过。
+- [x] 浏览器保存 320px/390px 双侧短/长消息与弹层截图，检查短气泡实际 bounding box 随文字缩短、长文不溢出、关闭后滚动/草稿/URL 不变，电话微信缺失不可复制。真人时间同样用两个显式 `timezoneId` describe（Asia/Shanghai 和 UTC）各一条聚焦用例，冻结当前年 2026；分别给对方/我方不同的 createdAt（如 09:07Z/09:09Z），断言本地两条时间分别为 17:07/17:09，UTC 对照为 09:07/09:09，不误用 AI 整轮时间。通过标准 test fixture 建上下文，避免绕过离线边界。按 Spec 不把截图称为真栈通过。
+- [x] 全部 Case 修改收敛后运行 `npm run test:list -- --write` 与 `npm run test:list -- --check`；核对只更新生成区。记录证据与提交。若新增文件不在清单映射规则内才调整映射表并提前更新 intent；通常 `src/屏幕/`、`src/组件/` 前缀已覆盖，不新增配置。
+
+
+**Task 3 执行备注（就地记录）：** 单元 63 passed（六文件）+ fixture 11/11 + mock 1/1 + typecheck/lint 0；证据在 output/chat-presentation-evidence/task3/（截图 p7-bubbles-320/390、p7-job-layer-390、p7-pdf-layer-390 与 vitest-定向.log、候选版本.txt）。实现要点：操作栏删除 主项按下 旧分支（R1-2 已批准），新增 主项禁用/主项打开/主项关闭/联系方式占位；Backend 页操作栏按 会话 key 重挂实现换会话即关层；PDF 失败态改层内重试（不再轻提示）；候选端 Case 详情走 me/negotiations 聚合（case_detail 投影），P7 fixture 因此补答聚合/canonical 岗位/公开企业/PDF 内容四路，并用真实 decoder 探针校准了三处契约形状（record_id 十六进制、candidate 别名 pattern、completed 需 finalized_at）；清单 write 后 check 通过（第一层 5767 / 第二层 335），diff 仅含本任务来源。
 
 **完成/停止：** 现有两角色消息回归通过、短气泡修复、身份合法降级、资料弹层不离开聊天、PDF 租约完整、Mock 默认操作栏不变。任何需要后端新字段或业务写入的方案不在范围内；缺公司/联系方式按已有占位完成，不因理论完备性扩范围。
 

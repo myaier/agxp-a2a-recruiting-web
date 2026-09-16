@@ -1,10 +1,11 @@
-// P7 Task 4：Backend 真人会话（双角色共用）的行为测试 —— 直达读取与可见会话注册、
+// P7 Backend 真人会话（双角色共用）的行为测试 —— 直达读取与可见会话注册、
 // 双端 sender 对齐与中性 system 行、时间序渲染与「加载更早」、404 清空旧内容 /
 // 503 保留旧成功、Enter 发送与 Shift+Enter 换行、code point 上限、无乐观气泡、
 // unknown 三分支（重新确认 / 可放弃 / in_progress 不可放弃）与放弃保留在编草稿、
-// read-through 只认最新渲染的 user_text、候选端「看职位」按 job_ref 导航与
-// 招聘端「看简历」按 case_id 取 PDF 租约（关闭/卸载即回收）。绝不 import Mock
-// 联系人或 Mock 消息 fixture。
+// read-through 只认最新渲染的 user_text；展示增量（Spec §11）：操作栏三项恢复
+// Mock 同款（主项盖全屏层、电话/微信缺失占位）、页头读 Case 身份、消息行共用
+// 气泡 + markdown + 每条 createdAt 本地时间、招聘开层取 Case PDF 租约
+//（继续沟通关层/卸载即回收）。绝不 import Mock 联系人或 Mock 消息 fixture。
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,6 +18,8 @@ import Backend真人会话 from './Backend真人会话';
 // 仓库既有的 ?raw 源码合同模式（⋯ 控件形态 / 举报目标类型）
 import Backend真人会话tsx源码 from './Backend真人会话.tsx?raw';
 import { 轻提示 } from '../../组件/轻提示';
+import { 格式化聊天时间 } from '../../组件/聊天气泡';
+import { 候选详情DTO, 招聘详情DTO, 状态 } from '../P5/MatchCase详情.测试辅助';
 import type { P8ReportReceipt } from '../../数据/招聘数据源/P8控制面';
 
 const 导航 = vi.hoisted(() => ({ 跳转: vi.fn(), 返回: vi.fn() }));
@@ -74,6 +77,8 @@ function 环境(input: {
   发送?: (role: string, id: string, content: string) => Promise<P7发送结果>;
   读取简历PDF?: () => Promise<typeof PDF租约>;
   提交P8举报?: (target: unknown, reason: unknown, alsoBlock: unknown) => Promise<P8ReportReceipt>;
+  /** P5 详情快照（use真人会话资料 消费；键 = P5范围键.detail(role, caseId)） */
+  P5详情?: Record<string, unknown>;
 }) {
   const role = input.role ?? 'candidate';
   mock应用状态 = {
@@ -86,6 +91,14 @@ function 环境(input: {
         'p7:messages:candidate:3003': input.消息 ?? 空分页(),
         'p7:messages:recruiter:3003': input.消息 ?? 空分页(),
       },
+      P5详情: input.P5详情 ?? {},
+      候选岗位详情: {},
+    },
+    状态: {
+      基本信息: { 真名: '沈亦舟' },
+      招聘方档案: null,
+      公开企业表: {},
+      不可用公开企业编号: [],
     },
     操作: {
       设置P7会话范围: vi.fn(),
@@ -96,6 +109,9 @@ function 环境(input: {
       提交真人已读: vi.fn().mockResolvedValue(undefined),
       读取简历PDF: input.读取简历PDF ?? vi.fn().mockResolvedValue(PDF租约),
       提交P8举报: input.提交P8举报 ?? vi.fn().mockResolvedValue(举报回执),
+      读取详情: vi.fn().mockResolvedValue(undefined),
+      读取候选岗位详情: vi.fn().mockResolvedValue(undefined),
+      读取公开企业: vi.fn().mockResolvedValue(undefined),
     },
   };
   return role;
@@ -270,25 +286,37 @@ describe('Backend真人会话', () => {
     expect(mock应用状态.操作.提交真人已读).not.toHaveBeenCalled();
   });
 
-  it('候选端「看职位」只在 context available 且 job_ref 在场时出现，点击走权威岗位路由', async () => {
-    环境({});
+  it('候选端「看职位」盖全屏层（不再路由跳转）：电话/微信诚实缺失占位，无复制', async () => {
+    // P5 补读成功但冻结 jobDetail 缺席：层内诚实显示「职位资料暂不可用」+ 定向重读
+    环境({
+      P5详情: {
+        'p5:detail:candidate:mc_3003': {
+          阶段: '成功', 刷新中: false, error: null, generation: 1,
+          detail: { ...候选详情DTO(), state: 状态({ caseId: 'mc_3003' }) },
+        },
+      },
+    });
     const 用户 = userEvent.setup();
     const { unmount } = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    // 三项排列恢复 Mock 同款；电话/微信是缺失占位（Spec §11.4）
+    expect(screen.getByRole('button', { name: '看职位' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '电话' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '微信' })).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '电话' }));
+    expect(screen.getByText('电话暂未提供')).toBeTruthy();
+    // 主项开层：不再跳岗位路由，也不取 PDF
     await 用户.click(screen.getByRole('button', { name: '看职位' }));
-    expect(导航.跳转).toHaveBeenCalledWith('/job/job_00112233445566778899aabbccddeeff');
+    expect(screen.getByRole('dialog', { name: '看职位' })).toBeTruthy();
+    expect(导航.跳转).not.toHaveBeenCalled();
     expect(mock应用状态.操作.读取简历PDF).not.toHaveBeenCalled();
-    // Backend 不渲染电话/微信
-    expect(screen.queryByRole('button', { name: '电话' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '微信' })).toBeNull();
+    // 职位资料缺冻结 jobDetail：层内显示不可用 + 定向重读（不拿当前岗位替代）
+    expect(screen.getByText('职位资料暂不可用')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     unmount();
-
-    // job_ref 缺席：隐藏「看职位」
-    环境({ 详情: 详情快照({ detail: 会话详情({ context: { primaryLabel: '后端工程师', secondaryLabel: '上海', jobRef: null, resumeRef: null } }) }) });
-    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
-    expect(screen.queryByRole('button', { name: '看职位' })).toBeNull();
   });
 
-  it('context 不可用：隐藏上下文动作，保留「重新加载会话信息」，消息仍渲染', async () => {
+  it('context 不可用：主项占位禁用、保留「重新加载会话信息」，消息仍渲染', async () => {
     环境({
       详情: 详情快照({ detail: 会话详情({ contextStatus: 'unavailable', context: null }) }),
       消息: { 阶段: '成功', 刷新中: false, nextCursor: null, 已加载页数: 1, error: null, generation: 1, items: [系统行, 文本('4004', 'recruiter', '你好')] },
@@ -297,32 +325,79 @@ describe('Backend真人会话', () => {
     render(<Backend真人会话 角色="candidate" conversationId="3003" />);
     expect(screen.getByText('真人会话')).toBeTruthy();
     expect(screen.getByText('你好')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '看职位' })).toBeNull();
+    const 主项 = screen.getByRole('button', { name: '看职位' }) as HTMLButtonElement;
+    expect(主项.disabled).toBe(true);
+    await 用户.click(主项);
+    expect(screen.queryByRole('dialog')).toBeNull();
     await 用户.click(screen.getByRole('button', { name: '重新加载会话信息' }));
     expect(mock应用状态.操作.读取真人会话).toHaveBeenCalledWith('candidate', '3003', true);
   });
 
-  it('招聘端「看简历」只在 resume_ref 在场时出现：点击才取 Case PDF，关闭/卸载回收租约', async () => {
+  it('招聘端「看简历」开层才取 Case PDF：加载→授权原件正文，继续沟通关层回收租约', async () => {
     const 读取简历PDF = vi.fn().mockResolvedValue(PDF租约);
     环境({ role: 'recruiter', 读取简历PDF });
     const 用户 = userEvent.setup();
     const { unmount } = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
-    // 点击前零请求
+    // 开层前零请求
     expect(读取简历PDF).not.toHaveBeenCalled();
     await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(screen.getByRole('dialog', { name: '看简历' })).toBeTruthy();
     await waitFor(() => expect(读取简历PDF).toHaveBeenCalledWith('recruiter', 'mc_3003'));
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
-    expect(screen.getByTitle('简历 PDF')).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: '关闭' }));
+    await waitFor(() => expect(screen.getByTitle('简历 PDF')).toBeTruthy());
+    // 继续沟通关层：租约回收、迟到的层不再出现
+    await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
     expect(PDF租约.revoke).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
     unmount();
-    // resume_ref 缺席：隐藏「看简历」
+    // resume_ref 缺席：主项占位禁用（三项排列保持，不隐藏）
     环境({
       role: 'recruiter',
       详情: 详情快照({ detail: 会话详情({ context: { primaryLabel: '后端工程师', secondaryLabel: 'candidate-0123', jobRef: null, resumeRef: null } }) }),
     });
     render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
-    expect(screen.queryByRole('button', { name: '看简历' })).toBeNull();
+    const 禁用主项 = screen.getByRole('button', { name: '看简历' }) as HTMLButtonElement;
+    expect(禁用主项.disabled).toBe(true);
+  });
+
+  it('招聘页头读 Case 身份：disclosed 有名显真名、副标题为 Case 职位名', () => {
+    环境({
+      role: 'recruiter',
+      P5详情: {
+        'p5:detail:recruiter:mc_3003': {
+          阶段: '成功', 刷新中: false, error: null, generation: 1,
+          detail: {
+            ...招聘详情DTO({ 别名: 'C-07' }),
+            state: 状态({ caseId: 'mc_3003' }),
+            candidateIdentity: { state: 'disclosed', name: '陈屿', avatar_url: null, disclosed_at: null },
+          },
+        },
+      },
+    });
+    render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    expect(screen.getByText('陈屿')).toBeTruthy();
+    expect(screen.getByText('平台工程师')).toBeTruthy();
+  });
+
+  it('消息行共用气泡与 markdown：时间取每条 createdAt 本地格式化，不再 UTC 截取', () => {
+    const 消息: P7分页快照<P7消息> = {
+      阶段: '成功', 刷新中: false, nextCursor: null, 已加载页数: 1, error: null, generation: 1,
+      items: [
+        文本('4004', 'recruiter', '收到，**今天到岗**可以'),
+        { ...文本('4005', 'candidate', 'HiHi'), createdAt: '2026-09-16T01:09:00Z' },
+      ],
+    };
+    环境({ 消息 });
+    const 页 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    // markdown 正文：**今天到岗** 解析为 strong
+    expect(页.container.querySelector('strong')?.textContent).toBe('今天到岗');
+    // 每条各用各的时间（01:00Z / 01:09Z 本地时区分辨分钟差；与 格式化聊天时间 同源）
+    const 时间节点们 = 页.container.querySelectorAll('time');
+    expect(时间节点们).toHaveLength(2);
+    expect(时间节点们[0]?.textContent).toBe(格式化聊天时间('2026-08-30T01:00:00Z'));
+    expect(时间节点们[1]?.textContent).toBe(格式化聊天时间('2026-09-16T01:09:00Z'));
+    // data-侧 回归锚点保留
+    expect(页.container.querySelector('[data-侧="左"]')).toBeTruthy();
+    expect(页.container.querySelector('[data-侧="右"]')).toBeTruthy();
   });
 });
 

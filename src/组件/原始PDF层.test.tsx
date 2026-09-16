@@ -5,7 +5,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import 原始PDF层 from './原始PDF层';
+import 原始PDF层, { 原始PDF正文 } from './原始PDF层';
 
 describe('原始PDF层', () => {
   it('渲染 dialog、文件名与 PDF iframe，关闭回调生效', async () => {
@@ -19,5 +19,14 @@ describe('原始PDF层', () => {
     expect(框.getAttribute('src')).toBe('blob:lease-1');
     await 用户.click(screen.getByRole('button', { name: '关闭' }));
     expect(关闭).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('原始PDF正文（Spec §11.3：全屏层内嵌的纯正文出口）', () => {
+  it('不自带弹层壳：只出纸底 + 租约地址 iframe，供全屏层直接内嵌', () => {
+    const 宿主 = render(<原始PDF正文 地址="blob:lease-2" />);
+    expect(宿主.container.querySelector('dialog')).toBeNull();
+    const 框 = screen.getByTitle('简历 PDF') as HTMLIFrameElement;
+    expect(框.getAttribute('src')).toBe('blob:lease-2');
   });
 });

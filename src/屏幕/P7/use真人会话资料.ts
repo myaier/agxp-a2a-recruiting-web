@@ -1,0 +1,135 @@
+// use真人会话资料（Spec §11.2）：真人会话页头身份与资料弹层的局部读取 hook。
+// 只组织本页资料读取、映射与局部失败状态：读现有 provider 状态（P5详情 /
+// 候选岗位详情 / 公开企业表），进会话做一次定向读取（不加轮询），不建 store、
+// 不镜像 P5 DTO。身份来源铁律：
+//   · 招聘页头 = Case candidateIdentity：disclosed 且有名才显真名；anonymous 保留
+//     Case 代号（candidateAlias），不显被遮蔽姓名；缺名给「候选人姓名暂未提供」。
+//   · 候选页头 = Case jobDetail.publisher_profile（姓名/职务/头像）+ 发布方公司：
+//     公司只认当前岗位 publisher_organization_ref → 公开企业 display_name，
+//     绝不拿用人企业 organization/claim 替代发布方（猎头发布 ≠ 用人企业）。
+//   · 授权 context 不在场 → 资料不可用（页头回落，不透出旧身份）；补读失败
+//     （快照带错误）同样不消费缓存里的旧身份；资料降级不阻断消息读写。
+// 消费按当前 范围键 直查状态：换会话/换角色/换账号当帧即换键，迟到写入落在旧键上，
+// 天然污染不到新页。职位资料只来自 Case 冻结 jobDetail（缺席 = null，弹层显示
+// 不可用与局部重读，绝不拿当前岗位替代历史资料）。
+
+import { useCallback, useEffect } from 'react';
+import { use应用状态 } from '../../状态/应用状态';
+import { P5范围键 } from '../../状态/后端/MatchCase操作';
+import { 映射P5详情 } from '../../数据/MatchCase展示映射';
+import { 从P5到职位资料 } from '../../数据/详情展示映射';
+import type { 职位资料信息 } from '../../组件/在谈详情/类型';
+import type { P7角色, P7会话项 } from '../../数据/招聘数据源/真人会话';
+
+/** trim 后非空才算已知姓名/职务；空白不得冒充披露。 */
+function 非空(值: string | null | undefined): string | null {
+  const 文 = 值?.trim() ?? '';
+  return 文 === '' ? null : 文;
+}
+
+export function use真人会话资料(角色: P7角色, 详情: P7会话项 | null): {
+  标题: string;
+  副标题: string;
+  对方头像URL: string | null;
+  对方首字: string;
+  职位资料: 职位资料信息 | null;
+  资料状态: 'loading' | 'available' | 'unavailable';
+  重读资料: () => void;
+} {
+  const { 后端状态, 状态, 操作 } = use应用状态();
+
+  const 授权在场 = 详情 !== null && 详情.contextStatus === 'available' && 详情.context !== null;
+  const caseId = 授权在场 && 详情 !== null ? 详情.caseId : '';
+  const jobRef = 授权在场 && 详情?.context?.jobRef != null ? 详情.context.jobRef : null;
+
+  // 进会话一次定向读取（读取详情 对已成功快照自带去重；不加轮询）。
+  // 候选端再补读当前岗位（发布方公司坐标），企业坐标出现后读公开企业。
+  useEffect(() => {
+    if (caseId === '') return;
+    void 操作.读取详情(角色, caseId).catch(() => undefined);
+  }, [角色, caseId, 操作]);
+  useEffect(() => {
+    if (!(角色 === 'candidate' && jobRef !== null)) return;
+    void 操作.读取候选岗位详情(jobRef).catch(() => undefined);
+  }, [角色, jobRef, 操作]);
+  const 发布方编号 = (() => {
+    if (!(角色 === 'candidate' && jobRef !== null)) return null;
+    const 岗位 = 后端状态.候选岗位详情[jobRef];
+    const 编号 = 岗位?.publisher_organization_ref?.trim() ?? '';
+    return 编号 === '' || 状态.不可用公开企业编号.includes(编号) ? null : 编号;
+  })();
+  useEffect(() => {
+    if (发布方编号 === null) return;
+    void 操作.读取公开企业(发布方编号).catch(() => undefined);
+  }, [发布方编号, 操作]);
+
+  // 消费：只有本轮成功且无错误的快照才出身份（失败不展示缓存旧身份，Spec §11.2）
+  const 快照 = caseId !== '' ? 后端状态.P5详情[P5范围键.detail(角色, caseId)] : undefined;
+  const 明细 = 快照 !== undefined && 快照.阶段 === '成功' && 快照.error === null && 快照.detail !== null
+    ? 快照.detail
+    : null;
+  const 资料状态 = !授权在场
+    ? 'unavailable'
+    : 明细 !== null
+      ? 'available'
+      : 快照 !== undefined && 快照.阶段 === '失败'
+        ? 'unavailable'
+        : 'loading';
+
+  // 页头回落值（资料 loading/失败时沿用 P7 自己的授权标签，不是 Case 身份）
+  const 回落标题 = 授权在场 && 详情?.context !== null
+    ? (角色 === 'candidate' ? 详情!.context!.primaryLabel : 详情!.context!.secondaryLabel)
+    : '真人会话';
+  const 回落副标题 = !授权在场
+    ? ''
+    : 角色 === 'candidate'
+      ? `${详情!.context!.secondaryLabel} · 真人会话`
+      : 详情!.context!.primaryLabel;
+
+  let 标题 = 回落标题;
+  let 副标题 = 回落副标题;
+  let 对方头像URL: string | null = null;
+  let 对方首字 = 标题.charAt(0);
+  let 职位资料: 职位资料信息 | null = null;
+
+  if (明细 !== null) {
+    const 发布方公司 = 发布方编号 !== null && 状态.公开企业表[发布方编号] !== undefined
+      ? 非空(状态.公开企业表[发布方编号].display_name)
+      : null;
+    if (明细.role === 'recruiter') {
+      const 身份 = 明细.candidateIdentity;
+      if (身份.state === 'anonymous') {
+        标题 = 非空(明细.context.candidateAlias) ?? '候选人';
+      } else if (非空(身份.name) === null) {
+        标题 = '候选人姓名暂未提供';
+      } else {
+        标题 = 非空(身份.name)!;
+        对方头像URL = 身份.avatar_url;
+      }
+      副标题 = 非空(明细.context.job.job.title) ?? '职位信息未知';
+    } else {
+      const 发布人 = 明细.jobDetail?.publisher_profile ?? null;
+      const 姓名 = 非空(发布人?.public_name);
+      const 职务 = 非空(发布人?.title);
+      标题 = 姓名 ?? '招聘者姓名暂未提供';
+      副标题 = `${发布方公司 ?? '公司暂未提供'} · ${职务 ?? '角色暂未提供'}`;
+      对方头像URL = 发布人?.avatar_url ?? null;
+    }
+    对方首字 = 标题.charAt(0);
+    // 职位资料只来自 Case 冻结 jobDetail：缺席给 null（弹层出不可用 + 局部重读），
+    // 不拿当前岗位替代历史资料（Spec §11.3）
+    const 视图 = 映射P5详情(明细);
+    职位资料 = 视图.kind === '正常' && 明细.jobDetail !== null ? 从P5到职位资料(视图) : null;
+  }
+
+  const 重读资料 = useCallback(() => {
+    if (caseId === '') return;
+    void 操作.读取详情(角色, caseId, true).catch(() => undefined);
+    if (角色 === 'candidate' && jobRef !== null) {
+      void 操作.读取候选岗位详情(jobRef, true).catch(() => undefined);
+      if (发布方编号 !== null) void 操作.读取公开企业(发布方编号).catch(() => undefined);
+    }
+  }, [角色, caseId, jobRef, 发布方编号, 操作]);
+
+  return { 标题, 副标题, 对方头像URL, 对方首字, 职位资料, 资料状态, 重读资料 };
+}

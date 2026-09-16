@@ -63,6 +63,18 @@
   padding: 2px 14px 4px;
 }
 
+/* Backend 缺失占位（Spec §11.4）：电话/微信展开出的纯说明行 —— 不进联系卡
+   （联系卡带复制）、无号码、无拨号/剪贴板动作；与联系卡同一落位。 */
+.缺失行 {
+  display: block;
+  padding: 10px 12px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--次要);
+}
+
 /* ════ 主项的展开形态：盖在聊天页上的全屏详情层 ════
    产品负责人 2026-08-22：「点开后是一个和主页一样的页面，但是不要跳转，
    下面有一个继续沟通，点击继续沟通就跳回到聊天页」。

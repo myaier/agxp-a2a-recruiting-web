@@ -7,7 +7,7 @@ import { P4招聘岗位 } from '../fixtures/bff/发现推荐';
 import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系 } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
 import { P5编号, P5标记, 创建P5MatchCasefixture, type P5MatchCasefixture形 } from '../fixtures/bff/MatchCase';
-import { P7会话编号, P7标记, 创建P7fixture, type P7FixtureState } from '../fixtures/bff/真人消息';
+import { P7会话编号, P7标记, P7资料标记, 创建P7fixture, type P7FixtureState } from '../fixtures/bff/真人消息';
 import { 安装BFF路由, type BFF路由选项 } from '../fixtures/bff/安装BFF路由';
 import { type Page } from '@playwright/test';
 import { type 拦截请求形 } from '../fixtures/bff/协议';
@@ -185,17 +185,73 @@ test.describe('P7 真人会话 fixture @backend', () => {
     await expect.poll(() => 消息GET数(), { timeout: 5_000 }).toBeGreaterThan(断前[1]);
   });
 
-  test('context 不可用保留消息、隐藏上下文动作，提供重新加载会话信息 @backend', async ({ page }) => {
+  test('context 不可用保留消息、主项占位禁用，提供重新加载会话信息 @backend', async ({ page }) => {
     const fixture = P7带消息fixture(P7标记.招聘消息);
     fixture.contexts[P7会话编号.会话] = 'unavailable';
     await 装P7候选(page, { fixture });
 
     await hash直达(page, `/#/chat/human/${P7会话编号.会话}`);
     await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('button', { name: '看职位' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '电话' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '微信' })).toHaveCount(0);
+    // Spec §11.3：操作栏三项在场但主项占位禁用（不伪装可用）；电话/微信是缺失占位
+    await expect(page.getByRole('button', { name: '看职位' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '电话' })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '微信' })).toHaveCount(1);
     await expect(page.getByRole('button', { name: '重新加载会话信息' })).toBeVisible();
+  });
+
+  // ── Spec §11.2/§11.3：双端页头身份、发布方公司、操作栏占位与全屏资料/PDF 层 ──
+  test('候选端页头身份与全屏职位层：发布方公司不冒充用人企业，电话微信诚实缺失 @backend', async ({ page }, testInfo) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    await 装P7候选(page, { fixture });
+
+    await hash直达(page, `/#/chat/human/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    // 页头 = Case 冻结发布人档案 + 发布方公司（猎头）· 职务；用人企业不得顶替
+    await expect(page.getByText(P7资料标记.发布人姓名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(`${P7资料标记.发布方名称} · ${P7资料标记.发布人职务}`)).toBeVisible();
+    expect(await page.getByText(P7资料标记.用人企业名).count()).toBe(0);
+    // 电话/微信缺失占位：无号码、不可复制（展开区是纯说明行）
+    await page.getByRole('button', { name: '电话' }).click();
+    await expect(page.getByText('电话暂未提供')).toBeVisible();
+    await expect(page.getByText(/1[0-9 ]{6,}/)).toHaveCount(0);
+    // 看职位盖全屏层（路由不动）：冻结职位资料正文 + 继续沟通回聊天
+    await page.getByRole('button', { name: '看职位' }).click();
+    await expect(page.getByRole('dialog', { name: '看职位' })).toBeVisible();
+    await expect(page.getByText(P7资料标记.冻结职位说明)).toBeVisible({ timeout: 10_000 });
+    // 层内同样不得拿用人企业/当前岗位替代发布方或冻结资料：冻结 organization 缺席 →
+    // 公司名缺失占位、无可信组织坐标的公司入口禁用并解释
+    await expect(page.getByRole('dialog').getByText(P7资料标记.用人企业名)).toHaveCount(0);
+    await expect(page.getByText('公司详情暂不可用')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('p7-job-layer-390.png') });
+    await page.getByRole('button', { name: '继续沟通' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`#/chat/human/${P7会话编号.会话}$`));
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible();
+  });
+
+  test('招聘端页头候选真名与全屏 PDF 层：授权原件正文、关闭回聊天 @backend', async ({ page }, testInfo) => {
+    const fixture = 创建P7fixture();
+    fixture.messages[P7会话编号.会话] = [{
+      message_id: '4004', kind: 'user_text', sender_role: 'recruiter', content: P7标记.招聘消息, created_at: '2026-09-16T01:09:00Z',
+    }];
+    await 装P7招聘(page, { fixture });
+
+    await hash直达(page, `/#/hr/chat/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    // 页头 = Case candidateIdentity（disclosed 真名）+ Case 职位名
+    await expect(page.getByText('P5 Fixture 候选真名')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P7标记.职位名).first()).toBeVisible();
+    // 看简历开层才取件：PDF iframe 以对象租约地址呈现真实字节
+    await page.getByRole('button', { name: '看简历' }).click();
+    await expect(page.getByRole('dialog', { name: '看简历' })).toBeVisible();
+    const 框 = page.getByTitle('简历 PDF');
+    await expect(框).toBeVisible({ timeout: 10_000 });
+    expect((await 框.getAttribute('src')) ?? '').toMatch(/^blob:/);
+    await page.screenshot({ path: testInfo.outputPath('p7-pdf-layer-390.png') });
+    await page.getByRole('button', { name: '继续沟通' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`#/hr/chat/${P7会话编号.会话}$`));
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible();
   });
 
   test('foreign/wrong-role 404 不保留上一会话残留 @backend', async ({ page }) => {
@@ -233,6 +289,67 @@ test.describe('P7 真人会话 fixture @backend', () => {
     await expect(page).toHaveURL(new RegExp(`#/hr/chat/${P7会话编号.会话}$`), { timeout: 10_000 });
   });
 });
+
+// ── Spec §11.5/§11.6：消息时间源与短气泡几何 —— 两个显式 timezoneId describe 各一条
+//    聚焦用例（clock 冻结当前年 2026），对方/我方各给不同 createdAt（09:07Z/09:09Z），
+//    不复制整个旅程；Shanghai 组顺带 390 几何与截图、UTC 组用 320 视口对照。 ──
+for (const 时区 of ['Asia/Shanghai', 'UTC'] as const) {
+  test.describe(`P7 消息时间与短气泡几何 ${时区} @backend`, () => {
+    test.use({
+      baseURL: 'http://127.0.0.1:4182',
+      viewport: { width: 时区 === 'Asia/Shanghai' ? 390 : 320, height: 844 },
+      locale: 'zh-CN',
+      timezoneId: 时区,
+      reducedMotion: 'reduce',
+    });
+
+    test(`每条消息各用 createdAt 本地时间；短气泡贴合内容、长文不溢出 @backend`, async ({ page }, testInfo) => {
+      const 长文 = `${'这是一条足够长的消息，验证长气泡达到上限后换行、不把页面撑宽。'.repeat(6)}以及没有空格的超长英文串${'x'.repeat(140)}`;
+      const fixture = 创建P7fixture();
+      fixture.messages[P7会话编号.会话] = [
+        { message_id: '4001', kind: 'user_text', sender_role: 'recruiter', content: 'HiHi', created_at: '2026-09-16T09:07:00Z' },
+        { message_id: '4002', kind: 'user_text', sender_role: 'candidate', content: 'HHHH', created_at: '2026-09-16T09:09:00Z' },
+        { message_id: '4003', kind: 'user_text', sender_role: 'recruiter', content: `**加粗**的${长文}`, created_at: '2026-09-16T09:11:00Z' },
+      ];
+      await 装P7候选(page, { fixture });
+      // 冻结「当前年」为 2026：跨年显示口径不依赖运行机器的真实日期
+      await page.clock.install({ time: new Date('2026-09-16T12:00:00Z') });
+
+      await hash直达(page, `/#/chat/human/${P7会话编号.会话}`);
+      await expect(page.getByText('HHHH')).toBeVisible({ timeout: 15_000 });
+
+      // 每条各用各的 createdAt（本地时区 MM-DD HH:mm；不取 AI 整轮时间、不 UTC 截取）
+      const 对方文 = 时区 === 'Asia/Shanghai' ? '09-16 17:07' : '09-16 09:07';
+      const 我方文 = 时区 === 'Asia/Shanghai' ? '09-16 17:09' : '09-16 09:09';
+      await expect(page.locator('[data-侧="左"] time').first()).toHaveText(对方文);
+      await expect(page.locator('[data-侧="右"] time').first()).toHaveText(我方文);
+
+      // 几何：短气泡贴合内容（远窄于长气泡）、长文不横向溢出
+      const 尺寸 = await page.evaluate(() => {
+        const 行们 = Array.from(document.querySelectorAll('[data-侧]'));
+        const 找 = (文: string) => 行们.find((行) => 行.textContent?.includes(文));
+        const 气泡宽 = (行: Element | undefined) => {
+          const 时间 = 行?.querySelector('time');
+          return 时间?.previousElementSibling?.getBoundingClientRect().width ?? Number.NaN;
+        };
+        return {
+          短宽: 气泡宽(找('HiHi')),
+          我短宽: 气泡宽(找('HHHH')),
+          长宽: 气泡宽(找('加粗')),
+          溢出: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      expect(尺寸.溢出, '页面横向溢出').toBe(0);
+      expect(尺寸.短宽, '短气泡贴合内容').toBeLessThan(120);
+      expect(尺寸.我短宽, '我方短气泡贴合内容').toBeLessThan(120);
+      expect(尺寸.长宽, '长气泡显著宽于短气泡').toBeGreaterThan(尺寸.短宽 + 120);
+      // markdown 正文：**加粗** 解析为 strong
+      await expect(page.locator('strong').filter({ hasText: '加粗' })).toHaveCount(1);
+
+      await page.screenshot({ path: testInfo.outputPath(`p7-bubbles-${时区 === 'Asia/Shanghai' ? 390 : 320}.png`) });
+    });
+  });
+}
 // ── P7 Mock 隔离：Mock 双端零 P7 请求与零事件连接 ──────────────────────────────
 test.describe('P7 Mock 数据源隔离 @mock', () => {
   test('Mock 双端消息旅程零 /conversations 请求与零 WebSocket @mock', async ({ page }) => {
