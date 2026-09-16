@@ -9,7 +9,7 @@
 import { render } from '@testing-library/react';
 import { act } from '@testing-library/react';
 import { createElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { use城市搜索, use城市默认页, use城市分组, 按行政区分组, type 查询Location方法 } from './城市查询钩子';
 import type { BFFLocationItem } from '../数据/BFF契约';
 
@@ -57,6 +57,11 @@ function 条目(项: {
 type 页形 = { items: BFFLocationItem[]; nextCursor: string | null; catalogVersion: string };
 
 describe('use城市搜索 stale-response guard（P2-2）', () => {
+  // 受控时钟：搜索 250ms debounce 原是每用例 260ms 实睡（计时证实），改局部 fake timers 推进；
+  // afterEach 恢复真实时钟。不变量保持：防抖未到不发请求、到阈值发请求、改词迟到的旧响应不覆盖新结果。
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('两次搜索，第二次先 resolve，第一次后 resolve → 最终是第二次的结果', async () => {
     // 用能控设词的探针：把 设词 暴露到外部 ref
     let 设词外: ((v: string) => void) | null = null;
@@ -78,12 +83,14 @@ describe('use城市搜索 stale-response guard（P2-2）', () => {
 
     // 第一次搜索：输入「北京」（慢响应）
     act(() => 设词外!('北京'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    // 防抖未到：不发请求
+    expect(查询).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(查询).toHaveBeenCalledTimes(1);
 
     // 第二次搜索：输入「上海」（快响应）
     act(() => 设词外!('上海'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(查询).toHaveBeenCalledTimes(2);
 
     // 第二次先 resolve（上海结果）
@@ -111,7 +118,9 @@ describe('use城市搜索 stale-response guard（P2-2）', () => {
     const 查询 = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })) as unknown as 查询Location方法;
     render(createElement(探针, { 查询 }));
     act(() => 设词外!('London'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    // 防抖未到：不发请求
+    expect(查询).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(查询).toHaveBeenCalledWith({ q: 'London' });
     const 调用参数 = (查询 as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
     expect(调用参数).not.toHaveProperty('countryCode');
@@ -578,6 +587,10 @@ describe('按行政区分组（Task 4 四国默认目录）', () => {
 });
 
 describe('use城市搜索 换词后旧页迟到（Task 5）', () => {
+  // 受控时钟：同 stale guard describe —— 250ms debounce 改局部 fake timers 推进
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('A 的下一页在换词到 B 后到达，不追加进 B 的结果', async () => {
     let 设词外: ((v: string) => void) | null = null;
     let 加载更多外: (() => void) | null = null;
@@ -607,14 +620,16 @@ describe('use城市搜索 换词后旧页迟到（Task 5）', () => {
 
     const { container } = render(createElement(探针, { 查询 }));
     act(() => 设词外!('A'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    // 防抖未到：不发请求
+    expect(查询).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1']);
 
     // A 的下一页在飞行中
     await act(async () => { 加载更多外!(); });
     // 换词到 B，B 结果先到
     act(() => 设词外!('B'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_b1']);
 
     // A 的旧页迟到：不能追加进 B 的结果
@@ -630,6 +645,10 @@ describe('use城市搜索 换词后旧页迟到（Task 5）', () => {
 });
 
 describe('use城市搜索 catalogVersion 重同步（review-cx F5）', () => {
+  // 受控时钟：同 stale guard describe —— 250ms debounce 改局部 fake timers 推进
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('搜索追加页换版本：结果整组替换为新版本第一页', async () => {
     let 设词外: ((v: string) => void) | null = null;
     let 加载更多外: (() => void) | null = null;
@@ -666,7 +685,9 @@ describe('use城市搜索 catalogVersion 重同步（review-cx F5）', () => {
 
     const { container } = render(createElement(探针, { 查询 }));
     act(() => 设词外!('A'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    // 防抖未到：不发请求
+    expect(查询).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1']);
 
     // 加载更多：追加页 v3 → 结果整组替换为新版本第一页，不跨版本拼接
@@ -908,6 +929,10 @@ describe('use城市默认页 错误与重试（Task 2 兼容层）', () => {
 });
 
 describe('use城市搜索 错误与重试（Task 2 兼容层）', () => {
+  // 受控时钟：同 stale guard describe —— 250ms debounce 改局部 fake timers 推进
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it('首页失败 → 错误文案可见；重试用当前词重发并清错误', async () => {
     let 设词外: ((v: string) => void) | null = null;
     let 重试外: (() => void) | null = null;
@@ -931,15 +956,17 @@ describe('use城市搜索 错误与重试（Task 2 兼容层）', () => {
 
     const { container } = render(createElement(探针, { 查询 }));
     act(() => 设词外!('杭州市'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    // 防抖未到：不发请求
+    expect(查询).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     let 输出 = JSON.parse(container.querySelector('output')!.textContent!);
     expect(输出.错误).toBe('请求失败，请稍后再试');
     expect(输出.结果).toEqual([]);
 
-    // 重试：同一当前词重发（第二次调用成功）。点击与等待分两个 act：
-    // 合并在一个 async act 里 effect 要等 act 收尾才重跑，debounce 会落在等待窗口之外
+    // 重试：同一当前词重发（第二次调用成功）。点击与推进分两个 act：
+    // 合并在一个 async act 里 effect 要等 act 收尾才重跑，debounce 会落在推进窗口之外
     await act(async () => { 重试外!(); });
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect((查询 as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((调用) => 调用[0].q === '杭州市')).toHaveLength(2);
     输出 = JSON.parse(container.querySelector('output')!.textContent!);
     expect(输出.错误).toBeNull();
@@ -976,7 +1003,9 @@ describe('use城市搜索 错误与重试（Task 2 兼容层）', () => {
 
     const { container } = render(createElement(探针, { 查询 }));
     act(() => 设词外!('A'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 260)); });
+    // 防抖未到：不发请求
+    expect(查询).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
     expect(JSON.parse(container.querySelector('output')!.textContent!).结果).toEqual(['loc_a1']);
 
     // 追加页失败：错误可见，结果与游标都保留

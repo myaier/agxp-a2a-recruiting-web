@@ -6,7 +6,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业实名认证 from './企业实名认证';
 import {
   BFF企业关系样本,
@@ -190,11 +190,15 @@ function 抽屉() {
   return within(screen.getByRole('dialog', { name: '选择企业' }));
 }
 
-/** 打开本页选择抽屉并输入搜索词，等过 250ms debounce（屏蔽名单.test.tsx 同款真实时钟手法） */
+/** 打开本页选择抽屉并输入搜索词，推进过 250ms debounce。
+ *  受控时钟：原为 300ms 实睡（计时证实的真实等待），改在防抖窗口内局部 fake timers 推进后
+ *  立即恢复真实时钟 —— describe 内其余 findBy 等待不受影响。 */
 async function 打开抽屉并搜索(用户: ReturnType<typeof userEvent.setup>, 词: string) {
   await 用户.click(screen.getByRole('button', { name: /待申请企业/ }));
+  vi.useFakeTimers();
   fireEvent.change(抽屉().getByPlaceholderText('输入公司名称'), { target: { value: 词 } });
-  await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  vi.useRealTimers();
 }
 
 describe('企业实名认证 · Backend 本页待申请企业选择', () => {
@@ -302,8 +306,11 @@ describe('企业实名认证 · Backend 本页待申请企业选择', () => {
     expect(mock跳转).not.toHaveBeenCalled(); // 空选择引导先选
     expect(screen.getByRole('dialog', { name: '选择企业' })).toBeTruthy();
 
+    // 受控时钟：同 打开抽屉并搜索 —— 防抖窗口局部 fake timers 推进后恢复真实时钟
+    vi.useFakeTimers();
     fireEvent.change(抽屉().getByPlaceholderText('输入公司名称'), { target: { value: '云衢' } });
-    await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    vi.useRealTimers();
     fireEvent.click(抽屉().getByRole('button', { name: '云衢科技' }));
     expect(screen.getByText('云衢科技')).toBeTruthy();
     await 用户.click(screen.getByRole('button', { name: /申请企业管理员/ }));
@@ -403,6 +410,14 @@ describe('企业实名认证 · Mock 原型保持不变', () => {
     置Mock应用状态();
   });
 
+  // 受控时钟：Mock 分支 1.2 秒认证计时器是计时证实的真实等待（原 findByText 实等 3 秒窗口），
+  // 改在计时窗口内局部 fake timers 推进后立即恢复真实时钟；原不变量保持：计时器未到不提前
+  // 落全局（断言保留在 认证中 态），到点才 认证通过 并进招聘名片。抽屉候选的 250ms 防抖
+  // 走真实时钟（userEvent 在 fake 时钟下不可用），由 findByRole 自然等出。
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('Mock 公司输入换成同一选择抽屉，1.2 秒后仍落全局并进招聘名片', async () => {
     const 用户 = userEvent.setup();
     render(<MemoryRouter><企业实名认证 /></MemoryRouter>);
@@ -416,10 +431,15 @@ describe('企业实名认证 · Mock 原型保持不变', () => {
     await 用户.type(screen.getAllByPlaceholderText('输入公司名称')[0], '澜舟');
     await 用户.click(await screen.findByRole('button', { name: /澜舟数据/ }));
     expect(screen.getByRole('button', { name: '澜舟数据' })).toBeTruthy();
+    // 受控时钟：1.2 秒认证计时器是本用例的实等主体 —— fake 时钟要在触发点击前启用，
+    // 才能推进该计时器（原 findByText 实等 3 秒窗口）
+    vi.useFakeTimers();
     fireEvent.click(screen.getByRole('button', { name: '开始人脸识别' }));
     expect(mock派发).not.toHaveBeenCalled(); // 计时器未到，不提前落全局
     expect(screen.getByRole('button', { name: '认证中…' })).toBeTruthy();
-    expect(await screen.findByText('认证通过', {}, { timeout: 3000 })).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1300); });
+    vi.useRealTimers();
+    expect(screen.getByText('认证通过')).toBeTruthy();
     expect(mock派发).toHaveBeenCalledWith({
       型: '存企业认证',
       姓名: '邵铭',
