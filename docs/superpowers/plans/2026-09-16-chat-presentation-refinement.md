@@ -79,11 +79,11 @@ export function 格式化聊天时间(iso: string, 当前年?: number): string;
 
 **输入 / 输出：** 输入是已有内容/头像/角色样式与可选 ISO 时间；输出是公共展示合同。普通短气泡 `fit-content`/不 grow，父时间列不能 stretch 气泡；长文 max-width 与头像留白保留，`min-width:0`、`overflow-wrap:anywhere`；宽内容显式伸展。纯文本保留换行，Markdown 段落/标题/列表/引用/代码使用局部样式，代码块折行或块内滚动，绝不把整页撑宽。不写全局元素 CSS。
 
-- [ ] 核对 Task 1 预期路径和现有对话展示测试；写公共组件测试：text 模式的 `**` 不变，markdown 模式生成 strong/heading/list/hr；原始 `<script>`/HTML 不执行，危险链接不产生可执行 href；普通换行、多段不被折成一段；无时间不产生空节点，合法时间 dateTime 保留原串，跨年格式正确。
+- [ ] 核对 Task 1 预期路径和现有对话展示测试；写公共组件测试：text 模式的 `**` 不变，markdown 模式生成 strong/heading/list/hr；原始 `<script>`/HTML 不执行，危险链接不产生可执行 href；普通换行、多段不被折成一段；无时间不产生空节点，合法时间 dateTime 保留原串，跨年格式正确。时间测试归于 `describe('聊天时间')`：用 `new Date(2026, 8, 16, 17, 7).toISOString()` 构造本地 17:07 的输入，显式传当前年 2026，期望 `09-16 17:07`；不同年份则期望带年份，避免硬编码 UTC 字符串却依赖机器时区。
 - [ ] 用 `npm test -- src/组件/聊天气泡.test.tsx` 确认新行为先失败。若依赖未安装，先 `npm ci`；不能把依赖/导入基础设施错误当行为反例。
 - [ ] 实现纯组件及时间格式化。Markdown 使用同步 `Markdown`、`skipHtml` 和默认安全 URL 处理，不用 `dangerouslySetInnerHTML`；不为消息加载外部 Markdown 图片，图片标记仅呈现 alt 文本（本任务不支持消息附件），链接保留正常安全链接语义。默认 CommonMark 的段落/硬换行语义，纯文本 `white-space:pre-wrap`；不修改存储原文。
 - [ ] 修改助手适配层复用新组件，保持现有头像、快捷行、Mock 及招聘端字体/宽度端差。新增时间字段不使整条短气泡 grow；调整旧 class 的挂点并验证 DOM 行列关系，不只把原 JSX 包一层。
-- [ ] 执行 `npm test -- src/组件/聊天气泡.test.tsx src/组件/问AI代理/对话展示.test.tsx` 和 `npm run typecheck`。预期相关测试通过，既有默认 props 不改变 Mock 内容；测试不要镜像内部 helper，检验可见输出与安全 DOM。
+- [ ] 执行 `TZ=Asia/Shanghai npm test -- src/组件/聊天气泡.test.tsx src/组件/问AI代理/对话展示.test.tsx`、`TZ=UTC npm test -- src/组件/聊天气泡.test.tsx -t 聊天时间` 和 `npm run typecheck`。两个 TZ 只影响命令进程，不修改全库 vitest 配置，不为同一候选重复其他测试。预期相关测试通过，既有默认 props 不改变 Mock 内容；测试不要镜像内部 helper，检验可见输出与安全 DOM。
 - [ ] 记录命令/代码版本/结果，更新 runner Case 清单（统一可在 Task 3 汇总 write，最终 check 必须通过），提交本任务精确路径，排除 `output/`。
 
 **完成/停止：** 共享出口可供两个业务页面消费，原消费者测试通过。若必须改消息协议或招聘端产品样式，停止该扩展，不能作为本任务便利重构。
@@ -118,7 +118,7 @@ const 结果标题 = {
 - [ ] 实施标题/分割线/正文接线；移除 `queried_at.slice` 展示和卡外重复理由、脚注，保留 decoder 字段。普通 Agent 使用窄气泡，有卡使用宽内容；首读空会话说明不是持久消息，不编造时间。
 - [ ] 在原推荐卡插入可选理由区域，复用文案并验证市场未传属性时 DOM 内容和按钮不变。`constructor` 等原型名不能命中翻译；不对未知自然语言添加肯定勾。
 - [ ] 页面两侧传同一条 created_at。时间测试用 created_at 与 queried_at 跨分钟样本，避免真实样本同一分钟掩盖取错字段；历史重载时间不漂移。
-- [ ] 执行 `npm test -- src/组件/问AI代理/查询结果展示.test.tsx src/屏幕/问AI代理.test.tsx src/组件/列表卡片/求职推荐卡.test.tsx src/数据/发现推荐映射.test.ts`；浏览器执行 `npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture`。新样式用例并入原 Suite，用 320px/390px、真实样本文案截图检查卡内理由、标题、时间、按钮与原卡对照；无卡与多卡均无横向溢出。
+- [ ] 执行 `npm test -- src/组件/问AI代理/查询结果展示.test.tsx src/屏幕/问AI代理.test.tsx src/组件/列表卡片/求职推荐卡.test.tsx src/数据/发现推荐映射.test.ts`；浏览器执行 `npm run test:e2e -- e2e/suites/助手会话.spec.ts --project=fixture`。新样式用例并入原 Suite，用 320px/390px、真实样本文案截图检查卡内理由、标题、时间、按钮与原卡对照；无卡与多卡均无横向溢出。新增时间用例分成两个原生 describe，分别 `test.use({ timezoneId: 'Asia/Shanghai' })` 与 `test.use({ timezoneId: 'UTC' })`，每组只跑一个时间来源对照用例，复用统一 fixture；同一输入 `2026-09-16T09:07:33.348845Z` 分别显示 `09-16 17:07` / `09-16 09:07`，冻结测试当前年为 2026，并令 queried_at 跨分钟。不要为时区把整个导航旅程复制两遍。
 - [ ] 记录测试、截图位置与候选版本，提交本任务精确文件。此处无需重跑 Task 1 完全未变化的基础测试；若改了共享组件则按影响补它的用例。
 
 **完成/停止：** 三类已知标题一一对应、真实字段原样、卡面只有批准的理由变化、时间正确、导航未回归。遇到新后端 card 类型先核对契约，不兜底当详情。
@@ -156,7 +156,7 @@ use真人会话资料(角色: P7角色, 详情: P7会话项 | null): {
 
 hook 读取现有 provider 状态；允许几个局部 ref/state 记录本次范围与补读失败，不另存 P5 DTO 副本。清空原资料必须在当前授权不匹配的渲染即生效，不等旧请求回来再清。
 
-**操作栏兼容增量：** 保留现有两种主项传参、交换模式和 Mock 联系卡；增加可选 `主项禁用?: boolean`、`联系方式占位?: boolean`（默认 false）、`主项关闭?: () => void`。Backend 使用占位模式，电话/微信展开普通缺失文字，无复制；Mock 不传占位属性保持原行为。主项内容使用已有全屏层，“继续沟通”及所有关闭路径都调用 `主项关闭`（若传入）。为点击才取 PDF 的最小接线，允许新增可选 `主项打开?: () => void`，仅内容模式开层时调用；主项按下回调模式继续原逻辑。无需新增全局弹层管理器。
+**操作栏最小增量：** 所有主项统一 `主项内容: ReactNode`，删除迁移后无生产调用方的 `主项按下` 联合分支及其旧回调专属测试；保留交换模式和 Mock 联系卡。仅增加当前用例需要的可选 `主项禁用?: boolean`、`联系方式占位?: boolean`（默认 false）、`主项打开?: () => void`、`主项关闭?: () => void`。Backend 使用占位模式，电话/微信展开普通缺失文字，无复制；Mock 不传占位属性保持原行为。主项使用已有全屏层，开层时调用 `主项打开` 以延迟取 PDF；“继续沟通”及所有关闭路径调用 `主项关闭` 回收租约。没有第二种导航回调模式，不新增全局弹层管理器。
 
 PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件名,地址})`（或等价同文件纯正文出口），原 `原始PDF层` 内复用它，其他消费者不变；真人全屏层嵌正文，不嵌另一层弹层。不要复制 iframe 和租约逻辑。
 
@@ -168,7 +168,7 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
 - [ ] 真人消息行改用 Task 1 的 `聊天气泡` + markdown `聊天正文`，时间传 `行.createdAt`，保留 `data-侧` 与系统消息分支；不改 senderRole 左右判定或消息键，不修改发送的 content。删除本页重复气泡 JSX/UTC 取短时间函数；不全局改旧直聊 CSS，以免改动 Mock/A2A。
 - [ ] 在统一真人消息 fixture 显式加入新增 Case/岗位/企业读取；复用各域 handlers 与统一安装入口，遗漏请求必须被离线边界拒绝。用真实 PDF fixture 覆盖全屏展示、关闭/失权回收、迟到响应；不因新资料读取而放行真实网。
 - [ ] 执行 `npm test -- src/屏幕/P7/use真人会话资料.test.tsx src/屏幕/P7/Backend真人会话.test.tsx src/屏幕/真人会话操作栏.test.tsx src/组件/原始PDF层.test.tsx src/屏幕/真人会话.test.tsx src/屏幕/企业真人会话.test.tsx`；`npm run test:e2e -- e2e/suites/真人消息.spec.ts --project=fixture` 验双角色和交互，另按实际 Mock 用例选择 `--project=mock` 同 Suite，禁止以空选择记通过。
-- [ ] 浏览器保存 320px/390px 双侧短/长消息与弹层截图，检查短气泡实际 bounding box 随文字缩短、长文不溢出、关闭后滚动/草稿/URL 不变，电话微信缺失不可复制。按 Spec 不把截图称为真栈通过。
+- [ ] 浏览器保存 320px/390px 双侧短/长消息与弹层截图，检查短气泡实际 bounding box 随文字缩短、长文不溢出、关闭后滚动/草稿/URL 不变，电话微信缺失不可复制。真人时间同样用两个显式 `timezoneId` describe（Asia/Shanghai 和 UTC）各一条聚焦用例，冻结当前年 2026；分别给对方/我方不同的 createdAt（如 09:07Z/09:09Z），断言本地两条时间分别为 17:07/17:09，UTC 对照为 09:07/09:09，不误用 AI 整轮时间。通过标准 test fixture 建上下文，避免绕过离线边界。按 Spec 不把截图称为真栈通过。
 - [ ] 全部 Case 修改收敛后运行 `npm run test:list -- --write` 与 `npm run test:list -- --check`；核对只更新生成区。记录证据与提交。若新增文件不在清单映射规则内才调整映射表并提前更新 intent；通常 `src/屏幕/`、`src/组件/` 前缀已覆盖，不新增配置。
 
 **完成/停止：** 现有两角色消息回归通过、短气泡修复、身份合法降级、资料弹层不离开聊天、PDF 租约完整、Mock 默认操作栏不变。任何需要后端新字段或业务写入的方案不在范围内；缺公司/联系方式按已有占位完成，不因理论完备性扩范围。
@@ -193,4 +193,9 @@ PDF 层复用：从 `原始PDF层.tsx` 导出同文件 `原始PDF正文({文件�
 
 ## 文档审查记录
 
-本节由 planning owner 记录 Claude `WORKFLOW_DOCUMENT_REVIEW` 的冻结候选、报告、逐条裁决与停止结论。当前为首轮候选，尚未获得文档审查结论，不生成执行提示词直到 review 完成。审查范围严格为批准 Spec 与本文，用户明确免除 L3 的指令也是合同输入，不审全分支、不运行产品测试。
+- 模式：`WORKFLOW_DOCUMENT_REVIEW`，父 workflow 已授权。固定范围仅本 Spec 和本 Plan；批准 Spec revision `81e12c337596e063e089a6074c6bb2779e5dde60` / blob `8eebfc2ec223dab7deaa1d8bbe5afc02675aeb98`。
+- 首轮候选：Plan revision `3c79e1c22991759ec09681825a3908e93b24cc32` / blob `4c15217f9819157c99fb6792e840f7dec594cf80`。Reviewer 为 Claude CLI，`opus` / `high` / `permission-mode plan`；session `59a6d2aa-a46a-43ae-84da-fcf1b9f6c813`。未运行产品测试。审查前后 HEAD、porcelain 与受审文件 hash guard 均一致。
+- R1-1：Important / 契约违反 / required / 复杂度不变。Plan 未将 Spec 的显式本地时区及 UTC 对照落实为执行步骤。接受并修复：Task 1 单测以本地 Date 构造确定输入、提供 Shanghai/UTC 两个进程命令；Task 2/3 在原生 describe 设定 timezoneId，各增加聚焦对照，固定当前年，不复制整个旅程。
+- R1-2：Minor / 可选增强 / optional / 复杂度降低。迁移后操作栏 `主项按下` 无生产消费者，保留会造成多余联合类型与分支。核对源码只有 Backend 两处调用和一条专属测试，接受并简化：统一内容模式，移除废弃分支，保留真实需要的开关层/禁用/缺失占位属性；Mock 不受影响。
+- 裁决：2 项均接受，required 1 / optional 1，拒绝 0，延后 0；均不改变批准产品契约。修订后自检对应步骤、文件和命令，无未解决有效 required finding。依 claude-review-loop 的“裁决后无未解决 required”停止条件，结束于第 1 轮，不将本结论写成 reviewer 返回 `NO FINDINGS`，不为追求零建议额外循环。
+- 验证：仅文档 diff、关键约束与路径自检；执行提示词生成后另运行工作流规定的 grading 校验，产品测试留给新实施 session。
