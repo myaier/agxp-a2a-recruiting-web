@@ -422,6 +422,17 @@ Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`
 - 产品裁夺点（有意保留）：在谈卡/推荐卡亮点空文案分叉；disjoint→not_provided+「薪资带无交集」；岗位/企业链失败无行级重试入口。
 - target 已推进 30 提交（并行会话）：确认后流程为 fetch → 记录 final_target_base → `git merge --no-edit origin/main`（仅机械冲突）→ 按 final_target_base..merged HEAD 重算受影响责任并只补缺口 → 二次 fetch 核对未推进 → 普通 fast-forward push。
 
+### Final gate 执行记录（2026-09-17，用户批准后）
+
+- `final_target_base = acfdab7e`（fetch 复核与方案一致）；merge `origin/main` → 唯一冲突 `docs/testing/cases.md`（自动区双侧再生成），按权威生成器从合并树整体再生成（第一层 5997 项 / 第二层 356 项，`--check` 一致）；两侧 src/e2e 改动零文件重叠；merge commit `cbaf065c`。
+- 合并树增量证据（final_evidence_mode: PASS_INCREMENTAL）：
+  - 全量第一层 Vitest：**5997 passed / 5997**（覆盖两侧单测与依赖交互，包含 PRE_GATE 28 文件聚合集）
+  - `npm run typecheck` 零错误；`npm run build` ✓；`npm run test:list -- --check` 一致
+  - e2e（fixture）：「聊天推荐前端修复」grep **10/10**；隐私与实名全链路 **13/13**
+  - 复用：Task 6 mock 五套件 22 例、`ui:capture` chat-recommend-frontend 5 场景（其后无相关变更）
+  - L3 conditional 条件未命中 → NOT_SELECTED（真实 STG/后端权限未验证缺口保留）
+- 二次 fetch：target 仍为 `acfdab7e`（未推进）→ 普通 fast-forward push `acfdab7e..cbaf065c` 成功，origin/main = `cbaf065c`。无 force push。
+
 ### Task 2 执行记录（2026-09-17）
 
 - **现场基线：** 分支 `fix/chat-recommend-display`，基于 cb0e6f34（Task 1 收口后 HEAD）。
