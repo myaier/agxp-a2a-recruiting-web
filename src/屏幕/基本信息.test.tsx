@@ -736,6 +736,47 @@ describe('基本信息 · 日常编辑（from=resume）', () => {
   });
 });
 
+// ── 错配来源（review fix-1）：/basic 只认 from=resume，其余来源值等同无来源 ──
+// 边界层对同一 URL 的判定（消费位/活跃位）与页面层必须同一口径：错配来源不得让页面
+// 走注册旅程、而边界层当作已离开活跃集合，也不得反过来让页面按日常渲染。
+describe('基本信息 · 错配来源等同无来源（/basic 只认 from=resume）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  it.each(['?from=intentions', '?from=evil'])('%s：按注册旅程语义渲染与保存', async (search) => {
+    render基本信息({
+      基本信息: { 真名: '沈', 身份: '在职' },
+      建档: { 资料: { 个人优势: '旧' } }, // 旅程在场：证明错配来源没有把它挤成日常
+      入口: `/basic${search}`,
+    });
+    expect(screen.getByRole('heading', { name: '创建在线简历' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '编辑基本信息' })).toBeNull();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    // 注册旅程不传保存来源、确认 basic 分区（日常模式两者都不做）
+    expect(mock操作.保存简历.mock.calls.at(-1)).toHaveLength(1);
+    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledWith('basic');
+  });
+
+  it('错配来源且空身份：落回注册旅程的收口（派发草稿 + 裸跳状态页，不进日常子视图）', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=intentions' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存简历',
+      基本信息: expect.objectContaining({ 真名: '沈', 身份: '' }),
+    }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
+    // 日常同页收口子视图（from=resume 的路径）一次都不出现
+    expect(screen.queryByRole('button', { name: '在校' })).toBeNull();
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+  });
+});
+
 // ── 空身份日常保存：同一挂载页切状态收口子视图（Task 1 Step 4）──
 // 不 push 新页、不写全局；选择合法状态后点保存用合并后的基本信息一次进入保存简历；
 // 成功退出原编辑链；返回/取消退出整链不写；失败保留草稿；刷新丢弃未保存输入。

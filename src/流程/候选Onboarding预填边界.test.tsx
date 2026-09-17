@@ -210,14 +210,24 @@ describe('消费位置判定（向导段写在 query 上，消费必须看 searc
     expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
   });
 
-  // 求职状态页的第二个合法日常来源（合同 A：intentions 仅状态页可用）：
-  // 它是来源白名单的一员，因此和 resume 一样不属于预填/注册旅程；来源白名单外的值
-  //（如 from=evil）不是合法日常来源，不改变原有的消费位判定。
-  it('from=intentions 同样不消费建议；白名单外的来源不改变原判定', () => {
+  // 求职状态页的第二个合法日常来源（合同 A：intentions 仅状态页可用）：在状态页上
+  // 它与 resume 一样不属于预填消费位；离开状态页它是错配来源，判定与无来源逐字相同。
+  it('from=intentions 只在状态页去掉消费位；错配来源与白名单外来源都按原判定', () => {
     expect(是预填消费位置(路径.求职状态, '?from=intentions')).toBe(false);
-    expect(是预填消费位置(路径.基本信息, '?from=intentions')).toBe(false);
+    expect(是预填消费位置(路径.基本信息, '?from=intentions')).toBe(true);
     expect(是预填消费位置(路径.基本信息, '?from=evil')).toBe(true);
     expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
+  });
+
+  // review fix-1（Important 1）：路径限定在边界层收口 —— 错配来源不得让边界层与页面层
+  // 对同一 URL 给出互相矛盾的语义（页面 /basic 只认 from=resume，其余按无来源渲染）。
+  it('错配来源与无来源同判定：/basic?from=intentions 仍按消费位/活跃位处理', () => {
+    expect(是预填消费位置(路径.基本信息, '?from=intentions'))
+      .toBe(是预填消费位置(路径.基本信息, ''));
+    expect(是预填消费位置(路径.工作经历, '?from=intentions'))
+      .toBe(是预填消费位置(路径.工作经历, ''));
+    // 状态页是 intentions 的合法落点：那里照旧去掉消费位
+    expect(是预填消费位置(路径.求职状态, '?from=intentions')).toBe(false);
   });
 
   it('带简历编辑标记 保持 resume 单义：intentions 不是简历标记', () => {
@@ -271,12 +281,16 @@ describe('活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源', (
 
   // 求职状态页的第二个合法日常来源（合同 A：intentions 仅状态页可用）：状态页本身
   // 是「保状态」站，不带来源时属活跃集合；带 from=intentions 的完整位置是日常域，
-  // 不活跃。白名单外的来源值不改变原有集合判定。
-  it('from=intentions 同样不活跃；白名单外的来源不改变原判定', () => {
+  // 不活跃。离开状态页它是错配来源，活跃判定与无来源完全一致（不触发「已离开活跃集合」
+  // 的引导状态清理，而页面也按无来源渲染 —— 两层同一语义）。
+  it('from=intentions 只在状态页去掉活跃位；错配来源与白名单外来源按原判定', () => {
     expect(是活跃Onboarding位置(路径.求职状态)).toBe(true);
     expect(是活跃Onboarding位置(`${路径.求职状态}?from=intentions`)).toBe(false);
-    expect(是活跃Onboarding位置(`${路径.基本信息}?from=intentions`)).toBe(false);
+    expect(是活跃Onboarding位置(`${路径.基本信息}?from=intentions`)).toBe(true);
+    expect(是活跃Onboarding位置(`${路径.基本信息}?from=intentions`))
+      .toBe(是活跃Onboarding位置(路径.基本信息));
     expect(是活跃Onboarding位置(`${路径.基本信息}?from=evil`)).toBe(true);
+    expect(是活跃Onboarding位置(`${路径.求职状态}?from=evil`)).toBe(true);
   });
 });
 
