@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-17-onboarding-resume-editing-design.md`，批准正文 revision `ad781149019d1197b0211d7fdebd9d329e2a417b`，blob `19f720e212db569eba5c354cecb67fb7b493a766`。用户在认可 v1.0 并指定先行分支后，于本会话明确要求继续 Plan、Claude review 与执行提示词，作为 v1.1（含 §11）的实施范围授权。不得用未来工作树同名文件替代批准版本。
 
-**版本与阶段:** Plan v1.1，已完成首轮文档 review 并修正文档，等待复核。当前可完成规划和 review；**尚未满足产品实施依赖**。用户要求现在继续规划，故先冻结行为/接口和依赖核验规则；Spec §11.3 要求的最终已合入代码基线仍须在执行前取得。本文件不是对 `fix/chat-recommend-display` 当前进行中实现的验收。
+**版本与阶段:** Plan v1.2，已完成两轮 Claude 文档 review，R2 为 NO FINDINGS。当前可完成规划和 review；**尚未满足产品实施依赖**。用户要求现在继续规划，故先冻结行为/接口和依赖核验规则；Spec §11.3 要求的最终已合入代码基线仍须在执行前取得。本文件不是对 `fix/chat-recommend-display` 当前进行中实现的验收。
 
 **计划本身复杂度：高。** 涉及共享经历保存链、onboarding 分区确认与首次意向防重、浏览器历史栈及两数据源一致性。
 
@@ -324,7 +324,7 @@ UI_CAPTURE_DIR=test-results/onboarding-resume-visual npm run ui:capture -- --gre
 
 ## 文档 review 与裁决记录
 
-R1：Claude Opus / high，WORKFLOW_DOCUMENT_REVIEW。批准 Spec revision/blob 见文首，候选 HEAD `760c9b89`，Spec blob `19f720e212db569eba5c354cecb67fb7b493a766`，Plan blob `4532ee85`（缩写，完整指纹见本轮原始回执）。审查前后 status/HEAD/两文档指纹一致；reviewer 未运行测试、未修改文件。报告3条 Important/required，无 optional。
+R1：Claude Opus / high，WORKFLOW_DOCUMENT_REVIEW。批准 Spec revision/blob 见文首，候选 HEAD `760c9b89ac6ed885ca5f20e126f393424144384c`，Spec blob `19f720e212db569eba5c354cecb67fb7b493a766`，Plan blob `4532ee85a41327a15585d7359ba9ea351e97abf5`。审查前后 status/HEAD/两文档指纹一致；reviewer 未运行测试、未修改文件。报告3条 Important/required，无 optional。
 
 |Finding|裁决与核实|修正与批准范围|
 |---|---|---|
@@ -332,7 +332,7 @@ R1：Claude Opus / high，WORKFLOW_DOCUMENT_REVIEW。批准 Spec revision/blob �
 |R1-2 单条保存被其他旧缺项永久阻断|接受；源码核对现有简历数据源只映射真正变化的经历/教育，未改项可原样跳过|日常以权威快照叠加本次条目/分区差异，只预检将写条目；onboarding保留全量预检。增加两条旧缺项修复/删除与零旁路写的回归，不新建批量修复流程；符合Spec §11.2.4“本次真正将提交范围”|
 |R1-3 先行用例选择靠临时标题|接受；先行已提交有隐私操作/映射测试，未提交e2e标题不能当最终依据|开工登记最终diff中的实际文件/完整Case/project及行为，选择器与清单逐条对账；补隐私 --list 和已知漏选单测，不只看非零|
 
-本轮3条均已在 Plan 修正，批准 Spec 未改；因保存预检细化涉及实际写入边界，交同一 Claude 会话 R2 复核，未提前标记最终 clean。修复只改文档，未运行产品测试。
+R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude 会话复核，候选 HEAD `a61cb7578bee939c7f3bf08cb0a0d37539b40185`，Plan blob `c369c21c6aa2c82db924bf1e2fc15088f17e4ae7`；审查前后 status、HEAD、两份文档指纹一致。R2 明确逐条确认修复，最终 `NO FINDINGS`，无未关闭 required 或 optional。reviewer 未运行测试、未修改文件。本次 v1.2 只更新阶段与审查记录，不改变已复核的实施正文。规划、修复及审查均未运行产品测试。
 
 ## 实施记录
 
