@@ -42,8 +42,27 @@ async function 走完学历资料(page: Page) {
   await expect(page).toHaveURL(/#\/experience$/);
 }
 
+/** 首屏「期望薪资」行（合同 C / Spec §3.2）：值与单位合成在题名里，行本身可访问名被
+ *  aria-label="期望薪资" 覆盖 —— 行内值文本不是可访问名的一部分，所以按 aria-label
+ *  定位、值用 toContainText 读。 */
+function 首屏薪资行(page: Page) {
+  return page.getByRole('button', { name: '期望薪资', exact: true });
+}
+
+/** 首屏选月薪：开共用薪资区间层 → 点 30 档（联动把上限抬到 40）→ 确定回填。 */
+async function 选首屏薪资(page: Page, 档: string) {
+  const 行 = 首屏薪资行(page);
+  await 行.click();
+  const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+  await expect(抽屉).toBeVisible();
+  await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: 档, exact: true }).click();
+  await 抽屉.getByRole('button', { name: '确定' }).click();
+  await expect(抽屉).toHaveCount(0);
+  await expect(行).toContainText('30-40K');
+}
+
 test.describe('multi-role onboarding', () => {
-  test('walks the social-hire journey from role entry through both wizard stages', async ({ page }) => {
+  test('walks the social-hire journey from role entry to the preference supplement', async ({ page }) => {
     await 从登录进入身份(page, '我要找工作');
     await expect(page).toHaveURL(/#\/student$/);
     await expect(page.getByRole('button', { name: '已毕业' })).toHaveAttribute('aria-pressed', 'true');
@@ -57,10 +76,13 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByRole('button', { name: '全远程' })).toHaveAttribute('aria-pressed', 'false');
 
     await 选择期望职位(page, '产品', '产品经理');
+    // 首屏薪资（合同 C）：社招是月薪档；未确认时下一步被拦、留首屏（不再有独立薪资页）
+    await expect(page.getByText('期望薪资（月薪 · K）')).toBeVisible();
+    await expect(首屏薪资行(page)).toContainText('请选择');
     await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
-    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
-
+    await expect(page).toHaveURL(/#\/student$/);
+    await expect(page.getByText('请确认期望薪资，也可以选择面议')).toBeVisible();
+    await 选首屏薪资(page, '30');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
@@ -91,18 +113,21 @@ test.describe('multi-role onboarding', () => {
     // 零工作经历可以下一步：本旅程全程没点过「添加工作经历」，这里钉住页面上确实
     // 没有任何经历行（删除入口只出现在已建经历的编辑层里），保存照样推进
     await expect(page.getByText(/删除这段经历/)).toHaveCount(0);
+    // 个人优势（Task 3 合同 C）：从向导偏好转进本资料页，随简历链一起保存
+    await page.getByLabel('个人优势').fill('Mock 社招候选人的个人优势标记');
     await page.getByRole('button', { name: '保存' }).click();
 
+    // 资料页保存链收口：简历链成功 → 个人优势保存成功 → 确认 summary 分区 → 补充偏好
     await expect(page).toHaveURL(/#\/wizard$/);
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
+    // 向导只剩补充偏好一题：首屏已确认的职位/城市/薪资与个人优势都不再在这里问
+    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toHaveCount(0);
     await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toBeVisible();
-    // GitHub/作品集行 2026-08-24 挪去在线简历屏（作品集小节），优势页不再出现
-    await page.getByRole('button', { name: '保存并继续' }).click();
     await expect(page).toHaveURL(/#\/disclosure$/);
   });
 
-  test('walks the student journey from role entry to internship daily pay', async ({ page }) => {
+  test('walks the student journey from role entry to the preference supplement on daily pay', async ({ page }) => {
     await 从登录进入身份(page, '我要找工作');
     await expect(page).toHaveURL(/#\/student$/);
     await page.getByRole('button', { name: '在校' }).click();
@@ -112,37 +137,42 @@ test.describe('multi-role onboarding', () => {
     // 标注删掉后它就没有比对对象了），这里不再填它，顺带守住「删完不该再冒出来」
     await expect(page.getByLabel('最早可开始实习日期')).toHaveCount(0);
     await 选择期望职位(page, '产品', '产品经理');
+
+    // 首屏薪资（合同 C）：实习生档是日薪。面议起步：抽屉里左轮停在面议档、右轮整列隐藏；
+    // 取消零回填（滚轮初始落点不当已填写），确定写 0/0 后行显示面议
+    await expect(page.getByText('期望薪资（日薪 · 元/天）')).toBeVisible();
+    const 薪资行 = 首屏薪资行(page);
+    await expect(薪资行).toContainText('请选择');
+    await 薪资行.click();
+    const 日薪抽屉 = page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' });
+    await expect(日薪抽屉).toBeVisible();
+    await expect(日薪抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '面议' })).toHaveAttribute('aria-selected', 'true');
+    await expect(日薪抽屉.getByRole('listbox', { name: '薪资上限' })).toHaveCount(0);
+    await 日薪抽屉.getByRole('button', { name: '取消' }).click();
+    await expect(日薪抽屉).toHaveCount(0);
+    await expect(薪资行).toContainText('请选择');
+    await 薪资行.click();
+    await page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' }).getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(薪资行).toContainText('面议');
+
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
     await page.getByRole('button', { name: '下一步' }).click();
-    await 走完学历资料(page);
-    await page.getByRole('button', { name: '保存' }).click();
     await expect(page).toHaveURL(/#\/onboard\/status$/);
     // 学生档同样无默认：先选「在校 ·」档再下一步，否则被「请选择当前求职状态」拦下
     await page.getByRole('button', { name: '在校 · 考虑机会' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
-
+    await 走完学历资料(page);
+    // 空优势仍按原合同处理（不新增必填）：不填也能保存推进
+    await page.getByRole('button', { name: '保存' }).click();
     await expect(page).toHaveURL(/#\/wizard$/);
-    await expect(page.getByRole('heading', { name: '期望实习日薪是？' })).toBeVisible();
-    // bottom-drawer 统一 Task 5：页内自写双轮改薪资入口行 + 共用 薪资区间层。
-    // 面议起步：抽屉里左轮停在面议档、右轮整列隐藏；确定写 0/0 后行仍显示面议
-    const 薪资入口 = page.getByRole('button', { name: /薪资要求（日薪/ });
-    await expect(薪资入口).toContainText('面议');
-    await 薪资入口.click();
-    const 薪资抽屉 = page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' });
-    await expect(薪资抽屉).toBeVisible();
-    await expect(薪资抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '面议' })).toHaveAttribute('aria-selected', 'true');
-    await expect(薪资抽屉.getByRole('listbox', { name: '薪资上限' })).toHaveCount(0);
-    await 薪资抽屉.getByRole('button', { name: '取消' }).click();
-    await expect(薪资抽屉).toHaveCount(0);
-    await expect(薪资入口).toContainText('面议');
-    await 薪资入口.click();
-    await page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' }).getByRole('button', { name: '确定' }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(薪资入口).toContainText('面议');
-    await page.getByRole('button', { name: '下一步' }).click();
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
+    // 学生与社招同一条主序：向导里不再有独立薪资题
+    await expect(page.getByRole('heading', { name: '期望实习日薪是？' })).toHaveCount(0);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/disclosure$/);
   });
 
   test('walks the recruiter journey from role entry to job posting', async ({ page }) => {
@@ -343,7 +373,8 @@ test.describe('multi-role onboarding', () => {
   // P1C Task 6 数据源边界守卫：Mock 招聘剧情从身份选择进名片、再走公司档案分区，
   // 全程零 /api/v1 请求 —— Mock 图片本地预览、无 opaque Organization ID、
   // 不因为接了 Backend 代码就把请求漏进 Mock 模式。
-  test('Mock 招聘剧情不请求 BFF @mock', async ({ page }) => {
+  // Spec §4.1（2026-09-17）：注册流名片不再渲染「公司主页资料」维护行，日常入口保留。
+  test('Mock 招聘剧情不请求 BFF：注册流无名片维护行、日常入口仍可进公司档案 @mock', async ({ page }) => {
     const apiRequests: string[] = [];
     page.on('request', (request) => {
       if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
@@ -351,8 +382,17 @@ test.describe('multi-role onboarding', () => {
     await page.goto('/');
     await 进入Mock招聘名片(page);
     await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible();
+    // 注册流：整行不渲染（不是点进去被拒），名片自身仍可完成
+    await expect(page.getByRole('button', { name: /公司主页资料/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '保存 · 去发岗位' })).toBeVisible();
 
-    // 公司档案分区导航保持：名片 → 公司主页资料 → 分区清单 → 公司介绍分区
+    // 日常入口（企业我的头像行 / 企业设置的招聘名片行都是无 state 的普通跳转）仍保留该行：
+    // 进企业主壳 → 我 → 头像行 → 名片 → 公司主页资料 → 分区清单 → 公司介绍分区
+    await page.goto('/#/hr');
+    await expect(page.getByRole('button', { name: '我', exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '我', exact: true }).click();
+    await page.getByRole('button', { name: /招聘名片/ }).first().click();
+    await expect(page).toHaveURL(/#\/hr\/card$/);
     await page.getByRole('button', { name: /公司主页资料/ }).click();
     await expect(page).toHaveURL(/#\/hr\/company-profile$/);
     await page.getByRole('button', { name: /公司介绍/ }).click();
@@ -360,5 +400,36 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByLabel('公司介绍')).toBeVisible();
 
     expect(apiRequests).toEqual([]);
+  });
+
+  // 合同 C / Spec §3.2：旧 `/wizard?stage=salary` 最小兼容 —— 屏幕认出它后替换导航回首屏，
+  // 不插新历史项、不自动跳过基础资料；首屏薪资三态（未确认 / 明确面议 / 区间）与确认闸门。
+  test('Onboarding简历修正 旧薪资地址替换回首屏：首屏薪资三态与确认闸门 @mock', async ({ page }) => {
+    await page.goto('/#/wizard?stage=salary');
+    await expect(page).toHaveURL(/#\/student$/, { timeout: 15_000 });
+    // 独立薪资页已不存在（旧的期望现金月薪题不再出现）
+    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toHaveCount(0);
+
+    // 未确认：占位「请选择」；先把身份/职位补齐，让下一步走到薪资闸门（闸门在
+    // 身份 → 偏好 → 城市/职位 之后按序检查）
+    const 行 = 首屏薪资行(page);
+    await expect(行).toContainText('请选择');
+    await 选择期望职位(page, '产品', '产品经理');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+    await expect(page.getByText('请确认期望薪资，也可以选择面议')).toBeVisible();
+
+    // 明确面议：抽屉确定写 0/0，行显示面议
+    await 行.click();
+    await page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' }).getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(行).toContainText('面议');
+
+    // 区间：重开抽屉点 30 档（联动上限 40）→ 行显示 30-40K
+    await 选首屏薪资(page, '30');
+
+    // 替换导航（不是 push）：后退一步不回到旧薪资深链
+    await page.goBack();
+    await expect(page).not.toHaveURL(/#\/wizard\?stage=salary$/);
   });
 });

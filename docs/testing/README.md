@@ -577,3 +577,67 @@ FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前�
   形状不变），commit 8b34f899；新增失败先行测试 1 条，展示资料.test 40/40，全套
   `npm test` 全绿、tsc 干净。证据：task-4-report §5 与
   `dogfood-output/front-match-recruiter-20260916T235043/`（均 git-ignored）。
+
+## Task 5 对账（onboarding 与简历编辑：浏览器接线、视觉与清单同步，2026-09-17）
+
+本轮是测试交付（Task 1–4 的产品改动落成接线断言、Mock 视觉、清单与活动验收指南），
+不是正式 STG 执行、不在本 Task 跑全仓；所有 e2e/视觉运行 `--retries=0`，选择器一律先
+`--list` 预览再执行。
+
+### 合同变更 → 断言迁移（文件级，逐项对账）
+
+| 变更（合同） | 迁移的既有断言 | 文件 |
+| --- | --- | --- |
+| 薪资并入首屏、`/wizard?stage=salary` 只作兼容（合同 C） | 社招/学生两条 Mock 旅程改首屏三态（未确认被拦 / 面议 / 区间）；J-PILOT-02 四条手填旅程、候选建档主链与 DF-002、展示与交互「就读年份」改 `选首屏薪资` | `e2e/onboarding.spec.ts`、`e2e/J-PILOT-02接线.spec.ts`、`e2e/suites/候选建档.spec.ts`、`e2e/suites/展示与交互.spec.ts`、`e2e/fixtures/数据源交互.ts` |
+| 个人优势移到简历资料页，保存链收口（合同 C §3.3） | 向导只剩补充偏好一题；优势在 `/experience` 随简历链保存（J-PILOT-02 断言 `PATCH summary` 恰一次） | 同上 + `e2e/suites/候选建档.spec.ts` |
+| 日常简历按区/条目编辑 + 保存退一格（合同 A/B） | 「点两次经历 → 完成 → 外层保存」改为「点条目 → 保存」，落点回我的简历；聚合页仅留 onboarding | `e2e/suites/简历与附件.spec.ts`、`e2e/suites/隐私与实名.spec.ts`、`e2e/suites/展示与交互.spec.ts` |
+| 招聘职位类别改为三级自动展开（Spec §4.2） | 岗位编辑 @backend 的「下钻/死端零请求/右栏分页/整栏替换」按三级语义重写（一级自动展开、二级 h3 非按钮、组内分页、空组零请求、禁用叶不提交、同名叶子按 ID）；发布岗位的分类桩换成既有 `装三级职位目录桩` | `e2e/suites/岗位编辑.spec.ts`、`e2e/suites/招聘建档与JD.spec.ts`、`e2e/suites/隐私与实名.spec.ts`、`e2e/suites/展示与交互.spec.ts`、`e2e/fixtures/数据源交互.ts` |
+| 注册流名片不渲染公司维护行（Spec §4.1） | Mock 招聘剧情 Case 改「注册流无名片维护行 + 日常入口仍可进公司档案」两段 | `e2e/onboarding.spec.ts` |
+
+新增的独立用例（前缀 `Onboarding简历修正`，互不塞进一个长用例）：
+
+| 用例 | 文件 | 覆盖 |
+| --- | --- | --- |
+| 旧薪资地址替换回首屏：首屏薪资三态与确认闸门 @mock | `e2e/onboarding.spec.ts` | 合同 C 兼容 + 三态 + 闸门 + 替换不插历史 |
+| 屏蔽成功但经历 PATCH 失败：留页保留待重试，重试只补经历 PATCH @backend | `e2e/suites/隐私与实名.spec.ts` | §11.2.4/§11.2.5 partial failure 反例（已成功项不重放） |
+| 求职状态两来源 @backend / 状态行不再轮转假状态 @mock | `e2e/suites/求职意向.spec.ts` | Spec §6：两来源共用同一编辑、保存回各自来源、取消零写、刷新读权威 |
+| 日常编辑历史栈 / 日常取消、失败与深链 / 空身份基本信息收口 @backend | `e2e/suites/简历与附件.spec.ts` | Spec §5：真实 browser history、连续两分区编辑、取消零写、失败留页可重试、深链安全替换并重读权威、空身份同页收口与分区列表子编辑 |
+
+### 选集与执行结果（同一固定口径：workers=4 / retries=0）
+
+功能选集（七个文件是 Task 1–4 的完整旅程/日常消费者）：
+
+```bash
+npm run test:e2e -- e2e/onboarding.spec.ts e2e/J-PILOT-02接线.spec.ts e2e/suites/候选建档.spec.ts \
+  e2e/suites/招聘建档与JD.spec.ts e2e/suites/简历与附件.spec.ts e2e/suites/求职意向.spec.ts \
+  e2e/suites/岗位编辑.spec.ts --list      # 46 tests in 7 files
+```
+
+隐私只选经历相关 Case（先行最终登记的两条 + 本轮新增一条）：
+
+```bash
+npm run test:e2e -- e2e/suites/隐私与实名.spec.ts --grep '聊天推荐前端修复|Onboarding简历修正' --list   # 3 tests in 1 file
+```
+
+视觉：`npm test -- e2e/视觉回归/场景.test.ts`（4 例，场景 ID 26 个、唯一性 + 前缀分组）
+与 `UI_CAPTURE_DIR=… npm run ui:capture -- --grep 'candidate-preferences|candidate-salary|candidate-resume|recruiter-card|onboarding-resume-|onboarding-recruiter-category'`（7 场景 captured）。
+逐张人工核对结论与原始截图在当次运行目录（`test-results/onboarding-resume-visual/`，Playwright 复跑会清空）。
+
+### 清单（Task 5 收尾）
+
+- `npm run test:list -- --write` → 第一层 6104 项 / 第二层 366 项（功能 340 + 视觉 26）；`--check` 一致。
+- 生成时暴露一处**既有**重复 Case 身份（`src/流程/候选日常编辑.test.tsx` 的
+  `it.each([undefined, null, …])` 用 `%j` 打印两个值同名，Task 1 引入）：按既有做法
+  （README 上一节「清单验证暴露的既有同名 Case」）给参数表加区分标签，只改标题、
+  断言不变；不手工改自动区。
+
+### 已知缺口（本 Task 未修的产品缺陷，须由 controller 裁决）
+
+- `候选 onboarding 完整保存并创建首次意向 @backend` 在本 HEAD 下于**技能**断言处红：
+  资料页保存链里「保存个人优势」用**上一跳之前的** `后端状态引用.current.简历快照`
+  合成 next（`src/状态/后端/候选操作.ts:1047`，ref 只在渲染时更新，见
+  `src/状态/应用状态.tsx:548-549`），与链后权威快照 diff 出 `PATCH /me/resume/skills
+  {"skills":[]}`，把本轮新增技能清空（实测 mutation 序列与页面证据见 Task 5 报告）。
+  经历/教育/证书有「权威页缺项保护」（`候选操作.ts:769-822`），裸数组技能没有。
+  该缺陷同时让该 Case 既有的 `次数('PATCH','…/skills') === 1` 断言观察到 2 次。
+  本 Task 不改产品源码，故该 Case 保持红并登记为 required 缺口。

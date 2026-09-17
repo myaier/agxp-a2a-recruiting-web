@@ -76,8 +76,10 @@ export async function 抽屉搜企业并选中(page: Page, 搜索词: string, �
 
 /**
  * P1C Backend 发岗向导（实习生档，与 Mock onboarding 同一真实 UI）：
- * 类别走 catalog job-categories（左栏 root → 右栏 selectable 叶子），
+ * 类别走 catalog job-categories（真三级：左栏根 → 右栏二级分组标题 + 三级可选叶子），
  * 城市走 catalog locations 搜索候选，最后一步提交 POST /api/v1/recruiter/jobs。
+ * 调用方须先 `装三级职位目录桩`：默认内置目录桩是扁平的单个 selectable 根，在三级
+ * 正文里只会成为二级标题、没有可点叶子（2026-09-17 起发布岗位也走三级自动展开）。
  */
 export async function 走完后端发岗向导(page: Page) {
   await hash直达(page, '/#/hr/post-job');
@@ -87,11 +89,13 @@ export async function 走完后端发岗向导(page: Page) {
   await page.getByRole('button', { name: '提供转正机会' }).click();
   await page.getByPlaceholder(/资深后端工程师/).fill('Fixture 实习岗位');
   await 职位类别行.click();
-  // fixture 目录只有一项 selectable root；点左栏 root 后右栏出现同名叶子，用次序区分
+  // 一级打开即自动展开：二级是 h3 标题（不是按钮），三级叶子是整层唯一可点的
+  // 标记.职位display 按钮 —— 直接点它即单选回填并关闭
   const 类键 = page.getByRole('button', { name: 标记.职位display, exact: true });
-  await 类键.first().click();
-  await expect(类键).toHaveCount(2, { timeout: 5_000 });
-  await 类键.last().click();
+  await expect(类键).toHaveCount(1, { timeout: 10_000 });
+  await 类键.click();
+  await expect(page.getByRole('dialog', { name: '职位类别' })).toHaveCount(0, { timeout: 10_000 });
+  await expect(职位类别行).toContainText(标记.职位display.trim());
   await page.getByRole('button', { name: '混合', exact: true }).click();
   await page.getByRole('button', { name: '下一步' }).click();
 
@@ -475,14 +479,17 @@ export function P7带消息fixture(消息: string): P7FixtureState {
 }
 
 /**
- * 向导薪资段（bottom-drawer 统一 Task 5）：点薪资入口行开共用 薪资区间层，
- * 点 薪资下限 30 档 —— 引导联动自动把上限抬到 40（不单独碰上限轮）——
- * 点 确定回填，入口行显示 30-40K。
+ * 首屏期望薪资（Task 3 合同 C / Spec §3.2）：薪资并入完善资料首屏，学生与社招都
+ * 不再有独立薪资页。点该行开共用 薪资区间层，点 薪资下限 30 档 —— 引导联动自动把
+ * 上限抬到 40（不单独碰上限轮）—— 点 确定回填，入口行显示 30-40K。
+ * 行可访问名被 aria-label="期望薪资" 覆盖（行内值文本不是可访问名的一部分），
+ * 故按 aria-label 定位、行内值用 toContainText 读。
  */
-export async function 走向导薪资(page: Page): Promise<void> {
-  const 入口行 = page.getByRole('button', { name: /薪资要求（月薪/ });
+export async function 选首屏薪资(page: Page): Promise<void> {
+  const 入口行 = page.getByRole('button', { name: '期望薪资', exact: true });
   await 入口行.click();
   const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
+  await expect(抽屉).toBeVisible({ timeout: 10_000 });
   await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '30', exact: true }).click();
   await 抽屉.getByRole('button', { name: '确定' }).click();
   await expect(抽屉).toHaveCount(0);

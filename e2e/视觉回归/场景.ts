@@ -73,56 +73,135 @@ const 身份场景 = 构造场景({
   },
 });
 
-// candidate-preferences：完善资料屏，求职端已注册（带 legacy 种子）。
+// candidate-preferences：完善资料（首屏）屏，求职端已注册（带 legacy 种子）。
+// 2026-09-17（Task 5 / Spec §3.2）：期望薪资并入本屏求职意向区域，本场景因此**展示新首屏**
+// —— 关键元素补上「期望薪资」选择行（可访问名被 aria-label="期望薪资" 覆盖，行内值不是
+// 可访问名的一部分，故按 aria-label 定位；值文本另由功能 Case 断言）。
 // 注：种子固定写入 职位:['产品经理']，引导预填被预填，本屏「期望的职位」行回显
 // 已选值「产品经理 ›」而非占位「选择期望职位」。按 carry-forward 规则改用匹配已选
 // 值的定位（产品经理），不改产品代码、不改种子。占位态也一并兼容（用 alternation）。
-const 偏好场景 = 构造场景({
+const 偏好场景: 视觉场景 = {
   id: 'candidate-preferences',
   状态: '求职端已注册',
-  路径: '/#/student',
-  关键元素(page: Page) {
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/student', '求职端已注册');
+    await 注入候选突变(page);
+    // 首屏比一屏高：把期望薪资行滚进可视区，截图才能核对这一行的实际版式
+    //（节问 + 选择行）。确定性滚动，不依赖像素坐标。
+    await page.getByRole('button', { name: '期望薪资', exact: true }).scrollIntoViewIfNeeded();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('heading', { name: '完善资料' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '期望薪资', exact: true })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
     return [
       { 名称: '标题 完善资料', 定位: page.getByRole('heading', { name: '完善资料' }) },
       { 名称: '按钮 期望职位行', 定位: page.getByRole('button', { name: /产品经理|选择期望职位/ }) },
+      { 名称: '选择行 期望薪资', 定位: page.getByRole('button', { name: '期望薪资', exact: true }) },
       { 名称: '按钮 下一步', 定位: page.getByRole('button', { name: '下一步' }) },
     ];
   },
-});
+};
 
-// candidate-salary：引导问答薪资段，求职端已注册（求职类型=社招全职 → 期望现金月薪）。
-// 注：2026-09-16 采集验证发现原「listbox 最低月薪」定位已失效 —— bottom-drawer 统一
-//（合入 main 3234fb1c）把薪资轮整体换成 选择行 + 共用薪资区间层抽屉。按 carry-forward
-// 规则把关键元素改用现产品的选择行按钮（薪资要求（月薪 · K）），不改产品代码。
-const 薪资场景 = 构造场景({
+// candidate-salary：首屏期望薪资（合同 C / Spec §3.2），求职端已注册。
+// 2026-09-17（Task 5）：独立薪资页与向导薪资段已取消，薪资在首屏同一区域采集；本场景改为
+// **首屏打开薪资抽屉** —— 到达时点开共用 薪资区间层（与发布岗位同一份档位与面议语义），
+// 截图即抽屉形态。关键元素只用抽屉内的稳定锚点（选择行被抽屉遮住，不作为关键元素）。
+const 薪资场景: 视觉场景 = {
   id: 'candidate-salary',
   状态: '求职端已注册',
-  路径: '/#/wizard?stage=salary',
-  关键元素(page: Page) {
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/student', '求职端已注册');
+    await 注入候选突变(page);
+    await page.getByRole('button', { name: '期望薪资', exact: true }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
     return [
-      { 名称: '标题 期望现金月薪是？', 定位: page.getByRole('heading', { name: '期望现金月薪是？' }) },
-      { 名称: '选择行 薪资要求（月薪 · K）', 定位: page.getByRole('button', { name: /薪资要求（月薪 · K）/ }) },
-      { 名称: '按钮 下一步', 定位: page.getByRole('button', { name: '下一步' }) },
+      { 名称: '抽屉 薪资要求（月薪）', 定位: 抽屉 },
+      { 名称: '抽屉 薪资下限轮', 定位: 抽屉.getByRole('listbox', { name: '薪资下限' }) },
+      { 名称: '抽屉 确定', 定位: 抽屉.getByRole('button', { name: '确定' }) },
     ];
   },
-});
+};
 
-// candidate-resume：创建在线简历屏，求职端已注册。
-// 注：产品 JSX 里「姓名」是 div 条目标签，不是 <label>，输入框也没有 aria-label，
-// 故 getByLabel('姓名') 取不到。按 carry-forward 规则改用可见标签文本定位（getByText exact），
-// 不改产品代码。这是相对计划字面 "label 姓名" 的唯一调整。
+// candidate-resume：日常简历分区编辑的布局（合同 A），求职端已注册。
+// 2026-09-17（Task 5 / Spec §5.1）：日常入口不再展示整份聚合页 —— 点区进该区列表、
+// 点条目直达该条编辑器；本场景明确落**日常新编辑布局**（工作分区列表：返回栏 + 分区标题
+// + 添加行，列表没有第二次「总保存」）。种子无经历，故列表只有添加行。
 const 简历场景 = 构造场景({
   id: 'candidate-resume',
   状态: '求职端已注册',
-  路径: '/#/basic',
+  路径: '/#/experience?from=resume&section=work',
   关键元素(page: Page) {
     return [
-      { 名称: '标题 创建在线简历', 定位: page.getByRole('heading', { name: '创建在线简历' }) },
-      { 名称: '标签 姓名', 定位: page.getByText('姓名', { exact: true }) },
-      { 名称: '按钮 下一步', 定位: page.getByRole('button', { name: '下一步' }) },
+      { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
+      { 名称: '分区标题 工作经历', 定位: page.getByText('工作经历', { exact: true }).first() },
+      { 名称: '按钮 添加工作经历', 定位: page.getByRole('button', { name: '＋ 添加工作经历' }) },
     ];
   },
 });
+
+// onboarding-resume-basic-edit：基本信息日常编辑屏（/basic?from=resume，合同 A），
+// 求职端已注册。标题按模式区分（不得写「创建在线简历」），整页一个「保存」= 一次提交。
+const 基本编辑场景 = 构造场景({
+  id: 'onboarding-resume-basic-edit',
+  状态: '求职端已注册',
+  路径: '/#/basic?from=resume',
+  关键元素(page: Page) {
+    return [
+      { 名称: '标题 编辑基本信息', 定位: page.getByRole('heading', { name: '编辑基本信息' }) },
+      { 名称: '标签 姓名', 定位: page.getByText('姓名', { exact: true }) },
+      { 名称: '按钮 保存', 定位: page.getByRole('button', { name: '保存' }) },
+    ];
+  },
+});
+
+// onboarding-resume-status-edit：共用求职状态编辑（/onboard/status?from=resume，Spec §6），
+// 求职端已注册。三态真实选项（在校/在职/离职）+ 空值不假选 + 保存 single-flight。
+// 注：选中态的可访问名带 ✓ 前缀，按 carry-forward 用非精确匹配。
+const 状态编辑场景 = 构造场景({
+  id: 'onboarding-resume-status-edit',
+  状态: '求职端已注册',
+  路径: '/#/onboard/status?from=resume',
+  关键元素(page: Page) {
+    return [
+      { 名称: '标题 现在是什么状态？', 定位: page.getByRole('heading', { name: '现在是什么状态？' }) },
+      { 名称: '选项 在职', 定位: page.getByRole('button', { name: '在职' }) },
+      { 名称: '按钮 保存', 定位: page.getByRole('button', { name: '保存' }) },
+    ];
+  },
+});
+
+// onboarding-recruiter-category：发布岗位的职位类别全屏选择（三级自动展开，Spec §4.2），
+// 招聘端已注册。一级打开即出现该一级的二级分组标题（h3，不是按钮）与三级可选岗位 ——
+// 不需要再点二级；本场景取首屏（首根 互联网/AI 的第一组 后端开发 与首个岗位 Java）。
+const 招聘类别场景: 视觉场景 = {
+  id: 'onboarding-recruiter-category',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/hr/post-job', '招聘端已注册');
+    await 注入候选突变(page);
+    await page.getByRole('button').filter({ hasText: '职位类别' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('dialog', { name: '职位类别' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: '后端开发' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    const 弹层 = page.getByRole('dialog', { name: '职位类别' });
+    return [
+      { 名称: '左栏一级 互联网/AI', 定位: 弹层.getByRole('button', { name: '互联网/AI', exact: true }) },
+      { 名称: '右栏二级分组标题 后端开发', 定位: 弹层.getByRole('heading', { level: 3, name: '后端开发' }) },
+      { 名称: '右栏三级岗位 Java', 定位: 弹层.getByRole('button', { name: 'Java', exact: true }).first() },
+      { 名称: '返回按钮', 定位: 弹层.getByRole('button', { name: '返回' }) },
+    ];
+  },
+};
 
 // candidate-market：看市场子视图，求职端已注册。
 // 注：计划字面 ready 含 text「告诉AI代理你的硬性要求」，该文案原只出现在看市场筛选层弹层内
@@ -549,6 +628,8 @@ export const 视觉场景们: 视觉场景[] = [
   偏好场景,
   薪资场景,
   简历场景,
+  基本编辑场景,
+  状态编辑场景,
   市场场景,
   在谈首页场景,
   在谈详情场景,
@@ -558,6 +639,7 @@ export const 视觉场景们: 视觉场景[] = [
   发岗一场景,
   发岗二场景,
   发岗三场景,
+  招聘类别场景,
   候选画像场景,
   账号安全场景,
   反馈场景,

@@ -12,8 +12,8 @@ import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 核心编辑 岗位 @mock（core editors §5.2/§5.4 Task 4）：职位类别两栏与结构化确认门
-// 两模式共用 —— Mock 用本地职业分类表驱动同一分类正文（左栏导航、右栏可选、
-// 关闭重开保留选中勾）；确认勾选框出现在公开要求之后、私有筛选之前，新建未确认
+// 两模式共用 —— Mock 用本地职业分类树驱动同一分类正文（左栏一级导航、右栏二级分组
+// 标题 + 三级可选岗位、关闭重开保留选中勾）；确认勾选框出现在公开要求之后、私有筛选之前，新建未确认
 // 发布被拦、勾选可发布；真实改经验撤销确认、改私有筛选不撤销；编辑 legacy 岗
 // 只改私有字段不勾选也能保存，改公开要求需重新确认。全程零 /api/v1 请求。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,17 +156,19 @@ test.describe('核心编辑 岗位 @mock', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 核心编辑 岗位 @backend（core editors §5.2/§5.4 Task 4）：Backend 分支消费同一
-// 分类正文 —— 右栏分页「加载更多」、不可选父项下钻替换右栏、无子项不可选项不提交
-// （零目录请求）、同名叶子按稳定 ID 提交；确认门两模式同位同文案，新建未确认发布
-// 被拦；编辑 hydrated confirmed 岗改公开要求撤销确认，稀疏补丁只带变化字段。
+// 核心编辑 岗位 @backend（core editors §5.2/§5.4 Task 4；2026-09-17 Spec §4.2 三级
+// 自动展开）：Backend 分支消费同一分类正文 —— 打开一级即自动出现该一级的二级分组
+// 标题（h3，不是按钮）与各组三级可选职位；组内「加载更多」按组续页；无子项的分组
+// 呈现空态且零目录请求（与「失败 + 重试」可区分）；禁用叶子保留展示但不提交；同名
+// 叶子按稳定 ID 提交。确认门两模式同位同文案，新建未确认发布被拦；编辑 hydrated
+// confirmed 岗改公开要求撤销确认，稀疏补丁只带变化字段。
 // job-categories 目录用本用例专用网络桩（后装 route 先匹配，不改共享 helper）；
 // 符合已审合同的网络桩边界验证，不是 live 验收。
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('核心编辑 岗位 @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
 
-  test('新建两栏下钻分类→确认门→发布，同名叶子按稳定 ID 提交 @catalog-fullscreen @backend', async ({ page }, testInfo) => {
+  test('新建三级分类（一级自动展开/组内分页/空组零请求/禁用叶不提交）→确认门→发布，同名叶子按稳定 ID 提交 @catalog-fullscreen @backend', async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     const 请求们: { path: string; method: string; body: unknown }[] = [];
     // 合同 C：名片公司自报经 公司选择抽屉 选中（搜索池 + 公开企业回读都要有组织甲）
@@ -181,9 +183,10 @@ test.describe('核心编辑 岗位 @backend', () => {
       隐私fixture: 隐私,
     });
 
-    // job-categories 目录桩（本用例专用精确状态）：根『同名类』不可选 → 子项第一页
-    // 『中转』(不可选,有子项) 带游标 → 游标页『分页叶子』；『中转』下钻 →
-    // 『死端父项』(不可选,无子项) + 与根同名的可选叶子『同名类』。
+    // job-categories 目录桩（本用例专用精确状态，真三级）：根『同名类』不可选 →
+    // 二级两组：『中转分组』(不可选,有子项,组内还有下一页) 与『死端分组』
+    // (不可选,无子项 → 空态且零请求)；『中转分组』三级第一页 = 与根同名的可选叶子
+    // 『同名类』+ 禁用叶子『禁用职位』(不可选) → 游标页『分页叶子』。
     const 目录请求: string[] = [];
     const 税目 = (id: string, 名称: string, parentId: string | null, selectable: boolean, hasChildren: boolean) => ({
       id, display_name: 名称, parent_id: parentId, selectable, has_children: hasChildren,
@@ -196,13 +199,20 @@ test.describe('核心编辑 岗位 @backend', () => {
       目录请求.push(`parent_id=${parentId ?? '-'}&cursor=${cursor ?? '-'}`);
       const 页 = (items: ReturnType<typeof 税目>[], next: string | null) =>
         route.fulfill({ status: 200, json: 信封({ items, next_cursor: next, catalog_version: 'tax-v1' }) });
-      if (parentId === 'root_same' && !cursor) return 页([税目('branch_mid', '中转', 'root_same', false, true)], 'child_cur_1');
-      if (cursor === 'child_cur_1') return 页([税目('leaf_page', '分页叶子', 'root_same', true, false)], null);
+      if (parentId === 'root_same') {
+        return 页([
+          税目('branch_mid', '中转分组', 'root_same', false, true),
+          税目('branch_dead', '死端分组', 'root_same', false, false),
+        ], null);
+      }
+      if (parentId === 'branch_mid' && cursor === 'leaf_cur_1') {
+        return 页([税目('leaf_page', '分页叶子', 'branch_mid', true, false)], null);
+      }
       if (parentId === 'branch_mid') {
         return 页([
-          税目('branch_dead', '死端父项', 'branch_mid', false, false),
           税目('leaf_same', '同名类', 'branch_mid', true, false),
-        ], null);
+          税目('leaf_disabled', '禁用职位', 'branch_mid', false, false),
+        ], 'leaf_cur_1');
       }
       return 页([税目('root_same', '同名类', null, false, true)], null);
     });
@@ -219,27 +229,37 @@ test.describe('核心编辑 岗位 @backend', () => {
     await expect(page.getByText('保存成功')).toBeVisible({ timeout: 20_000 });
     await hash直达(page, '/#/hr/post-job');
 
-    // ── 第一步：两栏共用正文 —— 右栏分页 / 下钻 / 死端不提交 / 同名叶子按 ID ──
+    // ── 第一步：共用正文的三级语义 —— 一级打开即出二级标题与三级叶子；组内分页；
+    //    无子项分组零请求的空态；禁用叶不提交；同名叶子按稳定 ID ──
     const 职位类别行 = page.getByRole('button').filter({ hasText: '职位类别' });
     await 职位类别行.click();
     // editor-catalog-fullscreen Task 1：承载换成全屏选择外壳，可访问名 = 标题「职位类别」
     const 类别弹层 = page.getByRole('dialog', { name: '职位类别' });
-    await expect(类别弹层.getByText('中转')).toBeVisible({ timeout: 10_000 });
+    // 一级自动展开：二级分组以 h3 标题呈现（绝不是按钮），组内三级叶子同屏可选
+    const 分组标题 = 类别弹层.getByRole('heading', { level: 3, name: '中转分组' });
+    await expect(分组标题).toBeVisible({ timeout: 10_000 });
+    expect(await 分组标题.evaluate((元) => 元.closest('button') !== null)).toBe(false);
+    await expect(类别弹层.getByRole('button', { name: '同名类', exact: true }).last()).toBeVisible();
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-分类正常.png`, fullPage: true });
-    // 右栏分页：加载更多追加游标页
+    // 无子项分组（has_children=false）：空态与「失败 + 重试」可区分，且从不发该组的目录请求
+    await expect(类别弹层.getByRole('heading', { level: 3, name: '死端分组' })).toBeVisible();
+    await expect(类别弹层.getByText('该分组暂无职位')).toBeVisible();
+    expect(目录请求.filter((条) => 条.includes('parent_id=branch_dead'))).toEqual([]);
+    // 禁用叶（不可选）保留展示但不提交：force 触发与用户指针点击等价的事件后仍在层内，
+    // 且整层没有出现选中勾（全屏子视图期间父页字段整体 hidden，回填断言在关层后做）
+    const 禁用叶 = 类别弹层.getByRole('button', { name: '禁用职位', exact: true });
+    await expect(禁用叶).toHaveAttribute('aria-disabled', 'true');
+    await 禁用叶.click({ force: true });
+    await expect(类别弹层).toBeVisible();
+    await expect(类别弹层.locator('[class*="小类勾"]')).toHaveCount(0);
+    // 组内分页：该组自己的「加载更多」按组续页追加游标页（右栏整栏无多余分页键）
+    await expect(类别弹层.getByRole('button', { name: '加载更多', exact: true })).toHaveCount(1);
     await 类别弹层.getByRole('button', { name: '加载更多', exact: true }).click();
     await expect(类别弹层.getByRole('button', { name: '分页叶子', exact: true })).toBeVisible({ timeout: 10_000 });
-    // 右栏下钻：不可选且有子项 → 替换右栏（沿原稿不可选项带 aria-disabled，Playwright
-    // 动作性判定视作不可点，用 force 触发与用户指针点击等价的事件）
-    await 类别弹层.getByRole('button', { name: '中转', exact: true }).click({ force: true });
-    await expect(类别弹层.getByRole('button', { name: '死端父项', exact: true })).toBeVisible({ timeout: 10_000 });
-    // 死端父项（不可选且无子项）：不提交不展开，零目录请求
-    const 下钻后目录请求数 = 目录请求.length;
-    await 类别弹层.getByRole('button', { name: '死端父项', exact: true }).click({ force: true });
-    await expect(类别弹层.getByRole('button', { name: '死端父项', exact: true })).toBeVisible();
-    expect(目录请求.length).toBe(下钻后目录请求数);
-    // 同名叶子（与左栏根同名不同键）单击选定
+    await expect(类别弹层.getByRole('button', { name: '加载更多', exact: true })).toHaveCount(0);
+    // 同名叶子（与左栏根同名不同键）单击选定：单选、回填并关闭
     await 类别弹层.getByRole('button', { name: '同名类', exact: true }).last().click();
+    await expect(类别弹层).toHaveCount(0);
     await expect(职位类别行).toContainText('同名类');
     await page.screenshot({ path: `${testInfo.outputPath()}-核心编辑-岗位-分类选中.png`, fullPage: true });
 
@@ -296,7 +316,8 @@ test.describe('核心编辑 岗位 @backend', () => {
     });
 
 
-    // 本会话目录请求只打 job-categories，且死端父项未产生额外下钻请求
+    // 本会话目录请求只打 job-categories（根 → 当前一级二级 → 该组三级首页与续页），
+    // 且无子项分组从未产生请求（断言见上方）
     expect(目录请求.length).toBeGreaterThan(0);
   });
 

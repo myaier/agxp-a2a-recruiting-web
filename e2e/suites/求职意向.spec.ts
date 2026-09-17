@@ -693,3 +693,121 @@ test.describe('核心编辑 期望行业 @backend', () => {
     expect(目录请求.every((p) => p === '/api/v1/catalog/industries')).toBe(true);
   });
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding简历修正 · 求职状态两来源 @backend（Spec §6 / Task 1 合同 A）：
+// 「我的简历 → 当前状态」与「求职意向管理 → 求职状态」进同一份三态编辑（同一 profile、
+// 同一交互），分别退回各自来源；两处展示同一权威值；取消零写；刷新读权威。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Onboarding简历修正 求职状态两来源 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('两来源进同一份状态编辑：保存回各自来源、两处一致、取消零写、刷新读权威 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    fixture.主体.last_used_role = 'candidate';
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选', status: 'employed' },
+      summary: '存量个人优势',
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-onr-status-two-sources',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: P3隐私fixture(),
+    });
+    const 状态写们 = () => fixture.mutations.filter(
+      (条) => 条.method === 'PATCH' && 条.path === '/api/v1/me/resume/profile',
+    );
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+
+    // ── 来源一：我的简历 → 当前状态 ──
+    await hash直达(page, '/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    const 简历状态行 = page.getByRole('button', { name: /当前状态/ });
+    await expect(简历状态行).toContainText('在职');
+    await 简历状态行.click();
+    await expect(page).toHaveURL(/#\/onboard\/status\?from=resume$/, { timeout: 15_000 });
+    // 共用三态正文：当前值正确预选（不是本地轮转出来的展示态）。
+    // 选中态的可访问名带 ✓ 前缀，故一律用非精确匹配（仓库既有口径）。
+    await expect(page.getByRole('button', { name: '在职' })).toHaveAttribute('aria-pressed', 'true');
+    // 取消（返回）：零写、退一格回我的简历
+    await page.getByRole('button', { name: '返回' }).click();
+    await expect(page).toHaveURL(/#\/resume$/);
+    expect(状态写们()).toHaveLength(0);
+    // 改「离职」→ 保存：一次 profile 写入，退一格回我的简历，行内展示同一值
+    await 简历状态行.click();
+    await page.getByRole('button', { name: '离职' }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
+    await expect(page.getByRole('button', { name: /当前状态/ })).toContainText('离职');
+    expect(状态写们()).toHaveLength(1);
+    expect(状态写们()[0]!.body).toMatchObject({ status: 'unemployed' });
+
+    // ── 来源二：求职意向管理 → 求职状态（同一份事实、同一编辑交互）──
+    await hash直达(page, '/#/intentions');
+    const 意向状态行 = page.getByRole('button', { name: /求职状态/ });
+    await expect(意向状态行).toContainText('离职', { timeout: 15_000 });
+    await 意向状态行.click();
+    await expect(page).toHaveURL(/#\/onboard\/status\?from=intentions$/);
+    await expect(page.getByRole('button', { name: '离职' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '在校' }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/intentions$/, { timeout: 20_000 });
+    await expect(page.getByRole('button', { name: /求职状态/ })).toContainText('在校');
+    expect(状态写们()).toHaveLength(2);
+    expect(状态写们()[1]!.body).toMatchObject({ status: 'student' });
+
+    // ── 刷新：两处都读权威（不是本地假状态）──
+    await page.reload();
+    await expect(page.getByRole('button', { name: /求职状态/ })).toContainText('在校', { timeout: 15_000 });
+    await hash直达(page, '/#/resume');
+    await expect(page.getByRole('button', { name: /当前状态/ })).toContainText('在校', { timeout: 15_000 });
+    expect(状态写们()).toHaveLength(2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding简历修正 · 状态行不再轮转假状态 @mock（Spec §6）：意向管理的状态行点进
+// 共享状态编辑（?from=intentions），预选同一份身份、点行本身不再就地轮转；保存后
+// 行内展示同一值，全程零 API。空值不假选的边界由 求职状态.test.tsx 单测钉住。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Onboarding简历修正 状态行不再轮转假状态 @mock', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4181' });
+
+  test('意向管理状态行进同一份编辑：预选同一身份、保存回本屏、行内同一值 @mock', async ({ page }) => {
+    const apiRequests: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1')) apiRequests.push(request.url());
+    });
+
+    await page.goto('/');
+    await page.getByText(/已阅读并同意/).click();
+    await page.getByRole('button', { name: '微信登录' }).click();
+    await expect(page).toHaveURL(/#\/identity$/);
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+
+    await page.goto('/#/intentions');
+    const 状态行 = page.getByRole('button', { name: /求职状态/ });
+    // 行内值来自同一份页面身份（Mock 原型默认「在职」），不再是本地轮转出来的档位
+    await expect(状态行).toContainText('在职', { timeout: 15_000 });
+    await 状态行.click();
+    await expect(page).toHaveURL(/#\/onboard\/status\?from=intentions$/);
+    // 同一份三态编辑：当前值正确预选（选中态可访问名带 ✓ 前缀，用非精确匹配）
+    await expect(page.getByRole('button', { name: '在职' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: /考虑机会|随便看看|保密求职中|随时到岗/ })).toHaveCount(0);
+    // 选「离职」保存 → 按来路退一格回意向管理，行内展示同一值
+    await page.getByRole('button', { name: '离职' }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/intentions$/, { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /求职状态/ })).toContainText('离职');
+
+    // Mock 全程零 API 请求
+    expect(apiRequests).toEqual([]);
+  });
+});

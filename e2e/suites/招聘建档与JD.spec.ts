@@ -5,7 +5,7 @@
 // 本 Suite 家族另含 e2e/onboarding.spec.ts 的招聘侧叶子（文件级并集，见该文件头）。
 
 import { expect, test } from '../fixtures/test';
-import { 抽屉搜企业并选中, 走完后端发岗向导 } from '../fixtures/数据源交互';
+import { 抽屉搜企业并选中, 走完后端发岗向导, 装三级职位目录桩 } from '../fixtures/数据源交互';
 import { 标记 } from '../fixtures/bff/账号与目录';
 import { P1C标记, 创建招聘方OnboardingFixture, P1C组织甲 } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture, P1C搜索池 } from '../fixtures/bff/隐私与实名';
@@ -49,6 +49,8 @@ test.describe('招聘方 onboarding Backend fixture @backend', () => {
       隐私fixture: 隐私,
       请求拦截: (request) => requests.push(request),
     });
+    // 发布岗位的职位类别走真三级目录（一级自动展开 → 二级标题 + 三级叶子）
+    await 装三级职位目录桩(page);
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/identity$/, { timeout: 15_000 });
@@ -121,6 +123,8 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
       招聘方OnboardingFixture: fixture,
       隐私fixture: 隐私,
     });
+    // 发布岗位的职位类别走真三级目录（一级自动展开 → 二级标题 + 三级叶子）
+    await 装三级职位目录桩(page);
 
     // 登录进发岗页（新招聘方 onboarding 同链：名片首写 → 保存并继续）
     await page.goto('/');
@@ -197,10 +201,11 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await page.getByPlaceholder(/资深后端工程师/).fill('上传前标题');
     await page.getByRole('button', { name: '混合', exact: true }).click();
     await 职位类别行.click();
+    // 一级自动展开：整层只有一枚三级叶子按钮，直接点它即回填并关闭
     const 类键 = page.getByRole('button', { name: 标记.职位display, exact: true });
-    await 类键.first().click();
-    await expect(类键).toHaveCount(2, { timeout: 5_000 });
-    await 类键.last().click();
+    await expect(类键).toHaveCount(1, { timeout: 10_000 });
+    await 类键.click();
+    await expect(page.getByRole('dialog', { name: '职位类别' })).toHaveCount(0, { timeout: 10_000 });
 
     // ── 取消一轮：consent 取消零 POST ──
     await page.getByRole('button', { name: /把 JD 给我/ }).click();
@@ -265,6 +270,8 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
       招聘方OnboardingFixture: fixture,
       隐私fixture: 隐私,
     });
+    // 发布岗位的职位类别走真三级目录（一级自动展开 → 二级标题 + 三级叶子）
+    await 装三级职位目录桩(page);
 
     // 登录进发岗页（新招聘方 onboarding 同链：名片首写 → 保存并继续）
     await page.goto('/');
@@ -341,10 +348,11 @@ test.describe('JD 建议稿导入 Backend fixture @backend', () => {
     await page.getByPlaceholder(/资深后端工程师/).fill('上传前标题');
     await page.getByRole('button', { name: '混合', exact: true }).click();
     await 职位类别行.click();
+    // 一级自动展开：整层只有一枚三级叶子按钮，直接点它即回填并关闭
     const 类键 = page.getByRole('button', { name: 标记.职位display, exact: true });
-    await 类键.first().click();
-    await expect(类键).toHaveCount(2, { timeout: 5_000 });
-    await 类键.last().click();
+    await expect(类键).toHaveCount(1, { timeout: 10_000 });
+    await 类键.click();
+    await expect(page.getByRole('dialog', { name: '职位类别' })).toHaveCount(0, { timeout: 10_000 });
 
     // ── 走正常 consent 入口拿到导入状态（不手填结果；解析节奏由上一条 Case 覆盖）──
     await page.getByRole('button', { name: /把 JD 给我/ }).click();

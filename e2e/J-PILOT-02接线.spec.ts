@@ -571,11 +571,11 @@ async function 进完善资料(page: Page, 在校: boolean): Promise<void> {
   await expect(page).toHaveURL(/#\/student$/);
 }
 
-/** 向导薪资段（bottom-drawer 统一 Task 5）：点薪资入口行开共用 薪资区间层，
- *  点 薪资下限 30 档 —— 引导联动自动把上限抬到 40（不单独碰上限轮）——
- *  点 确定回填，入口行显示 30-40K。 */
-async function 走向导薪资(page: Page): Promise<void> {
-  const 入口行 = page.getByRole('button', { name: /薪资要求（月薪/ });
+/** 首屏薪资（合同 C / Spec §3.2）：薪资并入完善资料首屏，学生/社招都不再有独立薪资页。
+ *  点该行开共用 薪资区间层 → 点 薪资下限 30 档（引导联动自动把上限抬到 40）→ 确定回填。
+ *  行可访问名被 aria-label="期望薪资" 覆盖，故按 aria-label 定位、行内值用 toContainText 读。 */
+async function 选首屏薪资(page: Page): Promise<void> {
+  const 入口行 = page.getByRole('button', { name: '期望薪资', exact: true });
   await 入口行.click();
   const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
   await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '30', exact: true }).click();
@@ -584,7 +584,8 @@ async function 走向导薪资(page: Page): Promise<void> {
   await expect(入口行).toContainText('30-40K');
 }
 
-/** 基本信息页 → 求职状态（选档）→ 学历四连页（Backend 学校/专业走 fixture 目录；社招路径） */
+/** 基本信息页 → 求职状态（选档）→ 学历四连页（Backend 学校/专业走 fixture 目录）。
+ *  Task 3（合同 C）起两身份共用这条主序：状态在基本信息之后、学历之前。 */
 async function 走资料与学历(page: Page, 档: string): Promise<void> {
   await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
   await page.getByRole('button', { name: '下一步' }).click();
@@ -593,7 +594,6 @@ async function 走资料与学历(page: Page, 档: string): Promise<void> {
   await page.getByRole('button', { name: 档 }).click();
   await page.getByRole('button', { name: '下一步' }).click();
 
-  // 社招：状态后走学历四连页（学生顺序不同：basic → 学历 → 经历 → 状态，不经过本函数尾段）
   await 走学历四连页(page);
 }
 
@@ -632,10 +632,14 @@ async function 走就读时间段(page: Page): Promise<void> {
   await expect(抽屉).toHaveCount(0);
 }
 
-/** 偏好段尾：排除题 →（可选自定义原文，走常驻「用你自己的话写」行内输入；
- *  屏蔽公司的「再加一家」是 PM_BLOCKED 路径，本文件不碰）→ 优势题 → 保存并继续 → 披露 */
-async function 走偏好段尾(page: Page, 优势: string, 自定义排除?: string): Promise<void> {
+/** 偏好段尾（Task 3 合同 C：向导只剩补充偏好一题）：排除题 →（可选自定义原文，走常驻
+ *  「用你自己的话写」行内输入；屏蔽公司的「再加一家」是 PM_BLOCKED 路径，本文件不碰）
+ *  → 明确继续动作（下一步 = 提交补充偏好 + 保存首次意向）→ 披露说明。
+ *  个人优势已迁到 /experience（简历资料页），不在本段，由调用方在资料页填写。 */
+async function 走偏好段尾(page: Page, 自定义排除?: string): Promise<void> {
   await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible({ timeout: 20_000 });
+  // 向导里不再补问首屏已确认的职位/城市/薪资，也没有优势题
+  await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toHaveCount(0);
   if (自定义排除 !== undefined) {
     await page.getByPlaceholder('用你自己的话写').fill(自定义排除);
     await page.getByRole('button', { name: '添加' }).click();
@@ -644,9 +648,6 @@ async function 走偏好段尾(page: Page, 优势: string, 自定义排除?: str
     await expect(page.getByRole('button', { name: 自定义排除 })).toBeVisible();
   }
   await page.getByRole('button', { name: '下一步', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toBeVisible();
-  await page.getByLabel('个人优势').fill(优势);
-  await page.getByRole('button', { name: '保存并继续' }).click();
   await expect(page).toHaveURL(/#\/disclosure$/, { timeout: 30_000 });
 }
 
@@ -696,12 +697,9 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     const fixture = 创建建档fixture();
     await 安装BFF路由(page, fixture);
 
-    // ── 完善资料（社招）→ 向导薪资段 30/40 → 基本信息 ──
+    // ── 完善资料（社招）首屏：薪资 30/40 在同一屏确认 → 基本信息 ──
     await 进完善资料(page, false);
-    await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
-    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
-    await 走向导薪资(page);
+    await 选首屏薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
 
@@ -711,11 +709,12 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
 
-    // ── 在线简历：零工作经历直存（URL 先设置）──
+    // ── 在线简历：零工作经历直存（URL 先设置；个人优势也在本页，随简历链一起保存）──
     await expect(page.getByRole('heading', { name: '在线简历' })).toBeVisible();
     await page.getByLabel('作品集或项目链接').fill('github.com/jp02/kept-project');
     await page.getByLabel('作品集或项目链接').blur();
     await expect(page.getByLabel('作品集或项目链接')).toHaveValue('https://github.com/jp02/kept-project');
+    await page.getByLabel('个人优势').fill('Fixture 候选人的个人优势标记');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible({ timeout: 20_000 });
 
@@ -736,8 +735,12 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     expect(清空写.portfolio_url).toBeNull();
 
     // ── 偏好段尾（含自定义排除原文，验证逐字进 private_preferences）→ 披露 → 主壳 ──
-    await 走偏好段尾(page, 'Fixture 候选人的个人优势标记', '不接受只有单休的安排');
+    await 走偏好段尾(page, '不接受只有单休的安排');
     await 完成注册进主壳(page);
+
+    // 个人优势在资料页保存链里落地（不再是向导优势题）
+    expect(计数(fixture, 'PATCH', '/api/v1/me/resume/summary')).toBe(1);
+    expect(fixture.resume.summary).toBe('Fixture 候选人的个人优势标记');
 
     // ── 精确断言 ──
     // 零工作经历：全旅程一次 POST /resume/experiences 都没有
@@ -769,11 +772,25 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     const fixture = 创建建档fixture();
     await 安装BFF路由(page, fixture);
 
-    // ── 完善资料（在校/实习生，含实习月数与到岗天数）→ 基本信息 → 学历四连页 ──
+    // ── 完善资料（在校/实习生，含实习月数与到岗天数；薪资同屏按日薪档确认）
+    //    → 基本信息 → 求职状态 → 学历四连页（两身份同一主序）──
     await 进完善资料(page, true);
+    // 实习生档位是日薪：同一个首屏行按 元/天 开抽屉（日薪档从 50 起，点 100 档，
+    // 上限按既有引导联动抬到 200），回填文本用日薪周期
+    const 日薪行 = page.getByRole('button', { name: '期望薪资', exact: true });
+    await expect(page.getByText('期望薪资（日薪 · 元/天）')).toBeVisible();
+    await 日薪行.click();
+    const 日薪抽屉 = page.getByRole('dialog', { name: '薪资要求(日薪，单位:元)' });
+    await 日薪抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '100', exact: true }).click();
+    await 日薪抽屉.getByRole('button', { name: '确定' }).click();
+    await expect(日薪抽屉).toHaveCount(0);
+    await expect(日薪行).toContainText('100-200/天');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await page.getByPlaceholder('身份证上的名字').fill('Fixture 实习生');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/status$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '在校 · 考虑机会' }).click();
     await page.getByRole('button', { name: '下一步' }).click();
     await 走学历四连页(page);
     await 走就读时间段(page);
@@ -783,15 +800,9 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     // ── 在线简历：零经历/零技能/零证书直存（URL 全程未碰）──
     await expect(page.getByRole('heading', { name: '在线简历' })).toBeVisible();
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/onboard\/status$/);
-    await page.getByRole('button', { name: '在校 · 考虑机会' }).click();
-    await page.getByRole('button', { name: '下一步' }).click();
 
-    // ── 学生尾段向导：实习日薪（默认档直过）→ 排除 → 优势 → 披露 → 主壳 ──
-    await expect(page).toHaveURL(/#\/wizard$/);
-    await expect(page.getByRole('heading', { name: '期望实习日薪是？' })).toBeVisible();
-    await page.getByRole('button', { name: '下一步' }).click();
-    await 走偏好段尾(page, 'Fixture 实习生的个人优势标记');
+    // ── 学生尾段只剩补充偏好：排除 → 披露 → 主壳 ──
+    await 走偏好段尾(page);
     await 完成注册进主壳(page);
 
     // ── 精确断言 ──
@@ -823,8 +834,7 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
     // ── 走到就读时间段（教育四连页已收口，只差起止）──
     await 进完善资料(page, false);
-    await page.getByRole('button', { name: '下一步' }).click();
-    await 走向导薪资(page);
+    await 选首屏薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);
@@ -864,15 +874,14 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
     // ── 走完整旅程到头像页（未选头像本可完成；这里上传撞未知结果）──
     await 进完善资料(page, false);
-    await page.getByRole('button', { name: '下一步' }).click();
-    await 走向导薪资(page);
+    await 选首屏薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await 走资料与学历(page, '在职 · 考虑机会');
     await 走就读时间段(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await 走偏好段尾(page, 'Fixture 候选人的个人优势标记');
+    await 走偏好段尾(page);
     await page.getByRole('button', { name: '完成设置，开始匹配' }).click();
     await expect(page).toHaveURL(/#\/onboard\/avatar$/);
 

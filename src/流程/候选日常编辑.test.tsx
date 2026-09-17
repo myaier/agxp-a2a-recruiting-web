@@ -135,7 +135,17 @@ describe('use候选编辑退出 · 本会话 / 来源 / 格号三项全对才退
     expect(mock替换跳转).toHaveBeenCalledWith(路径.求职意向管理);
   });
 
-  it.each([undefined, null, '', 'resume', 3, {}, []])('深链/垃圾 state %j：替换到我的简历', async (坏) => {
+  // 参数表显式带标签：undefined 与 null 用 %j 打印出来同名，会让清单身份重复
+  //（脚本 测试清单.mjs 按 titlePath 去重，同名即非零失败）；标签只进标题，断言不变。
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['空串', ''],
+    ['来源字符串', 'resume'],
+    ['数字', 3],
+    ['对象', {}],
+    ['数组', []],
+  ] as const)('深链/垃圾 state（%s）：替换到我的简历', async (_标签, 坏) => {
     渲染退出(坏);
     await 点退出();
     expect(mock返回).not.toHaveBeenCalled();

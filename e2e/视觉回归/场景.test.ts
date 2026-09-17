@@ -8,6 +8,9 @@ const 预期ID = [
   'candidate-preferences',
   'candidate-salary',
   'candidate-resume',
+  // onboarding 与简历编辑（Task 5）：日常基本信息编辑、共用状态编辑、招聘三级类别
+  'onboarding-resume-basic-edit',
+  'onboarding-resume-status-edit',
   'candidate-market',
   'candidate-negotiations',
   'candidate-negotiation-detail',
@@ -17,6 +20,7 @@ const 预期ID = [
   'recruiter-post-job-1',
   'recruiter-post-job-2',
   'recruiter-post-job-3',
+  'onboarding-recruiter-category',
   'recruiter-home-candidate',
   // P8（Task 8）：Mock 账号与安全 / 反馈与举报 —— 钉住 Mock 页与基线像素/几何兼容
   'candidate-account-security',
@@ -32,10 +36,25 @@ const 预期ID = [
 ];
 
 describe('视觉场景清单', () => {
-  // 聊天推荐前端修复（2026-09-17）：新增五个 chat-recommend-frontend 场景，18 → 23
-  it('包含 23 个稳定且唯一的场景 ID', () => {
+  // onboarding 与简历编辑（Task 5）：新增三个场景（日常基本信息编辑 / 共用状态编辑 /
+  // 招聘三级类别），23 → 26；既有两个新增项（P8 两场景、企业公开页）与先行五个
+  // chat-recommend-frontend 场景全部保留，不按旧固定数量覆盖。
+  it('包含 26 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
-    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(23);
+    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(26);
+  });
+
+  it('onboarding 与简历编辑场景前缀覆盖日常基本信息/状态编辑与招聘三级类别', () => {
+    const 本轮场景 = 视觉场景们.filter(
+      (场景) => 场景.id === 'onboarding-resume-basic-edit'
+        || 场景.id === 'onboarding-resume-status-edit'
+        || 场景.id === 'onboarding-recruiter-category',
+    );
+    expect(本轮场景.map((场景) => 场景.id)).toEqual([
+      'onboarding-resume-basic-edit',
+      'onboarding-resume-status-edit',
+      'onboarding-recruiter-category',
+    ]);
   });
 
   it('聊天推荐前端修复场景前缀一致且覆盖两端列表/聊天/招聘纸身', () => {

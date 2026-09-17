@@ -5,7 +5,7 @@
 // 五个保留文件（e2e/ 根）。
 
 import { expect, test } from '../fixtures/test';
-import { 装三级职位目录桩, 抽屉搜企业并选中, 装P4招聘, 左滑候选卡, 装P5候选, 装P5招聘, 装P5双角色, 断言纵序, 断言核心页无横向溢出, 走向导薪资, Mock源, Mock登录求职, Mock切到招聘推荐, pickerMock登录, pickerBackend存量候选, hash直达 } from '../fixtures/数据源交互';
+import { 装三级职位目录桩, 抽屉搜企业并选中, 装P4招聘, 左滑候选卡, 装P5候选, 装P5招聘, 装P5双角色, 断言纵序, 断言核心页无横向溢出, 选首屏薪资, Mock源, Mock登录求职, Mock切到招聘推荐, pickerMock登录, pickerBackend存量候选, hash直达 } from '../fixtures/数据源交互';
 import { 信封 } from '../fixtures/bff/协议';
 import { 标记, fixture简历, fixture意向列表 } from '../fixtures/bff/账号与目录';
 import { P4编号, P4标记, P4摘要, P4深克隆, P4招聘卡, P4发现fixture } from '../fixtures/bff/发现推荐';
@@ -2107,6 +2107,8 @@ test.describe('picker 统一 岗位城市与月薪 @backend', () => {
       招聘方OnboardingFixture: 创建招聘方OnboardingFixture(),
       隐私fixture: 隐私池,
     });
+    // 发布岗位的职位类别走真三级目录（一级自动展开 → 二级标题 + 三级叶子）
+    await 装三级职位目录桩(page);
 
     // 新招聘方 onboarding 同链：名片首写（公司走合同 C 公司选择抽屉）→ 发岗向导
     await page.goto('/');
@@ -2126,15 +2128,14 @@ test.describe('picker 统一 岗位城市与月薪 @backend', () => {
     await page.getByRole('button', { name: '保存并继续' }).click();
     await expect(page).toHaveURL(/#\/hr\/post-job$/, { timeout: 20_000 });
 
-    // ── 第一步：类别（fixture 目录单根，左根右叶同名）+ 名称 + 办公方式 ──
+    // ── 第一步：类别（真三级：一级打开即自动展开二级标题与三级叶子）+ 名称 + 办公方式 ──
     await page.getByPlaceholder(/资深后端工程师/).waitFor({ state: 'attached' });
     const 职位类别行 = page.getByRole('button').filter({ hasText: '职位类别' });
     await 职位类别行.click();
     const 类键 = page.getByRole('button', { name: 标记.职位display, exact: true });
-    await expect(类键.first()).toBeVisible({ timeout: 10_000 });
-    await 类键.first().click();
-    await expect(类键).toHaveCount(2, { timeout: 10_000 });
-    await 类键.last().click();
+    await expect(类键).toHaveCount(1, { timeout: 10_000 });
+    await 类键.click();
+    await expect(page.getByRole('dialog', { name: '职位类别' })).toHaveCount(0, { timeout: 10_000 });
     await expect(职位类别行).toContainText(标记.职位display.trim());
     await page.getByPlaceholder(/资深后端工程师/).fill('选择器统一岗');
     await page.getByRole('button', { name: '混合', exact: true }).click();
@@ -2337,9 +2338,7 @@ test.describe('picker 统一 就读年份 @backend', () => {
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page).toHaveURL(/#\/student$/);
     await page.getByRole('button', { name: '混合' }).click();
-    await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/, { timeout: 15_000 });
-    await 走向导薪资(page);
+    await 选首屏薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/, { timeout: 15_000 });
     await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
@@ -2821,13 +2820,12 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
 
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
-    // 日常入口（简历编辑显式来源）：从 我的简历 点行进在线简历（带 from=resume），
-    // 整页保存落点随之回我的简历；子视图取消零写与 ID 断言保持原样
+    // 日常入口（简历编辑显式来源，合同 A）：从 我的简历 进教育分区列表（带 from=resume），
+    // 再在列表内打开条目编辑器 —— 聚合页只留给 onboarding；子视图取消零写与 ID 断言保持原样
     await hash直达(page, '/#/resume');
     await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button').filter({ hasText: 'Fixture 大学' }).first().click();
-    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
-    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: /最高学历/ }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume&section=education$/, { timeout: 15_000 });
 
     // ── 教育「选择学校」：进入充满可用区、父字段 hidden、Escape 取消零写、重开选择 ──
     await page.getByRole('button', { name: '＋ 添加教育经历' }).click();
@@ -2838,7 +2836,7 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
     await expect(学校层.getByPlaceholder('搜索学校名称')).toBeVisible({ timeout: 10_000 });
     await 断言全屏外壳(page, 学校层);
     await 断言页面零滚动(page);
-    await expect(page.getByRole('button', { name: '完成', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeHidden();
     await expect(学校层.getByRole('button', { name: '返回' })).toBeFocused();
     await page.keyboard.press('Tab');
     expect(await 焦点在弹层内(page)).toBe(true);
@@ -2868,22 +2866,25 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
     await 专业层.getByRole('button', { name: 标记.专业display }).click();
     await expect(专业层).toHaveCount(0);
     await expect(专业行).toContainText('Fixture 专业');
-    // 完成 → 教育卡上屏；保存按所点行的原目录 ID 提交（不按显示名反查），
-    // 编辑入口带 from=resume：整页保存落点是我的简历
-    await page.getByRole('button', { name: '完成', exact: true }).click();
-    await expect(page.getByText(/Fixture 大学/).first()).toBeVisible({ timeout: 10_000 });
+    // 保存：日常条目编辑器一份保存责任，按所点行的原目录 ID 提交（不按显示名反查），
+    // 成功后回教育分区列表（列表没有第二次总保存）
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/#\/experience\?from=resume&section=education$/, { timeout: 20_000 });
+    await expect(page.getByText(/Fixture 大学/).first()).toBeVisible({ timeout: 10_000 });
     const 教育写入 = fixture.mutations.filter(
       (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/educations',
     );
     expect(教育写入.length).toBeGreaterThan(0);
     expect(教育写入[0]!.body).toMatchObject({ institution_id: 'inst-fixture-001', major_id: 'major-fixture-001' });
+    // 分区列表返回 = 按来路退一格回我的简历
+    await page.getByRole('button', { name: '返回' }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
 
-    // ── 经历「所属行业」：先填其它字段 → 取消零写 → 重开下钻选叶子 → 按 ID 保存 ──
-    await page.getByRole('button').filter({ hasText: 'Fixture 大学' }).first().click();
-    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
-    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // ── 经历「所属行业」：诊断缺项进工作分区列表 → 先填其它字段 → 取消零写 →
+    //    重开下钻选叶子 → 按 ID 保存 ──
+    await page.getByRole('button', { name: '去补全', exact: true }).click();
+    await page.getByRole('button', { name: /工作经历还没填写/ }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume&section=work$/, { timeout: 15_000 });
     await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
     await expect(page.getByPlaceholder('必填')).toHaveCount(1);
     await page.getByRole('button').filter({ hasText: '公司名称' }).click();
@@ -2907,14 +2908,13 @@ test.describe('catalog-fullscreen 候选侧三入口 @backend', () => {
     await 行业层.getByRole('button', { name: '银行支付', exact: true }).click();
     await expect(行业层).toHaveCount(0);
     await expect(page.getByRole('button', { name: /所属行业/ })).toContainText('银行支付');
-    // 入职年月 → 完成 → 保存：experience POST 的 industry_id 是所点叶子的原目录 ID，
-    // 编辑入口带 from=resume：整页保存落点是我的简历
+    // 入职年月 → 保存：experience POST 的 industry_id 是所点叶子的原目录 ID，
+    // 成功回工作分区列表
     await page.getByRole('button', { name: '入职年月' }).click();
     await page.getByRole('dialog').getByRole('button', { name: '确定' }).click();
-    await page.getByRole('button', { name: '完成', exact: true }).click();
-    await expect(page.getByText(/银行支付/).first()).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/#\/experience\?from=resume&section=work$/, { timeout: 20_000 });
+    await expect(page.getByText(/银行支付/).first()).toBeVisible({ timeout: 10_000 });
     const 经历写入 = fixture.mutations.filter(
       (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/experiences',
     );
@@ -2945,6 +2945,8 @@ test.describe('catalog-fullscreen 招聘侧两入口 @backend', () => {
       主体初始角色: 'recruiter',
       隐私fixture: 隐私,
     });
+    // 发布岗位的职位类别走真三级目录（一级自动展开 → 二级标题 + 三级叶子）
+    await 装三级职位目录桩(page);
 
     // 公司行业目录桩（本用例专用后装 route，真实三级：根不可选 → 可选叶子）
     await page.route('**/api/v1/catalog/industries*', async (route) => {
@@ -3001,13 +3003,11 @@ test.describe('catalog-fullscreen 招聘侧两入口 @backend', () => {
     await expect(类别层).toHaveCount(0);
     expect(请求们.filter((条) => 条.method !== 'GET').length).toBe(类别取消前写入数);
     await expect(职位名称输入).toHaveValue('全屏草稿岗');
-    // 重开 → 选叶子（fixture 根与子同名，点根后右栏出同名叶子，取次序区分）
+    // 重开 → 一级自动展开后整层只有一枚三级叶子按钮，直接点它即回填并关闭
     await 职位类别行.click();
     const 类键 = page.getByRole('dialog', { name: '职位类别' }).getByRole('button', { name: 标记.职位display });
-    await expect(类键.first()).toBeVisible({ timeout: 10_000 });
-    await 类键.first().click();
-    await expect(类键).toHaveCount(2, { timeout: 10_000 });
-    await 类键.last().click();
+    await expect(类键).toHaveCount(1, { timeout: 10_000 });
+    await 类键.click();
     await expect(类别层).toHaveCount(0);
     await expect(职位类别行).toContainText('Fixture 工程师');
 

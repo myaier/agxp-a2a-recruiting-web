@@ -3,7 +3,7 @@
 // 本 Suite 家族另含 e2e/onboarding.spec.ts 的候选侧叶子（文件级并集，见该文件头）。
 
 import { expect, test } from '../fixtures/test';
-import { 装三级职位目录桩, 抽屉搜企业并选中, 走向导薪资 } from '../fixtures/数据源交互';
+import { 装三级职位目录桩, 抽屉搜企业并选中, 选首屏薪资 } from '../fixtures/数据源交互';
 import { 标记 } from '../fixtures/bff/账号与目录';
 import { P3标记, P3隐私fixture, P3默认组织库 } from '../fixtures/bff/隐私与实名';
 import { 创建候选OnboardingFixture } from '../fixtures/bff/候选建档';
@@ -87,20 +87,18 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await expect(page.getByRole('button', { name: '现场' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
 
-    // ── 3. 下一步 → 向导薪资段：入口行开共用抽屉选 30（联动上限 40）→ 确定 ──
-    await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
-    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
-    await 走向导薪资(page);
+    // ── 3. 首屏确认期望薪资（合同 C：薪资并入求职意向区域，不再有独立薪资页）：
+    //    入口行开共用抽屉选 30（联动上限 40）→ 确定 ──
+    await 选首屏薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
 
-    // ── 历史点（完成清栈前仍保留）：后退回薪资段，入口行仍回显 30-40K，再前进回来。
+    // ── 历史点（完成清栈前仍保留）：后退回首屏，薪资行仍回显 30-40K，再前进回来。
     //    完成注册会清掉整条注册流历史，所以这条断言放在最后的披露/头像步骤之前做 ──
     await page.goBack();
-    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
-    await expect(page.getByRole('button', { name: /薪资要求（月薪/ })).toContainText('30-40K');
+    await expect(page).toHaveURL(/#\/student$/);
+    await expect(page.getByRole('button', { name: '期望薪资', exact: true })).toContainText('30-40K');
     await page.goForward();
     await expect(page).toHaveURL(/#\/basic$/);
 
@@ -169,15 +167,15 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     // 证书行现渲染为单个可删除钮（可及名「删除证书 CET-4」，正文 CET-4 ✕），与技能行
     // 的 删除技能 Go 同构 —— 断言意图不变（证书已入列且可移除），只修定位器。
     await expect(page.getByRole('button', { name: '删除证书 CET-4' })).toBeVisible();
+    // 个人优势（Task 3 合同 C）：从向导偏好转进本资料页，随简历链一起保存
+    await page.getByLabel('个人优势').fill('Fixture 候选人的个人优势标记');
 
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible({ timeout: 20_000 });
 
-    // ── 6. 偏好段：硬性排除 下一步 → 个人优势 → 保存并继续 ──
+    // ── 6. 偏好段（只剩补充偏好一题）：硬性排除 → 下一步（提交偏好 + 保存首次意向）──
+    await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toHaveCount(0);
     await page.getByRole('button', { name: '下一步', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '分享一下自己的个人优势' })).toBeVisible();
-    await page.getByLabel('个人优势').fill('Fixture 候选人的个人优势标记');
-    await page.getByRole('button', { name: '保存并继续' }).click();
     await expect(page).toHaveURL(/#\/disclosure$/, { timeout: 30_000 });
 
     // ── 7. 首次意向已创建：恰好一条 POST /me/intentions 被记录 ──
@@ -428,10 +426,8 @@ test.describe('DF-002 dogfood 回归 @backend', () => {
     await page.getByRole('button', { name: '现场' }).click();
     await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
 
-    // ── 3. 薪资向导 → 档案四连页（预填轮 ready，下一步不被离页门拦）──
-    await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
-    await 走向导薪资(page);
+    // ── 3. 首屏确认薪资 → 档案四连页（预填轮 ready，下一步不被离页门拦）──
+    await 选首屏薪资(page);
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
