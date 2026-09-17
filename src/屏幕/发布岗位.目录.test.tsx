@@ -42,11 +42,13 @@ vi.mock('../路由/导航钩子', () => ({
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 
 describe('发布岗位页 Backend 选择器', () => {
+  // Task 4：目录桩照真实三层结构 —— 根『互联网/AI』→ 二级分组『技术』→ 三级叶子『后端开发』。
+  // 二级是分组标题（不是可选叶子），叶子只在三级；一级打开即自动展开（页面不再点二级）。
   const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string }) => {
     if (!query.parentId && !query.q) {
       return {
         items: [
-          { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false },
+          { id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true },
         ],
         nextCursor: null,
         catalogVersion: 'v2',
@@ -55,7 +57,16 @@ describe('发布岗位页 Backend 选择器', () => {
     if (query.parentId === 'cat_tech') {
       return {
         items: [
-          { id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true },
+          { id: 'grp_tech', display_name: '技术', parent_id: 'cat_tech', selectable: false, has_children: true },
+        ],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }
+    if (query.parentId === 'grp_tech') {
+      return {
+        items: [
+          { id: 'job_be', display_name: '后端开发', parent_id: 'grp_tech', selectable: true, has_children: false },
         ],
         nextCursor: null,
         catalogVersion: 'v2',
@@ -133,12 +144,14 @@ describe('发布岗位页 Backend 选择器', () => {
     );
     // 招聘类型默认 社招全职，办公方式待选
     await 用户.click(screen.getByRole('button', { name: '现场' }));
-    // 职位类别：打开 Backend 两级选择层 → 选根 → 选 selectable 叶子（原子写 职位类别+类别引用）
+    // 职位类别：打开 Backend 三层选择层 → 选根（二级分组自动展开）→ 选三级 selectable 叶子
     await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
     await 用户.click(await screen.findByRole('button', { name: '互联网/AI' }));
     await waitFor(() =>
       expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ parentId: 'cat_tech' })),
     );
+    // Task 4：二级『技术』是分组标题（heading，不点），三级叶子无需额外点击即出现
+    expect(await screen.findByRole('heading', { level: 3, name: '技术' })).toBeTruthy();
     await 用户.click(await screen.findByRole('button', { name: '后端开发' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
 
@@ -1003,7 +1016,7 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     mock发布岗位.mockResolvedValue(undefined);
   });
 
-  it('Mock：左栏大类换右栏、右栏选定写回职位类别，关闭重开保留选中勾', async () => {
+  it('Mock：一级直接展开二级标题与三级职位（不用点二级），叶子单选回填，关闭重开保留选中勾', async () => {
     置Mock应用状态();
     const 用户 = userEvent.setup();
     render(
@@ -1016,10 +1029,11 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     );
     await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
     expect(screen.getByRole('dialog', { name: '职位类别' })).toBeTruthy();
-    // 左栏点大类换右栏（本地职业分类表照旧）
+    // 左栏点大类换右栏：本地职业分类树的二级分组直接上屏（标题，不用点）
     await 用户.click(screen.getByRole('button', { name: '产品' }));
+    expect(await screen.findByRole('heading', { level: 3, name: '产品经理' })).toBeTruthy();
+    // 三级叶子单击即回填并关闭（二级标题不是按钮，点它没有提交语义）
     await 用户.click(await screen.findByRole('button', { name: '产品经理' }));
-    // 层关闭，行上回显
     await screen.findByText('产品 · 产品经理');
 
     // 关闭重开：选中勾保留（✓ 由选中项内的 勾 span 渲染，可访问名带 ✓ 尾缀；
@@ -1030,21 +1044,28 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     expect(重开项.textContent).toContain('✓');
   });
 
-  it('Backend：右栏分页追加、下钻不可选父项、死端父项不提交，同名叶子按 ID 提交', async () => {
-    // 目录桩：根『同名类』(不可选) → 子项第一页只有『中转』(不可选,有子项,带游标)
-    // → 游标页『分页叶子』；『中转』下钻 → 『死端父项』(不可选,无子项) + 『同名类』叶子。
-    const 大类A: BFFTaxonomyItem = { id: 'root_same', display_name: '同名类', parent_id: null, selectable: false, has_children: true };
-    const 中转: BFFTaxonomyItem = { id: 'branch_mid', display_name: '中转', parent_id: 'root_same', selectable: false, has_children: true };
-    const 分页叶子: BFFTaxonomyItem = { id: 'leaf_page', display_name: '分页叶子', parent_id: 'root_same', selectable: true, has_children: false };
-    const 死端父项: BFFTaxonomyItem = { id: 'branch_dead', display_name: '死端父项', parent_id: 'branch_mid', selectable: false, has_children: false };
-    const 同名叶子: BFFTaxonomyItem = { id: 'leaf_same', display_name: '同名类', parent_id: 'branch_mid', selectable: true, has_children: false };
-    const 页 = (items: BFFTaxonomyItem[], nextCursor: string | null) => ({ items, nextCursor, catalogVersion: 'v2' });
+  it('Backend：一级自动展开各组三级、失败组重试不伤成功组，叶子按 ID 单选回填', async () => {
+    // 目录桩：根『大类甲』(不可选,有子项) → 二级两组『分组甲』『分组乙』(都不可选,有子项)；
+    // 分组甲的两枚叶子同名不同 ID（不按名称反查），分组乙首查失败、重试后才出叶子。
+    const 大类甲: BFFTaxonomyItem = { id: 'root_a', display_name: '大类甲', parent_id: null, selectable: false, has_children: true };
+    const 分组甲: BFFTaxonomyItem = { id: 'grp_a', display_name: '分组甲', parent_id: 'root_a', selectable: false, has_children: true };
+    const 分组乙: BFFTaxonomyItem = { id: 'grp_b', display_name: '分组乙', parent_id: 'root_a', selectable: false, has_children: true };
+    const 同名叶子一: BFFTaxonomyItem = { id: 'leaf_same_1', display_name: '同名叶子', parent_id: 'grp_a', selectable: true, has_children: false };
+    const 同名叶子二: BFFTaxonomyItem = { id: 'leaf_same_2', display_name: '同名叶子', parent_id: 'grp_a', selectable: true, has_children: false };
+    const 乙叶子: BFFTaxonomyItem = { id: 'leaf_yi', display_name: '乙叶子', parent_id: 'grp_b', selectable: true, has_children: false };
+    const 页 = (items: BFFTaxonomyItem[], nextCursor: string | null = null) => ({ items, nextCursor, catalogVersion: 'v2' });
+    let 乙查询次数 = 0;
     const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
-      if (!query.parentId && !query.cursor) return 页([大类A], null);
-      if (query.parentId === 'root_same' && !query.cursor) return 页([中转], 'child_cur_1');
-      if (query.cursor === 'child_cur_1') return 页([分页叶子], null);
-      if (query.parentId === 'branch_mid') return 页([死端父项, 同名叶子], null);
-      return 页([], null);
+      if (!query.parentId && !query.cursor) return 页([大类甲]);
+      if (query.parentId === 'root_a') return 页([分组甲, 分组乙]);
+      if (query.parentId === 'grp_a') return 页([同名叶子一, 同名叶子二]);
+      if (query.parentId === 'grp_b') {
+        乙查询次数 += 1;
+        // 首次失败：只该组进错误态，兄弟组不受影响（重试走同组首页）
+        if (乙查询次数 === 1) throw new Error('组乙炸了');
+        return 页([乙叶子]);
+      }
+      return 页([]);
     });
     const 查询Location = vi.fn(async () => ({
       items: [{
@@ -1065,27 +1086,35 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
       </MemoryRouter>,
     );
 
-    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
-    // mount 预选第一根并载其子项第一页
-    await screen.findByText('中转');
-    // 右栏分页：加载更多追加第二页
-    await 用户.click(await screen.findByRole('button', { name: '加载更多' }));
-    await screen.findByText('分页叶子');
-    // 右栏下钻：不可选且有子项 → 替换右栏
-    await 用户.click(screen.getByText('中转'));
-    await screen.findByText('死端父项');
-    // 死端父项（不可选且无子项）：不提交不展开，零目录请求
-    const 下钻后调用数 = 查询Taxonomy.mock.calls.length;
-    await 用户.click(screen.getByText('死端父项'));
-    expect(查询Taxonomy.mock.calls.length).toBe(下钻后调用数);
-    expect(screen.getByText('死端父项')).toBeTruthy();
-    // 同名叶子（与根同名不同键）单击选定：层关闭，行上回显
-    const 同名们 = screen.getAllByText('同名类');
-    await 用户.click(同名们[同名们.length - 1]!);
-    await screen.findByText('互联网/AI · 同名类');
-
-    // 把剩余表单填完并发布：类别引用必须是叶子的稳定 ID，不是按名称反查
+    // 先手改岗位名称：类别选定后不覆盖用户改过的名称
     await 用户.type(screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关'), '共用正文岗');
+    await 用户.click(screen.getByRole('button', { name: /职位类别/ }));
+    // 一级自动展开：两组标题与成功组叶子都在场，无需点二级
+    expect(await screen.findByRole('heading', { level: 3, name: '分组甲' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 3, name: '分组乙' })).toBeTruthy();
+    expect(await screen.findAllByRole('button', { name: '同名叶子' })).toHaveLength(2);
+    // 失败组显示错误而不是空，成功组叶子不受影响
+    expect(await screen.findByText('请求失败，请稍后再试')).toBeTruthy();
+
+    // 重试只重发失败组：成功组叶子仍在且不再被请求，乙叶子随重试出现
+    const 甲组请求数 = () =>
+      查询Taxonomy.mock.calls.filter((调用) => (调用[1] as { parentId?: string }).parentId === 'grp_a').length;
+    const 重试前甲组请求数 = 甲组请求数();
+    await 用户.click(screen.getByRole('button', { name: '重试' }));
+    expect(await screen.findByRole('button', { name: '乙叶子' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '同名叶子' })).toHaveLength(2);
+    expect(screen.queryByText('该分组暂无职位')).toBeNull();
+    expect(甲组请求数()).toBe(重试前甲组请求数);
+
+    // 同名叶子点第二枚：只关闭一次并写回行，回填的是第二枚的稳定 ID
+    await 用户.click(screen.getAllByRole('button', { name: '同名叶子' })[1]!);
+    await screen.findByText('互联网/AI · 同名叶子');
+    expect(screen.queryByRole('dialog', { name: '职位类别' })).toBeNull();
+    expect(
+      (screen.getByPlaceholderText('必填，如：资深后端工程师 · 交易网关') as HTMLInputElement).value,
+    ).toBe('共用正文岗');
+
+    // 把剩余表单填完并发布：类别引用必须是叶子的稳定 ID
     await 用户.click(screen.getByRole('button', { name: '现场' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await 用户.type(screen.getByRole('textbox', { name: '职位描述' }), '验证两栏共用正文');
@@ -1107,8 +1136,8 @@ describe('发布岗位页 两模式共用职业分类正文', () => {
     await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({
-      职位类别: '同名类',
-      类别引用: { id: 'leaf_same', display_name: '同名类' },
+      职位类别: '同名叶子',
+      类别引用: { id: 'leaf_same_2', display_name: '同名叶子' },
     });
   });
 });

@@ -350,6 +350,22 @@ describe('招聘名片展示 · 操作', () => {
     expect(选照片).toHaveBeenCalledTimes(2);
   });
 
+  // Spec §4.1：展示组件按调用方是否提供维护能力渲染，不能用数据源类型代替流程来源判断
+  it('打开公司资料 缺省（undefined）时不渲染公司主页资料行；提供回调才上屏并可进入', async () => {
+    const 打开公司资料 = vi.fn();
+    const 用户 = userEvent.setup();
+    const 视图 = render(<招聘名片展示 {...Mock属性({ 打开公司资料: undefined })} />);
+    expect(screen.queryByText('公司主页资料')).toBeNull();
+    expect(screen.queryByText('LOGO · 简介 · 规模 · 办公地')).toBeNull();
+    expect(screen.queryByRole('button', { name: /LOGO/ })).toBeNull();
+
+    // 提供回调（日常编辑入口）：行照常上屏，按下只交给外层一次
+    视图.rerender(<招聘名片展示 {...Mock属性({ 打开公司资料 })} />);
+    expect(screen.getByText('公司主页资料')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /公司主页资料/ }));
+    expect(打开公司资料).toHaveBeenCalledTimes(1);
+  });
+
   it('头像键打开文件框，返回与公司主页资料走外层回调', async () => {
     const 返回 = vi.fn();
     const 打开公司资料 = vi.fn();

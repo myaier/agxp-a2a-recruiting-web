@@ -955,3 +955,65 @@ describe('招聘名片 · Mock 原型保持不变', () => {
     expect(建对象).not.toHaveBeenCalled();
   });
 });
+
+// ── Spec §4.1：onboarding 招聘名片去掉「公司主页资料」行（两适配同一来源 = history.state
+// 的 从注册流 事实，不按数据源类型判断）；日常编辑入口（企业我的/企业设置 进来的名片）
+// 保留该行，公司资料仍由现有公司管理入口维护。
+describe('招聘名片 · 公司主页资料行的流程来源', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock压成头像.mockClear();
+    清空轻提示();
+    置Backend应用状态();
+  });
+
+  const 注册流入口 = [{ pathname: 路径.招聘名片, state: { 从注册流: true } }];
+
+  it('Backend 注册流：不渲染公司主页资料行', () => {
+    render(
+      <MemoryRouter initialEntries={注册流入口}>
+        <招聘名片 />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('公司主页资料')).toBeNull();
+    expect(screen.queryByText('LOGO · 简介 · 规模 · 办公地')).toBeNull();
+  });
+
+  it('Backend 日常编辑（无注册流标记）：行照常上屏，按下进公司档案编辑', async () => {
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <招聘名片 />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('公司主页资料')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /公司主页资料/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.公司档案编辑);
+  });
+
+  it('Mock 注册流：同样不渲染公司主页资料行', () => {
+    置Mock应用状态();
+    render(
+      <MemoryRouter initialEntries={注册流入口}>
+        <招聘名片 />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('公司主页资料')).toBeNull();
+    expect(screen.queryByText('LOGO · 简介 · 规模 · 办公地')).toBeNull();
+  });
+
+  it('Mock 日常编辑（无注册流标记）：行照常上屏，按下进公司档案编辑', async () => {
+    置Mock应用状态();
+    const 用户 = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <招聘名片 />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('公司主页资料')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /公司主页资料/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.公司档案编辑);
+  });
+});

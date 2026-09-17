@@ -507,14 +507,23 @@ describe('发布岗位页 JD 建议合并', () => {
   const 分类查询 = vi.fn(async (_kind: 'job-categories', query: { parentId?: string }) => {
     if (!query.parentId) {
       return {
-        items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false }],
+        items: [{ id: 'cat_tech', display_name: '互联网/AI', parent_id: null, selectable: false, has_children: true }],
         nextCursor: null,
         catalogVersion: 'v2',
       };
     }
+    // Task 4（brief 清单外的必要桩适配）：目录改成三级结构 —— 二级是分组标题（不可选、有子项），
+    // 可选叶子只在三级；用例体与断言不变（仍点击『后端开发』这枚叶子）
     if (query.parentId === 'cat_tech') {
       return {
-        items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true }],
+        items: [{ id: 'grp_tech', display_name: '技术', parent_id: 'cat_tech', selectable: false, has_children: true }],
+        nextCursor: null,
+        catalogVersion: 'v2',
+      };
+    }
+    if (query.parentId === 'grp_tech') {
+      return {
+        items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'grp_tech', selectable: true, has_children: false }],
         nextCursor: null,
         catalogVersion: 'v2',
       };

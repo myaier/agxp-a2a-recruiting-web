@@ -675,6 +675,28 @@
   color: var(--深绿);
 }
 
+/* Task 4：右栏改成三级结构 —— 二级分组标题 + 本组三级职位。
+   标题沿用题名小灰标口径（同 选期望职位.module.css 的 .分组标），职位行沿用 .小类项；
+   不给 h3 写死字号/字重以外的东西，视觉与原来两栏一致。 */
+.分组块 {
+  padding-bottom: 4px;
+}
+
+.分组标 {
+  margin: 14px 18px 6px;
+  font-size: var(--字号-小节标题);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--次要浅);
+}
+
+/* 尾态行（空组 / 加载中 / 错误 + 重试）：与职位行同缩进的小字提示 */
+.尾态行 {
+  padding: 10px 18px;
+  font-size: 12px;
+  color: var(--最弱);
+}
+
 /* ── 筛选要求（标注 13:40）：小标 + 常驻多行输入 ── */
 .筛选要求标 {
   margin: 18px 0 6px;

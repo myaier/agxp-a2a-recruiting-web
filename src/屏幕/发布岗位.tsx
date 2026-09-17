@@ -26,19 +26,19 @@ import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import 弹层框架 from '../组件/弹层框架';
 import { 岗位职业分类正文 } from '../组件/岗位职业分类正文';
+import type { 目录尾态 } from '../组件/期望职位选择正文';
+import { use期望职位目录, type 期望职位目录查询 } from './期望职位目录钩子';
 import 公司选择抽屉接线 from '../组件/公司选择抽屉接线';
 import { use组织查询 } from './组织查询钩子';
 import { use应用状态 } from '../状态/应用状态';
-import { 职业分类表, 查大类 } from '../数据/职业分类';
+import { 职业分类树, 查大类 } from '../数据/职业分类';
 import { use城市默认页, use城市搜索, 按行政区分组, type 查询Location方法 } from './城市查询钩子';
 import { Mock城市搜索结果, Mock默认城市字典 } from '../数据/城市与行业';
 import { 国内精选城市, 海外精选城市, 精选城市显示名, 规范精选城市名称 } from '../数据/城市精选';
 import 工作城市选择正文, { type 城市列表状态, type 城市项 } from '../组件/工作城市选择正文';
-import { 合并目录页 } from '../数据/目录选择';
 import { 空岗位硬性事实 } from '../数据/类型';
 import type { 在招岗位, 岗位硬性事实 } from '../数据/类型';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
-import type { 目录查询选项 } from '../数据/招聘数据源/目录';
 import type {
   BFFTaxonomyItem,
   BFFJD建议,
@@ -1392,12 +1392,12 @@ function 岗位编辑表单({ 路由岗位编号 }: { 路由岗位编号?: strin
       </div>
       </div>
 
-      {/* Task 1：职位类别全屏子视图（两模式共用 正文）。开着才挂载，两栏的展开/
-          选定状态随子视图销毁；选定/关闭回调照旧写页面草稿，外壳按 A 契约管焦点。
+      {/* Task 1：职位类别全屏子视图（两模式共用 正文）。开着才挂载，一级/分组状态随子视图
+          销毁；选定/关闭回调照旧写页面草稿，外壳按 A 契约管焦点。
           与城市子视图一样是 wrapper 的兄弟：正文不能藏进自己的 hidden 祖先。 */}
       {类别层开 ? (
         是后端 ? (
-          /* Task 7：Backend 按 查询Taxonomy('job-categories') 展开两级，selectable 叶子原子保存 */
+          /* Task 4：Backend 走 期望职位目录钩子 的三级展开，selectable 叶子原子保存 */
           <职业分类层后端
             查询Taxonomy={目录查询?.查询Taxonomy}
             当前引用={类别引用}
@@ -1551,9 +1551,23 @@ function 岗位城市选择层({
   );
 }
 
-// ── 职业分类两级选择层：左栏大类、右栏小类（同省市选择器的形）──
-// Spec §5.2：Mock 本地职业分类表映射为与 Backend 同一 props，消费共用正文；
-// 弹层标题、两栏、选中勾、尺寸与既有样式全在 正文 + 页面 CSS 里保持。
+// ── 职业分类全屏选择层（Task 4）：左栏一级、右栏二级分组标题 + 三级可选职位 ──
+// Mock 与 Backend 消费同一份 岗位职业分类正文；这里只做数据源投影：
+//   · Mock：本地 职业分类树 的真实两级分组（大类 → 分组 → 岗位），不发请求、无分页；
+//   · Backend：复用 期望职位目录钩子（与 选期望职位 同一套三级目录能力），
+//     一级打开即自动加载该一级的二级分组与各组三级首屏（不用再点二级），
+//     分页/换版/迟到/重试全部由钩子原样负责 —— 页面不再维护独立的下钻状态机。
+// 选定保持单选：页面按稳定键取真实目录项（selectable 合法）才回填 职位类别 + 类别引用。
+
+/** 无请求模式（Mock / 尚无数据）的空尾态：恒无加载、无错误、无下一页 */
+const 空分类尾态: 目录尾态 = {
+  加载中: false,
+  错误: null,
+  还有: false,
+  加载更多: () => undefined,
+  重试: () => undefined,
+};
+
 function 职业分类层({
   当前,
   选定,
@@ -1564,235 +1578,67 @@ function 职业分类层({
   关闭: () => void;
 }) {
   const [活动大类, 设活动大类] = useState(() => 查大类(当前));
-  const 当前组 = 职业分类表.find((组) => 组.大类 === 活动大类) ?? 职业分类表[0];
+  const 当前大类 = 职业分类树.find((组) => 组.大类 === 活动大类) ?? 职业分类树[0];
 
   return (
     <岗位职业分类正文
-      根栏={{
-        // 本地大类是纯导航项：不可选、恒有子项（小类表保证）
-        项们: 职业分类表.map((组) => ({
-          键: 组.大类, 名称: 组.大类, 选中: 组.大类 === 活动大类, 可选: false, 有子项: true,
+      根项们={职业分类树.map((组) => ({
+        键: 组.大类,
+        名称: 组.大类,
+        选中: 组.大类 === 活动大类,
+      }))}
+      切换根={设活动大类}
+      根尾态={空分类尾态}
+      组们={当前大类.分组.map((分) => ({
+        键: 分.组名,
+        标题: 分.组名,
+        项们: 分.岗位.map((岗) => ({
+          键: 岗,
+          名称: 岗,
+          选中: 岗 === 当前,
+          禁用: false,
         })),
-        加载中: false, 还有: false, 加载更多: () => {},
-      }}
-      子栏={{
-        // 本地小类都是可选叶子，无分页
-        项们: 当前组.小类.map((项) => ({
-          键: 项, 名称: 项, 选中: 项 === 当前, 可选: true, 有子项: false,
-        })),
-        加载中: false, 还有: false, 加载更多: () => {},
-      }}
-      展开={设活动大类}
+        尾态: 空分类尾态,
+      }))}
+      右尾态={空分类尾态}
       选定={选定}
       关闭={关闭}
     />
   );
 }
 
-// ── Task 7：Backend 职业分类两级选择层 ——
-// 左栏 roots，右栏当前 root 的子项；非 selectable 子项按 parentId 展开下一级（替换右栏），
-// selectable 叶子原子回调 选定（同时写 职位类别 字符串 + 类别引用）。
-// 复用 选期望职位.tsx 的 查询Taxonomy('job-categories') 形，但单选 + 弹层外壳。
-// review-r3 R3-I-5：root/child 分页（nextCursor + dedup load-more）；
-// review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的。
+// ── Task 4：Backend 职业分类层 —— 期望职位目录钩子驱动的三级展开 ──
+// 搜索词恒空（招聘侧不引入搜索入口）；已选键 = 已存 类别引用 的目录 ID（只用于回填勾）。
+// 回填只认 按键取项(id) 查到的真实目录项且 selectable：不按名称反查、不猜 ID。
 function 职业分类层后端({
   查询Taxonomy,
   当前引用,
   选定,
   关闭,
 }: {
-  查询Taxonomy?: (kind: 'job-categories', query: { parentId?: string; q?: string; cursor?: string; limit?: number }, 选项?: 目录查询选项) => Promise<{ items: BFFTaxonomyItem[]; nextCursor: string | null; catalogVersion: string }>;
+  查询Taxonomy?: 期望职位目录查询;
   当前引用: 目录选择值 | undefined;
   选定: (项: BFFTaxonomyItem) => void;
   关闭: () => void;
 }) {
-  const 方法引用 = useRef(查询Taxonomy);
-  方法引用.current = 查询Taxonomy;
-  const [根项, 设根项] = useState<BFFTaxonomyItem[]>([]);
-  const [当前根, 设当前根] = useState<BFFTaxonomyItem | null>(null);
-  const [子项, 设子项] = useState<BFFTaxonomyItem[]>([]);
-  // review-r3 R3-I-5：分页游标 + 加载中状态
-  const [根游标, 设根游标] = useState<string | null>(null);
-  const [根加载中, 设根加载中] = useState(false);
-  const [子项游标, 设子项游标] = useState<string | null>(null);
-  const [子项加载中, 设子项加载中] = useState(false);
-  // review-r1 F5：根/子查询第一页的 catalogVersion —— 追加页换版本时整组重开（本层局部）
-  const 根版本引用 = useRef('');
-  const 子项版本引用 = useRef('');
-  // review-r3 R3-I-6：导航代际守 stale；R3-I-8：当前根 ref
-  const 导航代际 = useRef(0);
-  const 当前根引用 = useRef(当前根);
-  当前根引用.current = 当前根;
-
-  // mount：读 roots，默认选第一枚并预载其子项
-  useEffect(() => {
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    void (async () => {
-      try {
-        const 页 = await 方法('job-categories', { limit: 50 });
-        设根项(页.items);
-        设根游标(页.nextCursor);
-        根版本引用.current = 页.catalogVersion;
-        if (页.items.length > 0 && !当前根) {
-          设当前根(页.items[0]);
-          const 本次 = ++导航代际.current;
-          try {
-            const 子页 = await 方法('job-categories', { parentId: 页.items[0].id, limit: 50 });
-            if (本次 !== 导航代际.current) return;
-            设子项(子页.items);
-            设子项游标(子页.nextCursor);
-            子项版本引用.current = 子页.catalogVersion;
-          } catch {
-            if (本次 !== 导航代际.current) return;
-            设子项([]);
-            设子项游标(null);
-          }
-        }
-      } catch {
-        设根项([]);
-        设根游标(null);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // review-r3 R3-I-5：根加载更多
-  // review-r1 F5：追加页换版本 → 根列表整组从第一页静默重开，不跨版本合并。
-  const 根加载更多 = async () => {
-    if (根游标 === null || 根加载中) return;
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    设根加载中(true);
-    try {
-      const 页 = await 方法('job-categories', { cursor: 根游标, limit: 50 });
-      if (页.catalogVersion !== 根版本引用.current) {
-        const 重开 = await 方法('job-categories', { limit: 50 }, { 强制刷新: true });
-        设根项(重开.items);
-        设根游标(重开.nextCursor);
-        根版本引用.current = 重开.catalogVersion;
-        // review-r2：换代重开时右栏派生状态同步失效——旧版本 当前根/子项/子游标 一并丢弃，
-        // 按新版本第一根重新走 选根（同一套代际守卫），右栏不再残留旧版本子项可提交
-        const 新根 = 重开.items[0];
-        if (新根) {
-          void 选根(新根);
-        } else {
-          设当前根(null);
-          设子项([]);
-          设子项游标(null);
-          // review-r3（Codex r3 F3）：清空当前根同样同步清右栏 busy——在飞的旧根分页
-          // finally 会因代际不符跳过清理，这里不清就把右栏分页永久留在 loading
-          设子项加载中(false);
-          子项版本引用.current = '';
-          导航代际.current += 1;
-        }
-        return;
-      }
-      设根项((旧) => 合并目录页(旧, 页.items));
-      设根游标(页.nextCursor);
-    } catch {
-      // 失败不动
-    } finally {
-      设根加载中(false);
-    }
-  };
-
-  // review-r3 R3-I-5/I-8：子项加载更多——导航代际 + 当前根双重守 stale
-  const 子项加载更多 = async () => {
-    if (子项游标 === null || 子项加载中 || !当前根) return;
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    const 本次导航 = 导航代际.current;
-    const 目标根id = 当前根.id;
-    设子项加载中(true);
-    try {
-      const 页 = await 方法('job-categories', { parentId: 目标根id, cursor: 子项游标, limit: 50 });
-      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
-      if (页.catalogVersion !== 子项版本引用.current) {
-        // review-r1 F5：目录换代 —— 右栏整组替换为新版本第一页（静默，不跨版本合并）
-        const 重开 = await 方法('job-categories', { parentId: 目标根id, limit: 50 }, { 强制刷新: true });
-        if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
-        设子项(重开.items);
-        设子项游标(重开.nextCursor);
-        子项版本引用.current = 重开.catalogVersion;
-        return;
-      }
-      设子项((旧) => 合并目录页(旧, 页.items));
-      设子项游标(页.nextCursor);
-    } catch {
-      if (本次导航 !== 导航代际.current || 当前根引用.current?.id !== 目标根id) return;
-    } finally {
-      if (本次导航 === 导航代际.current && 当前根引用.current?.id === 目标根id) 设子项加载中(false);
-    }
-  };
-
-  // 左栏点 root：加载它的子项到右栏
-  // review-r3 R3-I-6：导航代际守 stale——快速切大类时慢的旧子项不覆盖新的
-  const 选根 = async (项: BFFTaxonomyItem) => {
-    设当前根(项);
-    设子项([]);
-    设子项游标(null);
-    // review-r3（Codex r3 F3）：切根同步清右栏 busy——在飞的旧根分页 finally 会因
-    // 导航代际不符跳过清理，这里不清就把右栏分页永久留在 loading
-    设子项加载中(false);
-    const 方法 = 方法引用.current;
-    if (!方法) return;
-    const 本次 = ++导航代际.current;
-    try {
-      const 子页 = await 方法('job-categories', { parentId: 项.id, limit: 50 });
-      if (本次 !== 导航代际.current) return;
-      设子项(子页.items);
-      设子项游标(子页.nextCursor);
-      子项版本引用.current = 子页.catalogVersion;
-    } catch {
-      if (本次 !== 导航代际.current) return;
-      设子项([]);
-      设子项游标(null);
-    }
-  };
-
-  // 共用正文回调：稳定键 → 真实目录项（外层闭包持有，禁止按名称反查）。
-  // 展开：命中右栏子项或左栏根项都走 选根（设当前根 + 替换右栏子项，同一套代际守卫；
-  // 同名 ID 时右栏可见项优先）——原 切子项 的下钻分支与之逐行相同，随迁移合并。
-  const 按键展开 = (键: string) => {
-    const 项 = 子项.find((候选) => 候选.id === 键) ?? 根项.find((候选) => 候选.id === 键);
-    if (项) void 选根(项);
-  };
-  const 按键选定 = (键: string) => {
-    const 子 = 子项.find((项) => 项.id === 键);
-    if (子) 选定(子);
-  };
+  const 目录 = use期望职位目录({
+    查询: 查询Taxonomy,
+    搜索词: '',
+    已选键们: 当前引用 ? [当前引用.id] : [],
+  });
 
   return (
     <岗位职业分类正文
-      根栏={{
-        // 左栏根项沿现有行为恒为导航：选中高亮跟 当前根，可选/有子项原样携带
-        项们: 根项.map((项) => ({
-          键: 项.id,
-          名称: 项.display_name,
-          选中: (当前根?.id ?? '') === 项.id,
-          可选: 项.selectable,
-          有子项: 项.has_children,
-        })),
-        加载中: 根加载中,
-        还有: 根游标 !== null,
-        加载更多: () => void 根加载更多(),
+      根项们={目录.根项们}
+      切换根={目录.切换根}
+      根尾态={目录.根尾态}
+      组们={目录.组们}
+      右尾态={目录.右尾态}
+      选定={(键) => {
+        const 项 = 目录.按键取项(键);
+        if (!项 || !项.selectable) return;
+        选定(项);
       }}
-      子栏={{
-        // 右栏子项：可选叶子原子选定；不可选父项继续下钻（正文按 可选/有子项 分流）
-        项们: 子项.map((项) => ({
-          键: 项.id,
-          名称: 项.display_name,
-          选中: (当前引用?.id ?? '') === 项.id,
-          可选: 项.selectable,
-          有子项: 项.has_children,
-        })),
-        加载中: 子项加载中,
-        还有: 子项游标 !== null,
-        加载更多: () => void 子项加载更多(),
-      }}
-      展开={按键展开}
-      选定={按键选定}
       关闭={关闭}
     />
   );
