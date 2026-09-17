@@ -38,6 +38,10 @@ function 创建场景(选项: {
   建档?: 候选引导建档草稿 | null;
   存储?: 候选建档草稿存储 | null;
   后端覆盖?: Partial<HTTP招聘数据源>;
+  /** fix-r2：模拟「渲染尚未落地」—— 设后端状态 只推进 React state，镜像引用要等一次
+   *  「渲染」（模拟渲染）才跟上。生产里 后端状态引用.current 只在渲染期赋值，
+   *  聚合链收尾的 保存个人优势 正好落在两次渲染之间 —— 用它钉住那个竞态。 */
+  镜像滞后?: boolean;
 } = {}) {
   const 后端 = {
     读取简历: vi.fn(),
@@ -72,8 +76,11 @@ function 创建场景(选项: {
     隐私快照: null,
     附件简历库: null,
   } as unknown as 后端状态 };
+  /** 「渲染后才会发布」的 state 值：镜像滞后时它与 后端状态引用.current 暂时不同 */
+  const 渲染态 = { current: 后端状态引用.current };
   const 设后端状态 = vi.fn((更新: (旧: 后端状态) => 后端状态) => {
-    后端状态引用.current = 更新(后端状态引用.current);
+    渲染态.current = 更新(渲染态.current);
+    if (!选项.镜像滞后) 后端状态引用.current = 渲染态.current;
   });
   const 候选预填代际 = { current: 5 };
   const 候选预填读取锁 = { current: new Map<string, Promise<void>>() };
@@ -114,6 +121,8 @@ function 创建场景(选项: {
     后端, 操作, 派发: deps.派发, 后端状态引用, 状态引用: deps.状态引用,
     候选预填代际, 候选预填读取锁, 候选预填恢复存储,
     deps, 提交候选意向快照: deps.提交候选意向快照,
+    /** 模拟一次渲染：镜像引用发布最新 state（镜像滞后用例专用） */
+    模拟渲染: () => { 后端状态引用.current = 渲染态.current; },
   };
 }
 
@@ -1960,5 +1969,66 @@ describe('创建候选操作 · 经历建档恢复（合同 C）', () => {
     const 请求们 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
     expect(请求们.filter((o) => (o.method ?? 'GET') !== 'GET')).toHaveLength(0); // 不自动重放旧合同
     expect(场景.deps.建档草稿引用!.current!.待写入).toEqual(旧合同槽); // 槽原样保留
+  });
+});
+
+// ── fix-r2（Task 3 区域 / 合同 B）：聚合链收尾的 next 必须按**当前**权威快照合成 ──
+// 后端状态引用.current 只在渲染期跟随 state：链收尾里紧接着发起的 保存个人优势 若读到
+// 链前快照，就会用旧分区合成 next，而 简历域保存 又按最新权威事实（这里由「已存条目不在
+// 链前快照 → 权威重读」触发）判定差异 → 未改动的**裸数组技能**没有经历/教育那样的缺项
+// 保护，被当成回退写回清空（e2e 实测 PATCH /me/resume/skills {"skills":[]}）。
+describe('创建候选操作 · 聚合链收尾的 next 基底（fix-r2）', () => {
+  const 在职场 = () => ({
+    基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
+    个人优势: '',
+    技能: [] as string[],
+    经历: [] as unknown[],
+    教育: [],
+    证书: [],
+  });
+  /** 链前服务端：技能为空、本轮新增的那段经历还没落库 */
+  const 链前快照 = { ...BFF简历样本, skills: [], experiences: [] };
+  /** 链后服务端：简历链刚写完（技能 ["Go"]、新增经历带真实 ID） */
+  const 链后快照 = {
+    ...BFF简历样本,
+    skills: ['Go'],
+    experiences: [{ ...BFF简历样本.experiences[0], id: 'exp_go' }],
+  };
+
+  it('保存简历 紧接 保存个人优势：技能不被回退清空（next 用链后权威快照）', async () => {
+    const 场景 = 创建场景({
+      镜像滞后: true,
+      // 本轮新增经历已登记服务端身份：它不在链前快照里 → 简历域保存 会权威重读
+      建档: { 已存条目: [{ 种类: 'experience', 本地编号: 'e1', 资源编号: 'exp_go', revision: 1 }] },
+    });
+    // 镜像里的权威快照就是 BFF 简历本体（简历域保存 的 previous）
+    场景.后端状态引用.current = {
+      ...场景.后端状态引用.current, 简历快照: 链前快照,
+    } as never;
+    场景.后端.保存简历.mockResolvedValue({ ...在职场(), 技能: ['Go'], 服务端快照: 链后快照 });
+    场景.后端.读取简历.mockResolvedValue({ 服务端快照: 链后快照 });
+
+    // ① 简历链写入（技能与新增经历在本轮 next 里）
+    await 场景.操作.保存简历({
+      ...在职场(),
+      技能: ['Go'],
+      经历: [{
+        编号: 'e1', 组织编号: 'org_yunqu', 公司: '云衢',
+        行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+        职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台', 隐藏: false,
+      }],
+    } as never);
+    expect(场景.后端.保存简历).toHaveBeenCalledTimes(1);
+
+    // ② 链收尾（同一微任务、渲染尚未落地）紧接着写的个人优势
+    await 场景.操作.保存个人优势('我的优势');
+
+    const 第二次 = 场景.后端.保存简历.mock.calls.at(-1)!;
+    const 写入 = 第二次[0] as { 技能: string[]; 个人优势: string };
+    const 基底 = 第二次[1] as { skills: string[] };
+    // 基底是链后权威快照（技能 ["Go"]）——next 不得把它回退成空
+    expect(基底.skills).toEqual(['Go']);
+    expect(写入.技能).toEqual(['Go']);
+    expect(写入.个人优势).toBe('我的优势');
   });
 });
