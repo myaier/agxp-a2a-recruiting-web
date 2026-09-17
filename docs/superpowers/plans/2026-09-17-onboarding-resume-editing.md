@@ -93,7 +93,7 @@ Task 1–3 的前沿档位理由是历史栈、未保存草稿与多次非原子
 |URL|含义|
 |---|---|
 |`/basic?from=resume`|基本信息日常编辑|
-|`/onboard/status?from=resume` / `?from=intentions`|相同三态编辑，分别回简历/意向管理|
+|根路径 `/` + `onboard/status?from=resume` / `?from=intentions`|相同三态编辑，分别回简历/意向管理|
 |`/experience?from=resume&section=work&item=<encoded-id>`|已有工作条目，`item=new` 新增|
 |`/experience?from=resume&section=education`|教育分区列表；带 item 为直接编辑/新增|
 |`/experience?from=resume&section=skills`|专业技能|
@@ -332,7 +332,7 @@ R1：Claude Opus / high，WORKFLOW_DOCUMENT_REVIEW。批准 Spec revision/blob �
 |R1-2 单条保存被其他旧缺项永久阻断|接受；源码核对现有简历数据源只映射真正变化的经历/教育，未改项可原样跳过|日常以权威快照叠加本次条目/分区差异，只预检将写条目；onboarding保留全量预检。增加两条旧缺项修复/删除与零旁路写的回归，不新建批量修复流程；符合Spec §11.2.4“本次真正将提交范围”|
 |R1-3 先行用例选择靠临时标题|接受；先行已提交有隐私操作/映射测试，未提交e2e标题不能当最终依据|开工登记最终diff中的实际文件/完整Case/project及行为，选择器与清单逐条对账；补隐私 --list 和已知漏选单测，不只看非零|
 
-R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude 会话复核，候选 HEAD `a61cb7578bee939c7f3bf08cb0a0d37539b40185`，Plan blob `c369c21c6aa2c82db924bf1e2fc15088f17e4ae7`；审查前后 status、HEAD、两份文档指纹一致。R2 明确逐条确认修复，最终 `NO FINDINGS`，无未关闭 required 或 optional。reviewer 未运行测试、未修改文件。本次 v1.2 只更新阶段与审查记录，不改变已复核的实施正文。规划、修复及审查均未运行产品测试。
+R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude 会话复核，候选 HEAD `a61cb7578bee939c7f3bf08cb0a0d37539b40185`，Plan blob `c369c21c6aa2c82db924bf1e2fc15088f17e4ae7`；审查前后 status、HEAD、两份文档指纹一致。R2 明确逐条确认修复，最终 `NO FINDINGS`，无未关闭 required 或 optional。reviewer 未运行测试、未修改文件。本次 v1.2 只更新阶段、审查记录及根路径的等价文字表示（避免可移植性校验器将应用 URL 误判为机器路径），不改变已复核的实施合同。规划、修复及审查均未运行产品测试。
 
 ## 实施记录
 
