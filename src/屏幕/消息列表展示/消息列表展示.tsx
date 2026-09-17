@@ -9,8 +9,12 @@
 //   · 「通知」= AI代理动态，「仅会话」= 真人 / 直聊，两者互补不重叠
 //   · 会话行不放任何操作按钮，点整行进对应会话页
 // 提示数组允许错误与缓存行共存；空态文案逐字沿用原实现。
+//
+// Task 2 三行版式：第一行姓名/时间、第二行副标题（公司 · 岗位/职务）、第三行消息
+// 摘要/未读 —— Mock 与 Backend 同一布局。图片头像（已授权对方资料）：落在原 46px
+// 容器上，换 URL 重新挂载加载、加载失败回退姓名首字字标；列表头像尺寸保持不变。
 
-import { Fragment, useRef } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import 样式 from '../消息列表.module.css';
 import { 主页外壳, 滚动区 } from '../../组件/通用';
@@ -114,9 +118,10 @@ function 列表提示行({ 提示 }: { 提示: 列表提示 }): ReactElement {
 }
 
 /**
- * 单条会话行：左头像 + 中间两行文字 + 右侧未读数红胶囊 / 红点。
- * 头像只有两种形态：代理标（AI代理动态）与字标（真人/直聊首字、Backend 中性「会」），
- * 都落在原 46px 容器上；行上不放任何业务按钮，整行按下由数据带回调负责导航。
+ * 单条会话行：左头像 + 中间三行文字（头行 姓名+时间 / 第二行副标题 / 第三行摘要+未读）。
+ * 头像三种形态：代理标（AI代理动态）、字标（真人/直聊首字、Backend 中性「会」、缺值
+ * 「·」）与图片（已授权对方资料的真实头像），都落在原 46px 容器上；行上不放任何业务
+ * 按钮，整行按下由数据带回调负责导航。
  */
 export function 会话行({ 数据 }: { 数据: 会话行数据 }): ReactElement {
   return (
@@ -126,6 +131,9 @@ export function 会话行({ 数据 }: { 数据: 会话行数据 }): ReactElement
         <span className={样式.代理头像}>
           <代理标 尺寸={27} 脸色="#ffffff" 眼色="var(--墨)" 描边色="var(--墨)" 描边宽={2.6} />
         </span>
+      ) : 数据.头像.种类 === '图片' ? (
+        // 已授权对方资料的真实头像：换 URL 重挂重新加载（key），失败回退姓名首字字标
+        <图片头像 key={数据.头像.URL} URL={数据.头像.URL} 回退字={数据.头像.回退字} />
       ) : (
         // 真人 / 直聊 / Backend 中性占位：底色圆头像 + 首字
         <span className={样式.头像} style={{ background: 数据.头像.底色 }}>
@@ -135,10 +143,11 @@ export function 会话行({ 数据 }: { 数据: 会话行数据 }): ReactElement
 
       <span className={样式.正文区}>
         <span className={样式.会话头行}>
-          <span className={样式.会话标题}>{数据.标题}</span>
-          <span className={`${样式.会话副标题} 单行`}>{数据.副标题}</span>
+          <span className={`${样式.会话标题} 单行`}>{数据.标题}</span>
           <span className={`${样式.会话时间} 等宽数字`}>{数据.时间}</span>
         </span>
+
+        <span className={`${样式.会话副标题} 单行`}>{数据.副标题}</span>
 
         <span className={样式.会话摘要行}>
           <span className={`${样式.会话摘要} 单行`}>{数据.摘要}</span>
@@ -152,5 +161,18 @@ export function 会话行({ 数据 }: { 数据: 会话行数据 }): ReactElement
         </span>
       </span>
     </button>
+  );
+}
+
+/** 图片头像：失败回退姓名首字字标（key 按挂载点由调用方带 URL，换 URL 重新尝试）。 */
+function 图片头像({ URL, 回退字 }: { URL: string; 回退字: string }): ReactElement {
+  const [失败, 设失败] = useState(false);
+  if (失败) {
+    return <span className={样式.头像} style={{ background: 'var(--最弱)' }}>{回退字}</span>;
+  }
+  return (
+    <span className={样式.头像}>
+      <img className={样式.头像图} src={URL} alt="" onError={() => 设失败(true)} />
+    </span>
   );
 }

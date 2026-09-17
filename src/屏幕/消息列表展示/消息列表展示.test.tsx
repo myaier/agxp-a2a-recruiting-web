@@ -2,8 +2,10 @@
 // 文字行与数字/红点标记、前置错误+缓存行+后置提示共存、加载更多回调存在才显示、
 // 空副标题仍留节点（不生成假姓名/假会话）、超长文本的 class 保留断言、
 // 同一行 rerender 有值→空切换无残留。jsdom 不证明几何/截断（Task 5 双宽验证）。
+// Task 2 追加：三行版式结构（副标题独立第二行，头行只剩标题+时间）与图片头像
+// （换 URL 重新加载、加载失败回退首字字标，列表头像保持原 46px 容器）。
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import 样式 from '../消息列表.module.css';
@@ -167,6 +169,49 @@ describe('消息列表展示 · 会话行', () => {
     expect(副标题节点!.textContent).toBe('');
     expect(screen.getByText('已建立真人会话')).toBeTruthy();
     expect(screen.getByText('08-30')).toBeTruthy();
+  });
+});
+
+describe('消息列表展示 · 三行版式与图片头像（Task 2）', () => {
+  it('副标题独立成第二行：头行只含标题与时间，副标题不在头行里', () => {
+    const 视图 = render(<会话行 数据={行()} />);
+    const 头行 = 视图.container.querySelector(`.${样式.会话头行}`)!;
+    expect(头行).not.toBeNull();
+    expect(头行.querySelector(`.${样式.会话标题}`)).not.toBeNull();
+    expect(头行.querySelector(`.${样式.会话时间}`)).not.toBeNull();
+    expect(头行.querySelector(`.${样式.会话副标题}`)).toBeNull(); // 副标题不再挤在头行
+    expect(视图.container.querySelector(`.${样式.会话副标题}`)).not.toBeNull();
+    expect(视图.container.querySelector(`.${样式.会话摘要}`)).not.toBeNull();
+  });
+
+  it('图片头像落在原 46px 容器 class 上；加载失败回退姓名首字字标，不留坏图', () => {
+    const 视图 = render(
+      <会话行 数据={行({ 头像: { 种类: '图片', URL: 'https://cdn.example.com/a.png', 回退字: '陈' } })} />,
+    );
+    const 容器 = 视图.container.querySelector(`.${样式.头像}`)!;
+    expect(容器).not.toBeNull();
+    const 图 = 视图.container.querySelector('img');
+    expect(图).not.toBeNull();
+    expect(图!.getAttribute('src')).toBe('https://cdn.example.com/a.png');
+    expect(图!.className).toContain(样式.头像图);
+    act(() => { 图!.dispatchEvent(new Event('error')); });
+    expect(视图.container.querySelector('img')).toBeNull();
+    expect(视图.container.querySelector(`.${样式.头像}`)!.textContent).toBe('陈');
+  });
+
+  it('换 URL 重新尝试加载：失败回退不串到新 URL 的行上', () => {
+    const 视图 = render(
+      <会话行 数据={行({ 头像: { 种类: '图片', URL: 'https://cdn.example.com/a.png', 回退字: '陈' } })} />,
+    );
+    act(() => { 视图.container.querySelector('img')!.dispatchEvent(new Event('error')); });
+    expect(视图.container.querySelector(`.${样式.头像}`)!.textContent).toBe('陈');
+    视图.rerender(
+      <会话行 数据={行({ 头像: { 种类: '图片', URL: 'https://cdn.example.com/b.png', 回退字: '陈' } })} />,
+    );
+    // 新 URL：重新挂 img 尝试，不沿用上一张的失败态
+    const 新图 = 视图.container.querySelector('img');
+    expect(新图).not.toBeNull();
+    expect(新图!.getAttribute('src')).toBe('https://cdn.example.com/b.png');
   });
 });
 

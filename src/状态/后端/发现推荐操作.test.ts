@@ -525,6 +525,26 @@ describe('详情读取与 404 不可用标记', () => {
     expect(env.最新状态().候选岗位详情.job_9).toEqual(BFFCandidateJob样本);
   });
 
+  // ── Task 2 Step 3：同 key 在飞复用同一真实 Promise（岗位链的单飞等待边界）──
+
+  it('同 key 在飞复用同一真实 Promise：让路调用等待真实岗位读取落地，只发一笔 GET', async () => {
+    const 读门 = deferred<typeof BFFCandidateJob样本>();
+    vi.mocked(env.数据源.读取候选岗位详情).mockReturnValueOnce(读门.promise);
+    const 第一 = env.操作.读取候选岗位详情('job_1', true);
+    const 第二 = env.操作.读取候选岗位详情('job_1', true); // 同轮并发（列表编排）
+    expect(env.数据源.读取候选岗位详情).toHaveBeenCalledTimes(1);
+    let 已兑现 = false;
+    void 第二.then(() => { 已兑现 = true; });
+    await new Promise((完成) => setTimeout(完成, 0));
+    expect(已兑现).toBe(false); // 读锁让路的立即 return 不是本轮成功
+    读门.resolve(BFFCandidateJob样本);
+    await Promise.all([第一, 第二]);
+    expect(env.最新状态().候选岗位详情.job_1).toEqual(BFFCandidateJob样本);
+    // 结算后锁已释放：下一次 force 是新的真实读取
+    await env.操作.读取候选岗位详情('job_1', true);
+    expect(env.数据源.读取候选岗位详情).toHaveBeenCalledTimes(2);
+  });
+
   it('候选岗位详情 404 标记不可用且不抛；后续成功移除标记并落缓存', async () => {
     vi.mocked(env.数据源.读取候选岗位详情)
       .mockRejectedValueOnce(new BFF错误(404, 'job_not_found', 'gone'))

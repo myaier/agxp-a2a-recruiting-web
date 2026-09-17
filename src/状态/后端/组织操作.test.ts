@@ -636,6 +636,64 @@ describe('组织操作：选择企业关系 / 保存企业档案 / 公开企业�
     expect(deps.状态引用.current.公开企业表[BFF企业关系样本.organization_id]).toEqual(BFF公开企业样本);
   });
 
+  // ── Task 2 Step 3：公开企业读取的单飞等待与会话栅栏（岗位/企业链同约束）──
+
+  it('同 id 在飞复用同一真实 Promise：并发只发一笔 GET，两个调用都等真实落地', async () => {
+    const 读门 = deferred<typeof BFF公开企业样本>();
+    const 读取公开企业 = vi.fn(() => 读门.promise);
+    const 后端 = 创建完整测试数据源({ 读取公开企业 });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    const 第一 = 操作.读取公开企业('org_1');
+    const 第二 = 操作.读取公开企业('org_1');
+    expect(读取公开企业).toHaveBeenCalledTimes(1);
+    let 已兑现 = false;
+    void 第二.then(() => { 已兑现 = true; });
+    await new Promise((完成) => setTimeout(完成, 0));
+    expect(已兑现).toBe(false); // 不把并发让路当读取完成
+    读门.resolve(BFF公开企业样本);
+    await Promise.all([第一, 第二]);
+    expect(deps.状态引用.current.公开企业表.org_1).toEqual(BFF公开企业样本);
+    // 结算后在飞登记已摘：下一次调用是新的真实读取
+    await 操作.读取公开企业('org_1');
+    expect(读取公开企业).toHaveBeenCalledTimes(2);
+  });
+
+  it('不同 id 并行互不串联：一个失败不清另一个的成功缓存', async () => {
+    const 后端 = 创建完整测试数据源({
+      读取公开企业: vi.fn((id: string) =>
+        (id === 'org_1' ? Promise.reject(new BFF错误(404, 'organization_not_found', 'gone')) : Promise.resolve(公开企业B))),
+    });
+    const { deps, 操作 } = 创建操作测试环境({ 后端 });
+    await expect(操作.读取公开企业('org_1')).rejects.toMatchObject({ code: 'organization_not_found' });
+    await 操作.读取公开企业('org_2');
+    expect(deps.状态引用.current.公开企业表.org_2).toEqual(公开企业B);
+    expect(deps.状态引用.current.公开企业表.org_1).toBeUndefined();
+  });
+
+  it('迟到 401 不清新会话：会话栅栏捕获主体/代际，过期回执只随单飞收口', async () => {
+    const 读门 = deferred<typeof BFF公开企业样本>();
+    const 后端 = 创建完整测试数据源({ 读取公开企业: vi.fn(() => 读门.promise) });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 第一 = 操作.读取公开企业('org_1');
+    deps.会话代际.current += 1; // 读取在飞时换了会话（登出/换主体）
+    读门.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(第一).rejects.toMatchObject({ status: 401 });
+    expect(deps.主体标识引用.current).toBe('sub_1'); // 绝不登出新会话
+    expect(派发).not.toHaveBeenCalledWith({ 型: '清后端组织状态' });
+  });
+
+  it('迟到的 suspended 标记不落新会话（栅栏过期整包丢弃）', async () => {
+    const 读门 = deferred<typeof BFF公开企业样本>();
+    const 后端 = 创建完整测试数据源({ 读取公开企业: vi.fn(() => 读门.promise) });
+    const { deps, 派发, 操作 } = 创建操作测试环境({ 后端 });
+    const 第一 = 操作.读取公开企业('org_1');
+    deps.会话代际.current += 1;
+    读门.reject(new BFF错误(403, 'organization_suspended', 'gone'));
+    await expect(第一).rejects.toMatchObject({ code: 'organization_suspended' });
+    expect(deps.状态引用.current.不可用公开企业编号).toEqual([]); // 新会话不被旧回执标记
+    expect(动作型列表(派发)).not.toContain('选择当前企业关系');
+  });
+
   it('保存企业档案 409 后重读权威档案覆盖快照与 public cache，再抛回原始错误', async () => {
     let 调用数 = 0;
     const 后端 = 创建完整测试数据源({

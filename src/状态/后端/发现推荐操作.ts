@@ -187,6 +187,12 @@ function 是401(错误: unknown): boolean {
 interface 读锁属主 {
   fence: P4Fence;
   token: object;
+  /**
+   * Task 2 Step 3：该属主真实读取的在飞 Promise（仅岗位详情直读登记）。同 key 的
+   * 让路调用复用它 —— 读锁让路的「立即 return」绝不能被调用方当成本轮读取成功。
+   * 属主栅栏过期被接管时随属主整包替换，不构成持久缓存。
+   */
+  promise?: Promise<void>;
 }
 
 /** 按 Provider 锁集隔离的属主表：WeakMap 随锁集（即 Provider / 测试环境）回收。 */
@@ -688,6 +694,23 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
     if (表.get(取得.键)?.token === 取得.token) {
       表.delete(取得.键);
     }
+  }
+
+  /**
+   * Task 2 Step 3：同 key 在飞真实岗位详情读取（与 P5 详情直读同一单飞等待边界）。
+   * 属主栅栏仍当前且已登记 Promise 时返回它；否则 null（过期由 获取读锁 接管重发）。
+   */
+  function 取在飞岗位读(scopeKey: string): Promise<void> | null {
+    const 属主 = 属主表().get(读锁键(scopeKey));
+    if (属主 && fenceStillCurrent(引用, 属主.fence) && 属主.promise !== undefined) return 属主.promise;
+    return null;
+  }
+
+  /** 把真实读取 Promise 登记到自己的锁属主上（token 易主后不动新属主的登记）。 */
+  function 登记在飞岗位读(取得: 读锁凭证, promise: Promise<void>): void {
+    const 表 = 属主表();
+    const 属主 = 表.get(取得.键);
+    if (属主 && 属主.token === 取得.token) 属主.promise = promise;
   }
 
   /**
@@ -1272,43 +1295,50 @@ export function 创建发现推荐操作(deps: 后端操作依赖): 发现推荐
       if (!是后端 || !后端) return;
       if (force !== true && 后端状态引用.current.候选岗位详情[jobId]) return;
       const scopeKey = P4范围键.候选详情(jobId);
+      // Task 2 Step 3：同 key 在飞复用同一真实 Promise —— 让路调用等真实读取结算。
+      const 在飞 = 取在飞岗位读(scopeKey);
+      if (在飞 !== null) return 在飞;
       const 取得 = 获取读锁(scopeKey);
       if (!取得) return;
-      try {
-        const job = await 后端.读取候选岗位详情(jobId);
-        if (!fenceStillCurrent(引用, 取得.fence)) return;
-        设后端状态((旧) => ({
-          ...旧,
-          候选岗位详情: { ...旧.候选岗位详情, [jobId]: job },
-          // 权威 Job 已回到手：早先的不可用标记一并撤销
-          候选岗位不可用: 旧.候选岗位不可用.filter((编号) => 编号 !== jobId),
-        }));
-      } catch (错误) {
-        if (!fenceStillCurrent(引用, 取得.fence)) return;
-        if (是401(错误)) {
-          清账号状态(账号清理依赖);
+      const promise = (async () => {
+        try {
+          const job = await 后端!.读取候选岗位详情(jobId);
+          if (!fenceStillCurrent(引用, 取得.fence)) return;
+          设后端状态((旧) => ({
+            ...旧,
+            候选岗位详情: { ...旧.候选岗位详情, [jobId]: job },
+            // 权威 Job 已回到手：早先的不可用标记一并撤销
+            候选岗位不可用: 旧.候选岗位不可用.filter((编号) => 编号 !== jobId),
+          }));
+        } catch (错误) {
+          if (!fenceStillCurrent(引用, 取得.fence)) return;
+          if (是401(错误)) {
+            清账号状态(账号清理依赖);
+            throw 错误;
+          }
+          // 404 按统一不可用收口：标记安全不可用页所需的事实，不抛、不泄露差异。
+          // 旧缓存必须同时删除 —— 只加标记会让上一轮成功读到的 Job 继续渲染成活页（fail open）
+          if (错误 instanceof BFF错误 && 错误.status === 404) {
+            设后端状态((旧) => {
+              const 候选岗位详情 = { ...旧.候选岗位详情 };
+              delete 候选岗位详情[jobId];
+              return {
+                ...旧,
+                候选岗位详情,
+                候选岗位不可用: 旧.候选岗位不可用.includes(jobId)
+                  ? 旧.候选岗位不可用
+                  : [...旧.候选岗位不可用, jobId],
+              };
+            });
+            return;
+          }
           throw 错误;
+        } finally {
+          释放读锁(取得);
         }
-        // 404 按统一不可用收口：标记安全不可用页所需的事实，不抛、不泄露差异。
-        // 旧缓存必须同时删除 —— 只加标记会让上一轮成功读到的 Job 继续渲染成活页（fail open）
-        if (错误 instanceof BFF错误 && 错误.status === 404) {
-          设后端状态((旧) => {
-            const 候选岗位详情 = { ...旧.候选岗位详情 };
-            delete 候选岗位详情[jobId];
-            return {
-              ...旧,
-              候选岗位详情,
-              候选岗位不可用: 旧.候选岗位不可用.includes(jobId)
-                ? 旧.候选岗位不可用
-                : [...旧.候选岗位不可用, jobId],
-            };
-          });
-          return;
-        }
-        throw 错误;
-      } finally {
-        释放读锁(取得);
-      }
+      })();
+      登记在飞岗位读(取得, promise);
+      return promise;
     },
 
     async 加载招聘候选(jobId, force) {
