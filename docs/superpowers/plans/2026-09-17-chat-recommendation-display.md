@@ -381,3 +381,16 @@ Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`
 ## 实施记录
 
 当前Task1–6均未执行，无业务代码改动、后端改动、清库或部署。执行时在此逐Task追加实际基线、commit、验证命令/结果/证据、消费者文件调整及真实验收缺口；不得把本规划的文档校验写成产品PASS。
+
+### Task 1 执行记录（2026-09-17）
+
+- **现场基线：** 分支 `fix/chat-recommend-display`，基于 6ed6a984（研究基线 bb6ff6e0 以来 src/e2e/package.json 零漂移）。
+- **Commits：** `8326efe1`（契约B 接线 + hidden=false 默认）、`9f2d7a22`（review fix-1：遗留缺组织行写前守卫）。
+- **定向结果：** `npm test -- src/屏幕/工作经历.行业与企业.test.tsx src/屏幕/工作经历.资料与预填.test.tsx src/流程/候选Onboarding简历预填.test.ts src/数据/后端映射.test.ts src/状态/后端/隐私操作.test.ts` → 5 files / 279 passed；`npm run typecheck` 零错误。（全量单测为 implementer 额外自查：256 files / 5867 passed，非本 Task 要求入口。）
+- **TDD：** 反例先 RED（契约B 开关/徽标/保存链 13 例、重读隐私 3 例、物化隐藏默认关、拉黑组织编号、守卫混合场景等共 21 项新增断言），实现后全绿。
+- **现场差异（超出「预期编辑文件」的增补，含因果）：**
+  - `src/状态/后端/类型.ts`：`隐私操作` interface 宿主，契约B「先读取权威隐私」入口 `重读隐私()` 须落在此接口。
+  - `src/屏幕/工作经历.测试辅助.tsx`：组件新读 `状态.屏蔽名单/设置开关`，共用该桩的测试文件缺默认值会 TypeError。
+  - `src/状态/应用状态.会话.test.ts`：冻结「应用操作公开 shape」清单需登记 `重读隐私`。
+- **Review：** 宿主内 spec（opus）+ quality（sonnet）双档；Important#1（混合场景隐私写先于简历校验）经 fix round 1 修复并由 scoped re-review 核实 ADDRESSED。递延 minor 见会话 ledger（引导文案三处复制、Mock 双去重键等，均不阻塞）。
+- **环境备注：** worktree 无 node_modules，按本分支 lockfile `npm ci` 安装（lockfile/package.json 零改动）。
