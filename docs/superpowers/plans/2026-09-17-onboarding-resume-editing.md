@@ -337,3 +337,33 @@ R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude �
 ## 实施记录
 
 当前全部 Task 未开始，未执行产品测试/正式 STG、未合 target、未 push。实施者逐 Task 在本节追加精确依赖基线、修改/提交、最小验证回执、现场差异；收尾登记 review 候选与后续修复 delta、全选集/复用证明、final gate/实际L3/cleanup/push事实。文档 review 的完成不能代替实施完成。
+
+### 2026-09-17 开工依赖门核验与解锁（Task 1 开始前）
+
+- `predecessor_final`：`fix/chat-recommend-display` tip `445998389aae8e5208eb91220fd2a747aa2deb37`；功能链含 `8326efe1`（Task 1 隐私接线）、`9f2d7a22`（review fix-1 整份保存拦截）、`75547327`/`9f17c061`（Task 2）、`a417e11c`（Task 3）、`1ee77e14`（Task 4）、`f6768171`（Task 5）、`6ba3df17`（Task 6 浏览器接线）、`1b68fb6e`/`ad71e133`（review 修复栅栏与 401）。旧快照 `ccaf7010` 仅调查记录，未用作证明。
+- `dependency_target_commit`：`origin/main` = `44599838`，先行合入 merge `cbaf065c` 经 `git merge-base --is-ancestor cbaf065c origin/main` 证明已进入 target；普通 merge、非 squash，无需逐项 diff 替代祖先检查。
+- 初始核验时所选工作区 HEAD `de60d5fd` 不含先行合入（merge-base 为规划基线 `acfdab7e`），已按 Plan 报告 DEPENDENCY_BLOCKED。随后用户明确指示执行 Plan「依赖门的具体解锁步骤」：工作树 clean、`git fetch origin`、`git merge --no-edit origin/main` 无冲突完成，merge 前 `de60d5fd` → merge 后 `f6892635`（执行基线 `execution_base`）。merge 后复验：`44599838`、`cbaf065c` 均为 HEAD 祖先；批准 Spec blob `19f720e`、Plan blob `eb460a10` 在 HEAD 树中不变。
+- Spec §11.2 合同承接抽查（合入源码）：`src/屏幕/工作经历.tsx` 含 `取有效屏蔽` 派生判定、待提交屏蔽意图 Map、按序隐私写 + 每次成功后 `重读隐私` 权威回读、single-flight `保存整份简历`、新经历 `hidden=false` 默认且开关不改写该字段；`src/流程/候选Onboarding简历预填.ts` 预填不改写 hidden。
+- task intent 已登记：task_id `4c110d5b-1cab-4e27-9a04-8417d0451b3e`，68 个预期编辑路径（Task 1–5 文件清单并集 + 本 Plan），4 条冻结合同引用（合同 A/B/C、Spec §11）；本 clone 31 条记录中无其他未完成记录，无路径重叠。
+
+#### 先行最终测试责任登记（Spec §11.2 对应，来自先行最终合入树）
+
+单元（project：vitest；选择器 `npx vitest list <五文件>` 对账 282 条 Case、五文件全非零、无重名歧义）：
+
+| 文件 | §11.2 对应完整 Case 名（describe › test） | 保护行为 |
+|---|---|---|
+| `src/屏幕/工作经历.行业与企业.test.tsx`（36 条，其中契约B 组 15 条） | 工作经历 · 经历企业屏蔽（契约B） › Backend 隐私未读：不能把空快照视为无屏蔽，开关退居「核对中」不可写；Mock 同组织同步：保存走既有隐私 reducer（拉黑带组织编号），两段同企业经历徽标同步；derived 屏蔽的解除保留风险确认：确认后才调用现有解除 API，取消零写；derived 随「对现雇主隐身」生效：总开关关时开关不显示生效，开启被引导去隐私页而非改写来源；写操作让路（void 返回未提交）不得假报成功：权威回读未见达成即提示未保存；取消仅丢弃本次编辑的意图：零屏蔽写，之后的保存不带任何屏蔽请求；外层保存先按序调用现有屏蔽 API 再存简历：成功后移除意图并权威回读，徽标随后显示；必填不完整先阻止整份保存：有屏蔽意图也零隐私写请求；新建经历默认 hidden=false，企业屏蔽开关不再改写该字段；旧 hidden=true 但无有效屏蔽：折叠卡不显示「已对该公司隐身」，编辑页开关为关；有效 manual 屏蔽：徽标显示、开关为开；未提交意图只标「待保存」：完成回上层保留意图，卡片不冒充「已对该公司隐身」；缺组织编号的遗留行先拦整份保存：A 行有待提交屏蔽意图也零隐私写（写前守卫）；部分成功后重试只补未达成项：已成功项不再重放，失败保留意图不发存简历；重试核对当前权威状态：意图已在权威名单（他端已屏蔽）时跳过该项，零重放 | §11.2.1–11.2.5 全部 |
+| `src/屏幕/工作经历.资料与预填.test.tsx`（43 条） | 工作经历 候选 onboarding 预填（Spec §8） › 旧经历 hidden=true 与企业屏蔽无关：保存原样携带 true；工作经历 保存 single-flight › 保存中按钮禁用显示保存中，重复点击只保存一次，成功后轻提示并跳转 / 保存失败不跳转，轻提示错误文案，按钮恢复为保存；工作经历 · 简历编辑来源（from=resume） › 社招编辑：保存带 日常编辑 来源，成功只回我的简历，零分区确认零建档草稿 等 4 条；工作经历 DF-002 缺项提示与保存首错定位 › 4 条（写前校验与首错定位） | §11.2.4 写前校验、§11.2.1 hidden 原值、保存链 single-flight |
+| `src/状态/后端/隐私操作.test.ts`（31 条） | 创建隐私操作 · 添加组织屏蔽回执合并 › 3 条；创建隐私操作 · 冲突按 code 分派：重读权威 + 原样抛出 › 5 条（409/422 风险确认/401）；创建隐私操作 · 变更 status 0/503 只允许一次 GET 校验真实效果 › 7 条；创建隐私操作 · 重读隐私（企业屏蔽表单入口） › 3 条（含读取失败零提交不把空快照当无屏蔽）；创建隐私操作 · 重读隐私 迟到回执栅栏（review-r1） › 2 条；创建隐私操作 · 被写超越的迟到 401 不清当前会话（review-r2） › 1 条；解除组织屏蔽 404 以权威视图为准 › 2 条；归约隐私设置 · 拉黑携带组织编号（Mock 同组织同步） › 2 条 | §11.2.2 权威回读/让路/冲突不重放、§11.2.5 已成功不伪回滚 |
+| `src/数据/后端映射.test.ts`（101 条） | 候选人后端映射 › 经历写入按段原值携带 hidden：旧 true 保留 true、新 false 如实落 false；经历写入带真实组织 ID：请求含 organization_id、不含 company；缺组织 ID 的经历写入抛 organization_id 校验错「请选择公司」，不回退公司文本 | §11.2.1 wire hidden 合同、组织 ID 真实性 |
+| `src/流程/候选Onboarding简历预填.test.ts`（71 条） | 取工作页预填 › 空服务端且空页面时物化解析经历：exact 行业带引用、隐藏默认关、项目保序；取个人优势预填 › 5 条（summary 资格/已有值守卫）；取可恢复个人优势建议 › 9 条 | §11.2 预填 hidden=false 默认；Task 3 将改签名的两组 helper 现行为基线 |
+
+浏览器（project：fixture；`--list` 对账无 0 条、无歧义）：
+
+| 完整 Case 名 | 保护行为 | --list 回执 |
+|---|---|---|
+| e2e/suites/隐私与实名.spec.ts:227 › P3 Backend 隐私主链路 @backend › 聊天推荐前端修复 经历企业屏蔽开关跨页：取消零写、保存写隐私 API、徽标与屏蔽名单同权威 @backend | §11.2.2/11.2.5 跨页开关一致、取消零写 | `--grep '聊天推荐前端修复'` → 2 tests in 1 file |
+| e2e/suites/隐私与实名.spec.ts:266 › P3 Backend 隐私主链路 @backend › 聊天推荐前端修复 屏蔽部分保存失败：失败保留意图与简历草稿、零简历写，重试补齐不重复 @backend | §11.2.4/11.2.5 partial failure 与重试不重复 | 同上 |
+| e2e/suites/简历与附件.spec.ts:1096 › 聊天推荐前端修复 经历 hidden 默认与保留 @backend › 新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend | §11.2.1 hidden 新 false/旧 true 序列化 | `--grep '聊天推荐前端修复 经历 hidden'` → 1 test in 1 file |
+
+登记来源为先行最终合入树（HEAD `f6892635`）实际代码与 `npm run test:list` 生成的 manifest，非标题猜测。上述 e2e 的「点两次经历 → 完成 → 外层保存」入口路径按 §11.2.6 在 Task 5 迁移到日常新入口，保护断言保留。本轮实施中不重跑上述先行 Case 作为「产品验证」；其作为依赖交付核验的运行责任在 Task 2/5 定向命令与收尾 affected 选集中体现。
