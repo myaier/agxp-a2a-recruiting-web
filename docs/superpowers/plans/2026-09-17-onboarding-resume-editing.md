@@ -414,3 +414,11 @@ R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude �
 - fix round 1 commit `fc409445`：五项 required 全修 + 核实项实查确认首轮确为合并 Case，拆为「取消零写/失败重试」与「深链与硬刷」两条独立 Case（选集 46→47）；抽屉稳定性改首屏薪资行断言零删减、换壳无闪屏旅程迁新流程逐帧断言未动、README 已知缺口小节替换、cases.md 重生成（6105/367）。复跑：七文件 47/47、招聘组织 15p、抽屉稳定性 15p、换壳无闪屏 2p、隐私 3p、场景 4p、ui:capture 7p、lint/typecheck 清。scoped re-review 判定 6/6 ADDRESSED、hash直达 改用为测试定义修正、无新 Critical/Important 破坏。
 - 明确遗漏（非 PASS）：未跑全仓单测套件/`ui:compare` 像素比对/其余未列 Suite（报告 §4.2 逐条理由，其中隐私与实名「岗位硬性条件」补装三级桩后未执行——已登记）；正式 STG/L3 全 NOT_RUN（归收尾 final gate 后）。
 - 递延 minor：候选操作.test.ts 模拟渲染死代码、候选日常编辑.test.tsx it.each 注释机制说错、视觉场景前缀分组测试冗余、会话操作.ts:333/661 镜像未同步（既有、无可达路径，建议注释收窄）、隐私与实名.spec.ts:251 注释与断言不一致、场景.ts 三处注入重复、岗位编辑.spec.ts 小类勾 类名子串断言、README:604/613/628 旧数字做旧、UI回归巡检.md 场景路径陈旧、引导问答.test.tsx 同名用例超集、简历与附件.spec.ts:1389 注释口径过宽。Task 4 递延的真实目录「二级 selectable 叶」风险留 STG 取证。
+
+### SDD 宿主内最终 review 与候选冻结（2026-09-17）
+
+- 五个编号 Task 全部完成（各含两阶段宿主内 review 与 fix round：Task 1 一轮、Task 3 两轮〔第二轮为 Task 5 验证发现的技能清空缺陷〕、Task 5 一轮〔产品缺陷修复 e8206931 计入其循环〕，Task 2/4 无需 fix）。
+- 最终全分支 review（opus，范围 `f6892635..d70f4470`）：With fixes——0 Critical；跨 Task 不变式（来源单义、保存链单一入口、next 由最新权威快照合成、日常零 onboarding 副作用）逐条核过成立；reviewer 独立实跑全仓 265 文件/6105 例单测全过、`test:list --check` 一致、typecheck/lint/`diff --check` 清、Task 1–4 定向选集与 场景.test 全过。Playwright 层未由该 reviewer 重跑（收尾 affected 责任）。
+- 最终 review 递延 triage：blocks merge 仅 README:613/628 冻结计数失真（required）；其余 30+ 项递延全部给出「现在不必修」依据；三条早前递延被推翻——首屏薪资单位取值（同周期保留时单位恒等，不构成缺陷）、候选操作完成提示「请回引导问答重试」（与目标流程一致，指向正确）、招聘名片注册流正向锚点（同组已存在 Mock/Backend 各一条日常正向用例）。真实目录「二级 selectable 叶」为批准后的行为替代，首个 STG 真实岗位必须取证并写报告（已登记为 STG 取证点）。
+- fix wave commit `dcb34f61`：README 两处计数对齐 47/6105/367（章内与 cases.md 自动区自洽）；`应用.tsx:509` 删除 `/wizard` 上恒 no-op 的 候选Onboarding预填边界 包装并改写「六条」注释与实际相符（删除经边界组件代码路径核实行为恒等，包装仍被六条路由使用、组件仍受直测）。scoped re-review 判定 2/2 ADDRESSED、无新破坏。
+- 候选冻结：`dcb34f61`（`f6892635..dcb34f61` 共 16 commits：10 产品/测试 + 1 docs 计划门记录 + 4 Task 执行记录 + 1 最终 review fix wave）。进入不计数收尾：异构 review → affected（L0–L2）→ 人工 final gate。
