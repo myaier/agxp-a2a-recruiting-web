@@ -17,7 +17,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 6105 例 · 265 文件
+## 第一层 · 单元/组件（Vitest） · 6113 例 · 265 文件
 
 ### 数据契约/映射 · 1615 例 · 54 文件
 
@@ -1644,7 +1644,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 流程 · 209 例 · 7 文件
+### 流程 · 210 例 · 7 文件
 
 <details>
 <summary>展开明细</summary>
@@ -1776,6 +1776,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源 > 学生分流 打开的 city/job 子页也在活跃集合内 |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源 (> )?学生分流 打开的 city/job 子页也在活跃集合内' | 未知 |
 | 活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源 > 编辑标记优先：带 from=resume 的完整位置不活跃，原无参数结果保留 |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '活跃 Onboarding 集合：以 Onboarding流程 为唯一事实源 (> )?编辑标记优先：带 from=resume 的完整位置不活跃，原无参数结果保留' | 未知 |
 | 消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） > from=intentions 只在状态页去掉消费位；错配来源与白名单外来源都按原判定 |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） (> )?from=intentions 只在状态页去掉消费位；错配来源与白名单外来源都按原判定' | 未知 |
+| 消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） > resume 只在合同 A 四类简历域路径成立：其它 onboarding 页上与无来源同语义 |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） (> )?resume 只在合同 A 四类简历域路径成立：其它 onboarding 页上与无来源同语义' | 未知 |
 | 消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） > 保状态页与其它产品路由都不是消费位置 |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） (> )?保状态页与其它产品路由都不是消费位置' | 未知 |
 | 消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） > 六个资料页是消费位置 |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） (> )?六个资料页是消费位置' | 未知 |
 | 消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） > 向导不再是消费位（summary 建议随个人优势迁到 /experience） |  | [src/流程/候选Onboarding预填边界.test.tsx](../../src/流程/候选Onboarding预填边界.test.tsx) | npm test -- src/流程/候选Onboarding预填边界.test.tsx -t '消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上） (> )?向导不再是消费位（summary 建议随个人优势迁到 /experience）' | 未知 |
@@ -1863,7 +1864,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 状态 · 1290 例 · 32 文件
+### 状态 · 1295 例 · 32 文件
 
 <details>
 <summary>展开明细</summary>
@@ -2436,6 +2437,11 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 创建候选操作 · 意向写经 提交候选意向快照 > 写在途换主体：迟到的成功快照被提交口的栅栏丢弃，不落进新主体 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 意向写经 提交候选意向快照 (> )?写在途换主体：迟到的成功快照被提交口的栅栏丢弃，不落进新主体' | 未知 |
 | 创建候选操作 · 意向写经 提交候选意向快照 > 创建意向成功：经提交口传入权威快照与捕获的主体/代际，不直接派发 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 意向写经 提交候选意向快照 (> )?创建意向成功：经提交口传入权威快照与捕获的主体/代际，不直接派发' | 未知 |
 | 创建候选操作 · 意向写经 提交候选意向快照 > 删除意向成功同样经提交口 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 意向写经 提交候选意向快照 (> )?删除意向成功同样经提交口' | 未知 |
+| 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常保存：最终权威回读失败 → 原错误抛出、镜像已更新，重试只 PATCH 不二次 POST |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常保存：最终权威回读失败 → 原错误抛出、镜像已更新，重试只 PATCH 不二次 POST' | 未知 |
+| 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常新增嵌套项目：最终回读失败 → 项目 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常新增嵌套项目：最终回读失败 → 项目 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE' | 未知 |
+| 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常新增教育：最终回读失败 → 服务端 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常新增教育：最终回读失败 → 服务端 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE' | 未知 |
+| 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常新增经历带嵌套项目：最终回读失败 → 经历与项目 id 都回写草稿，重试零 POST/DELETE |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常新增经历带嵌套项目：最终回读失败 → 经历与项目 id 都回写草稿，重试零 POST/DELETE' | 未知 |
+| 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常新增证书：最终回读失败 → 服务端 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常新增证书：最终回读失败 → 服务端 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE' | 未知 |
 | 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常编辑来源删除经历：写入真实包含该删除（无缺项补回） |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常编辑来源删除经历：写入真实包含该删除（无缺项补回）' | 未知 |
 | 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常编辑来源的 保存个人优势：同样绕过跟踪，草稿与槽零触碰 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常编辑来源的 保存个人优势：同样绕过跟踪，草稿与槽零触碰' | 未知 |
 | 创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.2） > 日常编辑来源：未确认槽不阻塞保存，走普通 diff，零草稿派发，槽原样保留 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4\.2） (> )?日常编辑来源：未确认槽不阻塞保存，走普通 diff，零草稿派发，槽原样保留' | 未知 |
@@ -3778,7 +3784,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2396 例 · 104 文件
+### 页面/接线 · 2398 例 · 104 文件
 
 <details>
 <summary>展开明细</summary>
@@ -4905,10 +4911,12 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 工作经历 · 日常分区 URL（合同 A） > from=resume 不带已知来源白名单值时仍是原来的聚合页（错配来源等同无来源） |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常分区 URL（合同 A） (> )?from=resume 不带已知来源白名单值时仍是原来的聚合页（错配来源等同无来源）' | 未知 |
 | 工作经历 · 日常分区 URL（合同 A） > skills：只显示技能分区（受控标签编辑），其它分区不在场 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常分区 URL（合同 A） (> )?skills：只显示技能分区（受控标签编辑），其它分区不在场' | 未知 |
 | 工作经历 · 日常分区 URL（合同 A） > work 无 item：只显示工作分区列表，没有第二次总保存 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常分区 URL（合同 A） (> )?work 无 item：只显示工作分区列表，没有第二次总保存' | 未知 |
+| 工作经历 · 日常分区 URL（合同 A） > 归一替换原样转交当前来路 state：退出仍能按来路退一格 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常分区 URL（合同 A） (> )?归一替换原样转交当前来路 state：退出仍能按来路退一格' | 未知 |
 | 工作经历 · 日常分区 URL（合同 A） > 旧 /experience?from=resume（无 section）替换归一为 work 分区列表，不展示聚合页 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常分区 URL（合同 A） (> )?旧 /experience\?from=resume（无 section）替换归一为 work 分区列表，不展示聚合页' | 未知 |
 | 工作经历 · 日常分区 URL（合同 A） > 未知 section 同样归一为 work 分区列表，零写入 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常分区 URL（合同 A） (> )?未知 section 同样归一为 work 分区列表，零写入' | 未知 |
 | 工作经历 · 日常条目直达（item） > certificates item=new：空编辑器可新增，保存带新条目 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常条目直达（item） (> )?certificates item=new：空编辑器可新增，保存带新条目' | 未知 |
 | 工作经历 · 日常条目直达（item） > certificates 带 item 指定证书可编辑：名称与年份回显，保存带回该条新年份 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常条目直达（item） (> )?certificates 带 item 指定证书可编辑：名称与年份回显，保存带回该条新年份' | 未知 |
+| 工作经历 · 日常条目直达（item） > certificates 新增：失败后重试提交的草稿带着服务端回写的编号 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常条目直达（item） (> )?certificates 新增：失败后重试提交的草稿带着服务端回写的编号' | 未知 |
 | 工作经历 · 日常条目直达（item） > education 带 item 直接编辑该条 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常条目直达（item） (> )?education 带 item 直接编辑该条' | 未知 |
 | 工作经历 · 日常条目直达（item） > item=new 直接打开空条目编辑器 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常条目直达（item） (> )?item=new 直接打开空条目编辑器' | 未知 |
 | 工作经历 · 日常条目直达（item） > 不存在的 id 不落「新增」：显示已不可用并可返回，不渲染空编辑器 |  | [src/屏幕/工作经历.日常编辑.test.tsx](../../src/屏幕/工作经历.日常编辑.test.tsx) | npm test -- src/屏幕/工作经历.日常编辑.test.tsx -t '工作经历 · 日常条目直达（item） (> )?不存在的 id 不落「新增」：显示已不可用并可返回，不渲染空编辑器' | 未知 |
@@ -6184,7 +6192,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-## 第二层 · 浏览器（Playwright） · 367 例 · 26 文件
+## 第二层 · 浏览器（Playwright） · 368 例 · 26 文件
 
 ### Agent规则 · 11 例 · 1 文件
 
@@ -6607,29 +6615,30 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 简历与附件 · 16 例 · 1 文件
+### 简历与附件 · 17 例 · 1 文件
 
 <details>
 <summary>展开明细</summary>
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| Onboarding简历修正 日常取消与保存失败 @backend > 取消零写、保存失败留页可重试且不返回 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1296](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常取消与保存失败 @backend 取消零写、保存失败留页可重试且不返回 @backend' | 未知 |
-| Onboarding简历修正 日常深链与硬刷 @backend > 深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1353](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常深链与硬刷 @backend 深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend' | 未知 |
-| Onboarding简历修正 日常编辑历史栈 @backend > 我→简历→编辑→保存→返回我：退一格回原简历，连续两分区编辑不留编辑页 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1220](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常编辑历史栈 @backend 我→简历→编辑→保存→返回我：退一格回原简历，连续两分区编辑不留编辑页 @backend' | 未知 |
-| Onboarding简历修正 空身份基本信息收口 @backend > 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1405](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 空身份基本信息收口 @backend 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend' | 未知 |
-| P2 附件简历 Backend @backend > Backend candidate owns PDF library without changing Mock visuals @backend | fixture | [e2e/suites/简历与附件.spec.ts:25](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'P2 附件简历 Backend @backend Backend candidate owns PDF library without changing Mock visuals @backend' | 未知 |
-| P2 附件简历 Backend @backend > failed resume parse requires fresh consent before retry @backend | fixture | [e2e/suites/简历与附件.spec.ts:141](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'P2 附件简历 Backend @backend failed resume parse requires fresh consent before retry @backend' | 未知 |
-| 候选个人优势编辑 @backend > 我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend | fixture | [e2e/suites/简历与附件.spec.ts:813](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '候选个人优势编辑 @backend 我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend' | 未知 |
-| 候选资料编辑边界 @backend > 已完成候选经基本信息保存回我的简历：刷新保留编辑模式，首次意向写入零次 @backend | fixture | [e2e/suites/简历与附件.spec.ts:751](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '候选资料编辑边界 @backend 已完成候选经基本信息保存回我的简历：刷新保留编辑模式，首次意向写入零次 @backend' | 未知 |
-| 核心编辑 作品集 @backend > 日常编辑作品集：保存→权威回读→重进不丢→再清空，未走 onboarding @backend | fixture | [e2e/suites/简历与附件.spec.ts:176](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 作品集 @backend 日常编辑作品集：保存→权威回读→重进不丢→再清空，未走 onboarding @backend' | 未知 |
-| 核心编辑 教育 @backend > 目录候选：输入→副行→分页→选候选→保存，同名不同 ID 按键提交 @catalog-fullscreen @backend | fixture | [e2e/suites/简历与附件.spec.ts:354](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 教育 @backend 目录候选：输入→副行→分页→选候选→保存，同名不同 ID 按键提交 @catalog-fullscreen @backend' | 未知 |
-| 核心编辑 简历行业 @backend > 三层目录：展开根→选孙叶子→经历按 ID 保存，分段尾可翻页 @backend | fixture | [e2e/suites/简历与附件.spec.ts:571](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 简历行业 @backend 三层目录：展开根→选孙叶子→经历按 ID 保存，分段尾可翻页 @backend' | 未知 |
-| 核心编辑 附件 @backend > 添加→同意→替换→重新解析→删除 走同一共用附件区并保持权威契约 @backend | fixture | [e2e/suites/简历与附件.spec.ts:996](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 附件 @backend 添加→同意→替换→重新解析→删除 走同一共用附件区并保持权威契约 @backend' | 未知 |
-| 聊天推荐前端修复 经历 hidden 默认与保留 @backend > 新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1098](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '聊天推荐前端修复 经历 hidden 默认与保留 @backend 新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend' | 未知 |
-| 核心编辑 教育 @mock > 学校/专业共用候选：输入→候选→分页→选候选→保存，全程零 API @catalog-fullscreen @mock | mock | [e2e/suites/简历与附件.spec.ts:270](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=mock --grep '核心编辑 教育 @mock 学校/专业共用候选：输入→候选→分页→选候选→保存，全程零 API @catalog-fullscreen @mock' | 未知 |
-| 核心编辑 简历行业 @mock > 常见行业目录：展开层→选行业→经历保存并回读，自填输入已按 Plan 删除 @mock | mock | [e2e/suites/简历与附件.spec.ts:501](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=mock --grep '核心编辑 简历行业 @mock 常见行业目录：展开层→选行业→经历保存并回读，自填输入已按 Plan 删除 @mock' | 未知 |
-| 核心编辑 附件 @mock > 添加→同意→替换→解析→删除走同一共用附件区，模拟状态可观察且零请求 @mock | mock | [e2e/suites/简历与附件.spec.ts:888](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=mock --grep '核心编辑 附件 @mock 添加→同意→替换→解析→删除走同一共用附件区，模拟状态可观察且零请求 @mock' | 未知 |
+| Onboarding简历修正 日常取消与保存失败 @backend > 取消零写、保存失败留页可重试且不返回 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1364](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常取消与保存失败 @backend 取消零写、保存失败留页可重试且不返回 @backend' | 未知 |
+| Onboarding简历修正 日常深链与硬刷 @backend > 深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1421](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常深链与硬刷 @backend 深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend' | 未知 |
+| Onboarding简历修正 日常编辑历史栈 @backend > 我→简历→编辑→保存→返回我：退一格回原简历，连续两分区编辑不留编辑页 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1239](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常编辑历史栈 @backend 我→简历→编辑→保存→返回我：退一格回原简历，连续两分区编辑不留编辑页 @backend' | 未知 |
+| Onboarding简历修正 日常编辑历史栈 @backend > 旧 /experience?from=resume 归一保留来路：返回退一格回简历，再退一步到「我」 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1316](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常编辑历史栈 @backend 旧 /experience\?from=resume 归一保留来路：返回退一格回简历，再退一步到「我」 @backend' | 未知 |
+| Onboarding简历修正 空身份基本信息收口 @backend > 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1473](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 空身份基本信息收口 @backend 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend' | 未知 |
+| P2 附件简历 Backend @backend > Backend candidate owns PDF library without changing Mock visuals @backend | fixture | [e2e/suites/简历与附件.spec.ts:26](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'P2 附件简历 Backend @backend Backend candidate owns PDF library without changing Mock visuals @backend' | 未知 |
+| P2 附件简历 Backend @backend > failed resume parse requires fresh consent before retry @backend | fixture | [e2e/suites/简历与附件.spec.ts:142](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'P2 附件简历 Backend @backend failed resume parse requires fresh consent before retry @backend' | 未知 |
+| 候选个人优势编辑 @backend > 我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend | fixture | [e2e/suites/简历与附件.spec.ts:814](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '候选个人优势编辑 @backend 我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend' | 未知 |
+| 候选资料编辑边界 @backend > 已完成候选经基本信息保存回我的简历：刷新保留编辑模式，首次意向写入零次 @backend | fixture | [e2e/suites/简历与附件.spec.ts:752](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '候选资料编辑边界 @backend 已完成候选经基本信息保存回我的简历：刷新保留编辑模式，首次意向写入零次 @backend' | 未知 |
+| 核心编辑 作品集 @backend > 日常编辑作品集：保存→权威回读→重进不丢→再清空，未走 onboarding @backend | fixture | [e2e/suites/简历与附件.spec.ts:177](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 作品集 @backend 日常编辑作品集：保存→权威回读→重进不丢→再清空，未走 onboarding @backend' | 未知 |
+| 核心编辑 教育 @backend > 目录候选：输入→副行→分页→选候选→保存，同名不同 ID 按键提交 @catalog-fullscreen @backend | fixture | [e2e/suites/简历与附件.spec.ts:355](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 教育 @backend 目录候选：输入→副行→分页→选候选→保存，同名不同 ID 按键提交 @catalog-fullscreen @backend' | 未知 |
+| 核心编辑 简历行业 @backend > 三层目录：展开根→选孙叶子→经历按 ID 保存，分段尾可翻页 @backend | fixture | [e2e/suites/简历与附件.spec.ts:572](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 简历行业 @backend 三层目录：展开根→选孙叶子→经历按 ID 保存，分段尾可翻页 @backend' | 未知 |
+| 核心编辑 附件 @backend > 添加→同意→替换→重新解析→删除 走同一共用附件区并保持权威契约 @backend | fixture | [e2e/suites/简历与附件.spec.ts:997](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '核心编辑 附件 @backend 添加→同意→替换→重新解析→删除 走同一共用附件区并保持权威契约 @backend' | 未知 |
+| 聊天推荐前端修复 经历 hidden 默认与保留 @backend > 新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1099](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '聊天推荐前端修复 经历 hidden 默认与保留 @backend 新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend' | 未知 |
+| 核心编辑 教育 @mock > 学校/专业共用候选：输入→候选→分页→选候选→保存，全程零 API @catalog-fullscreen @mock | mock | [e2e/suites/简历与附件.spec.ts:271](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=mock --grep '核心编辑 教育 @mock 学校/专业共用候选：输入→候选→分页→选候选→保存，全程零 API @catalog-fullscreen @mock' | 未知 |
+| 核心编辑 简历行业 @mock > 常见行业目录：展开层→选行业→经历保存并回读，自填输入已按 Plan 删除 @mock | mock | [e2e/suites/简历与附件.spec.ts:502](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=mock --grep '核心编辑 简历行业 @mock 常见行业目录：展开层→选行业→经历保存并回读，自填输入已按 Plan 删除 @mock' | 未知 |
+| 核心编辑 附件 @mock > 添加→同意→替换→解析→删除走同一共用附件区，模拟状态可观察且零请求 @mock | mock | [e2e/suites/简历与附件.spec.ts:889](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=mock --grep '核心编辑 附件 @mock 添加→同意→替换→解析→删除走同一共用附件区，模拟状态可观察且零请求 @mock' | 未知 |
 
 </details>
 
