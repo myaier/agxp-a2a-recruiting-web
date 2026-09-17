@@ -21,6 +21,12 @@ const Mock档: 匿名简历档 = {
   学历: '本科',
   年龄: '28 岁',
   适配分: 87,
+  // Task 5：与 wire 同形的有限匹配依据源（本测试只测正文归一，不消费该字段）
+  推荐依据: {
+    highlights: ['category_matched', 'skills_matched'],
+    structuredRequirementsConfirmed: true,
+    compensationRelationship: 'overlap',
+  },
   判断: '经验方向与岗位相符。',
   风险: null,
   自述: '四年全栈经验',

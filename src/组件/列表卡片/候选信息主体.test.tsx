@@ -86,6 +86,15 @@ describe('候选信息主体', () => {
     expect(container.querySelector('[data-card-region="tags"]')?.textContent).toBe('亮点信息未知');
   });
 
+  it('亮点空文案可按卡口径覆盖：推荐卡传「暂无可展示亮点」（合法空），默认保持「亮点信息未知」', () => {
+    render(<候选信息主体 信息={全未知} 亮点空文案="暂无可展示亮点" />);
+    expect(screen.getByText('暂无可展示亮点')).toBeTruthy();
+    expect(screen.queryByText('亮点信息未知')).toBeNull();
+    // 默认（在谈卡等既有消费者）：文案逐字不变
+    render(<候选信息主体 信息={全未知} />);
+    expect(screen.getByText('亮点信息未知')).toBeTruthy();
+  });
+
   it('纯空白字符串按缺失处理：头行三段/工作/教育给占位，占位段带次要色类（Spec §4.1/§6）', () => {
     render(<候选信息主体 信息={{
       ...全未知,

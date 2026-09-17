@@ -19,6 +19,7 @@ import type {
   披露项,
 } from './类型';
 import type { BFF组织创建结果, BFF组织搜索项, BFF组织搜索页 } from './BFF契约';
+import type { 招聘匹配依据输入 } from './招聘匹配依据映射';
 import type { 组织搜索查询 } from './招聘数据源类型';
 
 /** 在招岗位（顶栏切换 + D17 岗位管理） */
@@ -1072,6 +1073,11 @@ export interface 匿名简历档 {
   学历: string;
   年龄: string;
   适配分: number;
+  /** Task 5（Spec §5）：推荐批次的有限匹配依据源 —— 与 Backend wire 同形的三键
+   *  （招聘匹配依据输入），经 数据/招聘匹配依据映射 走与真实响应完全相同的有限模型
+   *  （六行、缺码「未提供判定」、技能只「有技能命中」）。这是演示事实，不是前端替
+   *  后端算分：总分仍是 适配分 原值。 */
+  推荐依据: 招聘匹配依据输入;
   /** AI 代理读完简历后的判断正文（可含加粗段，用 ** 包裹） */
   判断: string;
   /** 风险条；null = 无风险项 */
@@ -1105,6 +1111,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '32 岁',
     适配分: 94,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断:
       '交易中台 0→1 重建与网关多活经验，和本岗**同域可直接上手**；9 年年限、平均任期 4.5 年，稳定性好。',
     风险: null,
@@ -1157,6 +1164,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '34 岁',
     适配分: 88,
+    推荐依据: { highlights: ['category_matched', 'experience_met', 'location_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断: '纳秒级撮合链路优化，**低延迟经验远超本岗基线**；量化背景带来极强的正确性纪律。',
     风险: 'C++ 主栈非 Go，语言迁移需 1-2 个月。',
     自述: '负责核心交易系统全栈，撮合与行情链路 C++ 重写后端到端延迟降至微秒级。',
@@ -1199,6 +1207,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '本科',
     年龄: '31 岁',
     适配分: 85,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断: '日均千亿级清算系统经验，**交易域高度对口**；两次信创迁移主导，工程纪律扎实。',
     风险: '主栈 Java 非 Go，需评估是否放宽主栈要求。',
     自述: '清算核心 Java 栈，主导对账平台重建，差错率降一个数量级；信创迁移专项技术负责人。',
@@ -1234,6 +1243,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '33 岁',
     适配分: 89,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'near_miss' },
     判断:
       '自研 RPC 与消息中间件，和交易网关重建**同域可直接迁移**；10 年年限、平均任期 4.2 年，稳定性好。',
     风险: '薪资带初筛未通过，可调整岗位筛选范围后重新核对。',
@@ -1287,6 +1297,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '本科',
     年龄: '29 岁',
     适配分: 87,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断: '大促峰值场景 6 年，**高并发经验与岗位基线相当**；技术面可直接进入方案层。',
     风险: null,
     自述: '负责交易履约服务端，日常维护百万级 QPS 集群；关注可观测性建设，值班响应记录良好。',
@@ -1335,6 +1346,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '32 岁',
     适配分: 84,
+    推荐依据: { highlights: ['category_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'unknown' },
     判断: '证券 IT 平台化 8 年，**架构与管理双线成熟**；离职状态到岗最快。',
     风险: '上一段为乙方交付型组织，需核对工程节奏适配。',
     自述: '在恒生负责核心交易平台化改造，带 6 人小组；习惯以架构评审驱动质量，重视文档沉淀。',
@@ -1376,6 +1388,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '29 岁',
     适配分: 82,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: false, compensationRelationship: 'overlap' },
     判断: '实时风控与数据链路双背景，**特征工程到决策落地全链路**都做过。',
     风险: null,
     自述: '在连连支付负责实时风控特征平台，毫秒级决策链路；喜欢用数据验证规则效果，迭代节奏快。',
@@ -1424,6 +1437,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '本科',
     年龄: '30 岁',
     适配分: 91,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断:
       '华泰证券交易网关 7 年，与本岗位**同域可直接上手**；带过 5 人小组，独立扛模块没问题。',
     风险: null,
@@ -1476,6 +1490,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '32 岁',
     适配分: 86,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断:
       'Rust 撮合引擎主导者，**低延迟经验可迁移 Go**；海外协作三年，跨时区沟通成熟。',
     风险: '主栈 Rust 非 Go，上手交易网关需 1-2 个月迁移期。',
@@ -1528,6 +1543,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '本科',
     年龄: '28 岁',
     适配分: 78,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'near_miss' },
     判断: '清结算全链路 + 合规经验，**域深但年限偏浅**；适合作梯队储备接触。',
     风险: '年限低于岗位要求的 8 年，需评估是否放宽。',
     自述: '负责清结算对账系统与跨行清算差错处理链路，熟悉支付合规要求。',
@@ -1570,6 +1586,7 @@ export const 匿名简历表: Record<string, 匿名简历档> = {
     学历: '硕士',
     年龄: '31 岁',
     适配分: 88,
+    推荐依据: { highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'], structuredRequirementsConfirmed: true, compensationRelationship: 'overlap' },
     判断: '实时决策引擎与反欺诈模型双线，**与风控算法岗直接对口**；硬性五项全过。',
     风险: null,
     自述: '负责实时决策引擎规则与模型双引擎架构，反欺诈模型线上拦截率提升 3 倍。',

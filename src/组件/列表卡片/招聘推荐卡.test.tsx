@@ -62,6 +62,30 @@ describe('招聘推荐卡 · 占位与卡面', () => {
     expect(screen.queryByLabelText('匹配分未知')).toBeNull();
   });
 
+  it('Task 5：总分原样显示不拆分 —— 50 分就是 50 分环，卡上无逐维得分/满分拆解', () => {
+    渲染卡({ 匹配分: 50 });
+    expect(screen.getByRole('img', { name: '适配 50 分' })).toBeTruthy();
+    expect(screen.queryByLabelText('匹配分未知')).toBeNull();
+    // 卡面不出现逐项分值 / 满分（"50/55" 这类拆分不存在）
+    expect(document.body.textContent ?? '').not.toMatch(/\/\s*\d+|满分|逐维/);
+  });
+
+  it('Task 5：个人亮点合法空给「暂无可展示亮点」，不冒充未知，也不混入匹配原因', () => {
+    渲染卡({ 信息: { ...全未知, 亮点: [] } });
+    expect(screen.getByText('暂无可展示亮点')).toBeTruthy();
+    expect(screen.queryByText('亮点信息未知')).toBeNull();
+    // 匹配原因（highlights 码的中文文案）不冒充个人亮点上标签行
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.queryByText('经验要求匹配')).toBeNull();
+  });
+
+  it('Task 5：个人亮点有值原样逐条展示（personal_highlights 接线保留）', () => {
+    渲染卡({ 信息: { ...全未知, 亮点: ['带领5人团队交付', '交易域直接对口'] } });
+    expect(screen.getByText('带领5人团队交付')).toBeTruthy();
+    expect(screen.getByText('交易域直接对口')).toBeTruthy();
+    expect(screen.queryByText('暂无可展示亮点')).toBeNull();
+  });
+
   it('wire 带来的真实 0 分照常画 0 分环，不落未知占位（release/0.2.5）', () => {
     渲染卡({ 匹配分: 0 });
     expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
