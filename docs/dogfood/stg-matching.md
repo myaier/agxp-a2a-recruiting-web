@@ -5,7 +5,11 @@ Suite `stg-matching` 在真实 STG 后端上验收**双向匹配**的 S0–S3 �
 每 Case 一轮一个全新 run（新账号、新组织、新岗位、新意向、新 PDF 版本），不能共用。
 
 - 状态：2026-09-17 Task 4 探索完成（1 个 run，招聘者发起方向实测到 S1；候选者
-  发起方向与 S2–S3 未实测）。**两个 Case 现阶段均为 `NOT_RUN`（无 PASS）**；
+  发起方向与 S2–S3 未实测）。**两方向均无 PASS**；按验收状态语义分列：
+  `stg-matching-recruiter` 业务 `BLOCKED`（探索已执行，实测到 S1，被第 11 节
+  Hub enrollment 缺失决定性阻断）、cleanup `CLEANUP_BLOCKED`（占用保持）、隔离
+  `NOT_RUN`（无后继 run）；`stg-matching-candidate` 业务 `NOT_RUN`（本轮未
+  执行；STG 占用未释放使新 run 无法创建）。
   当前 STG 部署存在决定性后端阻断（第 11 节 Hub enrollment 缺失：匹配 agent
   任务全部 `hub_rejected`、受影响 run 的 cleanup 停 `CLEANUP_BLOCKED`），
   解锁前不得重跑或写任何通过。已固化：双端真实入口文字（第 6/8 节，候选

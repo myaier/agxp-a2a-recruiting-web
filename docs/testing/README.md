@@ -560,10 +560,13 @@ FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前�
   专门指南 [`../dogfood/stg-matching.md`](../dogfood/stg-matching.md)（材料、生命周期、
   S0–S3 观察点、cleanup 判定与能力缺口）。本 Suite 不增加自动 runner；不改变旧
   B02/Onboarding/试点任何既有结论。
-- **当前状态（诚实记录）**：两个 Case 均无 PASS（`NOT_RUN`）。2026-09-17 探索 run
+- **当前状态（诚实记录）**：两个 Case 均无 PASS，按验收状态语义分列：
+  `stg-matching-recruiter` 业务 `BLOCKED`——2026-09-17 探索 run
   `front-match-recruiter-20260916T235043` 招聘者方向实测到 S1 即被当前 STG 部署的
-  Hub enrollment 缺失决定性阻断（S0/S1 agent 任务全部 `hub_rejected`），候选方向
-  未实测；该 run cleanup 停 `CLEANUP_BLOCKED` 且占用保持，后继 run 无法创建。解锁
+  Hub enrollment 缺失决定性阻断（S0/S1 agent 任务全部 `hub_rejected`），该 run
+  cleanup 停 `CLEANUP_BLOCKED` 且占用保持、隔离 `NOT_RUN`（无后继 run）；
+  `stg-matching-candidate` 业务 `NOT_RUN`（本轮未执行；STG 占用未释放使新 run
+  无法创建）。解锁
   路径归后端 owner，解锁前不得重跑或写任何通过（指南第 11 节）。
 - **已修本地问题（合同内缺陷，TDD 最小修复，Task 4 扩大范围）**：
   `src/数据/招聘数据源/展示资料.ts` 的 `解发布人档案` 把 PublicRecruiterProfile 的

@@ -6333,8 +6333,11 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 - `stg-matching-recruiter`（招聘者发起；单 Case 可独立选择，每 Case 一轮全新 run）
 - `stg-matching-candidate`（求职者发起；单 Case 可独立选择，不与上一 Case 共用 run）
 
-`stg-matching` 两 Case 当前均无 PASS（`NOT_RUN`，探索被 STG 部署的 Hub enrollment
-缺失阻断，见专门指南第 11 节）；此处只登记可执行身份，不登记任何 PASS。
+`stg-matching` 两 Case 当前均无 PASS：`stg-matching-recruiter` 业务 `BLOCKED`
+（探索已执行，实测到 S1，被 STG 部署的 Hub enrollment 缺失决定性阻断，cleanup
+`CLEANUP_BLOCKED` 且占用保持）；`stg-matching-candidate` 业务 `NOT_RUN`（本轮
+未执行，STG 占用未释放使新 run 无法创建）。见专门指南第 11 节；此处只登记可执行
+身份，不登记任何 PASS。
 
 进入方式与操作/凭据/清理合同见 [`docs/dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md)、
 [`docs/dogfood/stg-onboarding.md`](../dogfood/stg-onboarding.md) 与
