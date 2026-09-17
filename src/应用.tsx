@@ -501,11 +501,12 @@ export default function 应用() {
       <Route path={路径.选身份} element={<选身份 />} />
       <Route path={路径.学生分流} element={<学生分流 />} />
       {/* Task 7：消费 suggestion 的六条资料路由套非视觉恢复边界 ——
-          刷新后先按 exact tuple 恢复一轮未完成预填再挂表单（Task 3 起向导不再是
-          消费位：summary 建议随个人优势迁到 /experience）。路由顺序与登记不变。 */}
+          刷新后先按 exact tuple 恢复一轮未完成预填再挂表单。Task 3 起向导不再是
+          消费位（summary 建议随个人优势迁到 /experience），因此 /wizard 裸挂、
+          不再套这层边界。路由顺序与登记不变。 */}
       <Route path={路径.基本信息} element={<候选Onboarding预填边界><基本信息 /></候选Onboarding预填边界>} />
       <Route path={路径.工作经历} element={<候选Onboarding预填边界><工作经历 /></候选Onboarding预填边界>} />
-      <Route path={路径.引导问答} element={<候选Onboarding预填边界><引导问答 /></候选Onboarding预填边界>} />
+      <Route path={路径.引导问答} element={<引导问答 />} />
       <Route path={路径.披露说明} element={<披露说明 />} />
       <Route path={路径.选工作城市} element={<选工作城市 />} />
       <Route path={路径.选期望职位} element={<选期望职位 />} />

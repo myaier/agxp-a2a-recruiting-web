@@ -610,7 +610,7 @@ FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前�
 ```bash
 npm run test:e2e -- e2e/onboarding.spec.ts e2e/J-PILOT-02接线.spec.ts e2e/suites/候选建档.spec.ts \
   e2e/suites/招聘建档与JD.spec.ts e2e/suites/简历与附件.spec.ts e2e/suites/求职意向.spec.ts \
-  e2e/suites/岗位编辑.spec.ts --list      # 46 tests in 7 files
+  e2e/suites/岗位编辑.spec.ts --list      # 47 tests in 7 files
 ```
 
 隐私只选经历相关 Case（先行最终登记的两条 + 本轮新增一条）：
@@ -625,7 +625,7 @@ npm run test:e2e -- e2e/suites/隐私与实名.spec.ts --grep '聊天推荐前�
 
 ### 清单（Task 5 收尾）
 
-- `npm run test:list -- --write` → 第一层 6104 项 / 第二层 366 项（功能 340 + 视觉 26）；`--check` 一致。
+- `npm run test:list -- --write` → 第一层 6105 项 / 第二层 367 项（功能 341 + 视觉 26）；`--check` 一致。
 - 生成时暴露一处**既有**重复 Case 身份（`src/流程/候选日常编辑.test.tsx` 的
   `it.each([undefined, null, …])` 用 `%j` 打印两个值同名，Task 1 引入）：按既有做法
   （README 上一节「清单验证暴露的既有同名 Case」）给参数表加区分标签，只改标题、
