@@ -257,6 +257,22 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     }));
   });
 
+  // 反方向（Task 3 补）：改「品牌名称」槽位不得顺手改写 display_name —— 只改显示名的
+  // 一条用例看不见这条串写，两个名字刻意不同才能钉住槽位 ↔ 字段的绑定。
+  it('改品牌名称保存：不串写企业常用名，两名各自独立落草稿', async () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.clear(screen.getByLabelText('品牌名称'));
+    await 用户.type(screen.getByLabelText('品牌名称'), '新品牌名');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock保存企业档案).toHaveBeenCalledTimes(1);
+    expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
+      公司全称: '新品牌名',
+      企业常用名: '云衢常用名',
+    }));
+  });
+
   it('常用名显式清空按常用名校验拒绝且不发请求，输入保留', async () => {
     置Backend应用状态({ 企业档案快照: 三名快照() });
     const 用户 = userEvent.setup();
@@ -1188,6 +1204,26 @@ describe('公司档案分区编辑 · Mock 原型保持不变', () => {
     );
     expect(mock返回).toHaveBeenCalled();
     expect(mock保存企业档案).not.toHaveBeenCalled();
+  });
+
+  // Task 3 补：直接返回（不点保存）就是丢弃改动 —— 文本草稿只活在本页 useState 里，
+  // 返回既不能写全局（零派发），重进分区也必须回到静态档原值。
+  it('Mock 返回不保存：文本草稿不落全局，重进分区回到静态档原值', async () => {
+    置Mock应用状态();
+    const 用户 = userEvent.setup();
+    const 视图 = 渲染分区('basic');
+    const 输入 = screen.getByLabelText('公司全称') as HTMLInputElement;
+    const 原值 = 输入.value;
+    await 用户.clear(输入);
+    await 用户.type(输入, '改了但不保存');
+    expect(输入.value).toBe('改了但不保存');
+    await 用户.click(screen.getByLabelText('返回'));
+    expect(mock返回).toHaveBeenCalledTimes(1);
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock保存企业档案).not.toHaveBeenCalled();
+    视图.unmount();
+    渲染分区('basic');
+    expect((screen.getByLabelText('公司全称') as HTMLInputElement).value).toBe(原值);
   });
 
   it('Mock 行业取消不改行业；搜索只在本地池内过滤', async () => {
