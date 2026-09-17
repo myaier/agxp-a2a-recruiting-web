@@ -18,7 +18,7 @@
 // 不新增任何提示节点；确认 work 分区只在既有保存成功后。
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import 样式 from './工作经历.module.css';
 import 年月滚轮层 from '../组件/年月滚轮层';
 // Task 5（core editors §5.2）：教育 学校/专业 候选行共用组件；Task 2（editor-catalog-fullscreen）
@@ -260,11 +260,16 @@ export default function 工作经历() {
   const 退出日常编辑 = use候选编辑退出('resume');
   // 旧 /experience?from=resume（无 section）与未知 section：替换归一为 work 分区列表 ——
   // 不继续展示整份聚合页，也不为归一多留一格历史；本帧先按 work 渲染，URL 由 effect 归一。
+  // 归一必须原样转交当前 location.state（合同 A「保留合法来路」）：创建候选编辑来路 写下的
+  // 来路证明就在这一格上，不带 state 的 replace 会用 undefined 顶掉它，use候选编辑退出
+  // 三条件必然失败，只能安全替换回我的简历，历史里留下两张简历页。
+  const 位置 = useLocation();
+  const 归一来路 = 位置.state;
   const 需归一日常URL = 来自简历 && 日常分区 === null;
   useEffect(() => {
     if (!需归一日常URL) return;
-    替换跳转(`${路径.工作经历}?from=resume&section=work`);
-  }, [需归一日常URL, 替换跳转]);
+    替换跳转(`${路径.工作经历}?from=resume&section=work`, 归一来路);
+  }, [需归一日常URL, 替换跳转, 归一来路]);
   // 学生分支（身份来自学生分流屏）：教育置顶，工作经历段改叫「实习经历」
   const 在校中 = (建档?.资料?.基本信息?.身份 ?? 全局.基本信息.身份) === '在校';
   const 经历区块名 = 在校中 ? '实习经历' : '工作经历';

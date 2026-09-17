@@ -230,6 +230,29 @@ describe('消费位置判定（只有六个资料页消费，日常编辑标记�
     expect(是预填消费位置(路径.求职状态, '?from=intentions')).toBe(false);
   });
 
+  // codex review-r1 F3：resume 也必须路径限定到合同 A 的四类简历域路径（/basic、
+  // /experience、/wizard、/onboard/status）。否则 /onboard/degree?from=resume 在边界层是
+  // 「日常」（非消费、非活跃 → 应用按离开活跃集清理引导状态），页面层（最高学历）却照常
+  // onboarding —— 同一 URL 两层互相矛盾，与 Task 1 已修的 /basic?from=intentions 同类。
+  it('resume 只在合同 A 四类简历域路径成立：其它 onboarding 页上与无来源同语义', () => {
+    // 页面层不认 resume 的路径：完整位置与无来源逐字同判定（消费位照旧、活跃位照旧）
+    for (const 站 of [路径.最高学历, 路径.毕业院校, 路径.选专业, 路径.就读时间段]) {
+      expect(是预填消费位置(站, '?from=resume')).toBe(是预填消费位置(站, ''));
+      expect(是预填消费位置(站, '?from=resume')).toBe(true);
+      expect(是活跃Onboarding位置(`${站}?from=resume`)).toBe(是活跃Onboarding位置(站));
+      expect(是活跃Onboarding位置(`${站}?from=resume`)).toBe(true);
+    }
+    // 四类简历域路径上的合法来源语义不变
+    for (const 站 of [路径.基本信息, 路径.工作经历]) {
+      expect(是预填消费位置(站, '?from=resume')).toBe(false);
+      expect(是活跃Onboarding位置(`${站}?from=resume`)).toBe(false);
+    }
+    expect(是预填消费位置(路径.求职状态, '?from=resume')).toBe(false);
+    expect(是活跃Onboarding位置(`${路径.求职状态}?from=resume`)).toBe(false);
+    expect(是预填消费位置(路径.引导问答, '?from=resume')).toBe(false);
+    expect(是活跃Onboarding位置(`${路径.引导问答}?from=resume`)).toBe(false);
+  });
+
   it('带简历编辑标记 保持 resume 单义：intentions 不是简历标记', () => {
     expect(带简历编辑标记('?from=resume')).toBe(true);
     expect(带简历编辑标记('from=resume')).toBe(true);

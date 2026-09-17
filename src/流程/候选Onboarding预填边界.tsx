@@ -52,18 +52,29 @@ export function 带简历编辑标记(search: string): boolean {
   return new URLSearchParams(search).get('from') === 'resume';
 }
 
+/** 合同 A 里合法接受 resume 来源的四类简历域路径（/basic、/experience、/wizard、/onboard/status）。
+ *  与消费预填路径 / 活跃集合不同 —— 它只回答「哪条 pathname 认 resume 这个来源」。 */
+const 简历域来源路径 = new Set<string>([
+  路径.基本信息,
+  路径.求职状态,
+  路径.工作经历,
+  路径.引导问答,
+]);
+
 /**
  * 该 (pathname, search) 是否带合同 A 白名单里、且**在本路径合法**的日常编辑来源：
- * resume 服务简历域各屏（/basic、/experience、/wizard、/onboard/status…），
+ * resume 只服务简历域四类屏（/basic、/onboard/status、/experience、/wizard；合同 A URL 表），
  * intentions 仅状态页可用（合同 A「intentions 仅允许状态页使用」）。
- * 路径限定由本层承担 —— 错配来源（如 /basic?from=intentions）既不是日常位置，也不
- * 改变原有的消费位/活跃位判定，与页面「/basic 只认 from=resume、其余等同无来源」同一
- * 口径：同一 URL 不允许在页面层与边界层得到互相矛盾的语义。
+ * 路径限定由本层承担 —— 错配来源（如 /basic?from=intentions、/onboard/degree?from=resume）
+ * 既不是日常位置，也不改变原有的消费位/活跃位判定，与页面「/basic 只认 from=resume、
+ * 其余等同无来源」同一口径：同一 URL 不允许在页面层与边界层得到互相矛盾的语义
+ * （/onboard/degree 页面不认 resume 照常 onboarding，边界层就必须照常按消费位/活跃位处理，
+ * 不能按日常清理引导状态）。
  */
 function 是日常编辑位置(pathname: string, search: string): boolean {
   const 来源 = 读候选编辑来源(search);
   if (来源 === null) return false;
-  return 来源 === 'resume' || pathname === 路径.求职状态;
+  return 来源 === 'resume' ? 简历域来源路径.has(pathname) : pathname === 路径.求职状态;
 }
 
 /** 该位置是否会消费 suggestion：路由身份必须含 search —— 日常编辑标记写在 query 上。

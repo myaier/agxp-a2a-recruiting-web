@@ -864,10 +864,29 @@ export function 创建候选操作(deps: 后端操作依赖): 候选操作 {
     const 建档 = 来源 === '日常编辑' ? null : (deps.建档草稿引用?.current ?? null);
     if (建档 === null) {
       // 非 onboarding：原路径（行为逐字保持）
-      const 快照 = await 后端!.保存简历(next, previous);
-      if (!栅栏仍立()) return;
-      水合简历并保留空身份草稿(快照, 水合基本);
-      设权威简历快照(快照.服务端快照);
+      try {
+        const 快照 = await 后端!.保存简历(next, previous);
+        if (!栅栏仍立()) return;
+        水合简历并保留空身份草稿(快照, 水合基本);
+        设权威简历快照(快照.服务端快照);
+      } catch (错误) {
+        // codex review-r1 F1：日常路径没有建档跟踪/已存身份映射，重复 POST 只靠镜像 previous 防住。
+        // 数据源的 catch（错误.权威简历）只覆盖 mutation 步骤 —— 全部 mutation 成功后的最终
+        // GET /me/resume 在 try 之外，失败不带权威快照，镜像就停在旧快照；页面重试以旧 previous
+        // diff，把已带服务端 id 的段（新经历 POST 步骤已改写本地编号）再判为新增 → 新幂等键
+        // 二次 POST → 服务端重复条目。这里 best-effort 权威重读并推进镜像，使重试的 previous
+        // 含已创建条目（diff 判 PATCH）。已有 权威简历 的错误由调用方 处理写入错误 水合，不重复读；
+        // 回读失败吞掉、原错误原样抛出（绝不包装成成功、不顶替原错误）。
+        if (错误 instanceof BFF错误 && 错误.权威简历 === undefined && 栅栏仍立()) {
+          try {
+            const 读出 = await 后端!.读取简历();
+            if (栅栏仍立()) 设权威简历快照(读出.服务端快照);
+          } catch {
+            // 回读失败：保留原始错误
+          }
+        }
+        throw 错误;
+      }
       return;
     }
     const { 跟踪, 栅栏仍立: 本轮栅栏, 取本槽命令 } = 构造跟踪(本次主体, 本次代际);

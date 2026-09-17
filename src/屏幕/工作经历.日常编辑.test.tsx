@@ -17,7 +17,6 @@ import {
   render工作经历,
   存简历调用们,
   登记工作经历,
-  type 入口形,
 } from './工作经历.测试辅助';
 import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,8 +38,9 @@ function 置格号(idx: number) {
   window.history.replaceState({ idx, key: `k${idx}`, usr: null }, '');
 }
 
-/** 带合法来路证明的日常入口：来源格号 +1 即「本会话从我的简历 push 进来」 */
-function 编辑入口(search: string): 入口形 {
+/** 带合法来路证明的日常入口：来源格号 +1 即「本会话从我的简历 push 进来」。
+ *  返回完整位置（不是 入口形 的字符串支）—— 归一用例要断言转交下去的正是这份 state。 */
+function 编辑入口(search: string): { pathname: string; search: string; state: unknown } {
   置格号(4);
   const 来路 = 创建候选编辑来路('resume');
   置格号(5);
@@ -98,17 +98,37 @@ describe('工作经历 · 日常分区 URL（合同 A）', () => {
     expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
   });
 
+  // codex review-r1 F2：归一必须保留合法来路 state —— 替换跳转 只传 {replace:true} 会用
+  // undefined 顶掉 location.state，use候选编辑退出 三条件必然失败，只能安全替换回我的简历，
+  // 历史里留下两张简历页（合同 A 明文「保留合法来路」）。故断言从单参升级为「目标 + 来路」。
   it('旧 /experience?from=resume（无 section）替换归一为 work 分区列表，不展示聚合页', () => {
-    render工作经历({ 数据源: 'mock', 入口: 编辑入口('?from=resume') });
-    expect(mock替换跳转).toHaveBeenCalledWith(`${路径.工作经历}?from=resume&section=work`);
+    const 入口 = 编辑入口('?from=resume');
+    render工作经历({ 数据源: 'mock', 入口 });
+    expect(mock替换跳转).toHaveBeenCalledWith(
+      `${路径.工作经历}?from=resume&section=work`,
+      入口.state,
+    );
     expect(screen.getByRole('button', { name: /添加工作经历/ })).toBeTruthy();
     expect(screen.queryByText('证书与语言')).toBeNull();
     expect(存简历调用们(mock应用状态.派发)).toHaveLength(0);
   });
 
+  it('归一替换原样转交当前来路 state：退出仍能按来路退一格', () => {
+    const 入口 = 编辑入口('?from=resume&section=evil');
+    render工作经历({ 数据源: 'mock', 入口 });
+    expect(mock替换跳转).toHaveBeenCalledWith(
+      `${路径.工作经历}?from=resume&section=work`,
+      入口.state,
+    );
+  });
+
   it('未知 section 同样归一为 work 分区列表，零写入', () => {
-    render工作经历({ 数据源: 'mock', 入口: 编辑入口('?from=resume&section=evil') });
-    expect(mock替换跳转).toHaveBeenCalledWith(`${路径.工作经历}?from=resume&section=work`);
+    const 入口 = 编辑入口('?from=resume&section=evil');
+    render工作经历({ 数据源: 'mock', 入口 });
+    expect(mock替换跳转).toHaveBeenCalledWith(
+      `${路径.工作经历}?from=resume&section=work`,
+      入口.state,
+    );
     expect(screen.getByRole('button', { name: /添加工作经历/ })).toBeTruthy();
     expect(存简历调用们(mock应用状态.派发)).toHaveLength(0);
   });

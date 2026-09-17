@@ -3,6 +3,7 @@
 // 核心编辑 附件 / 候选资料编辑边界 / 候选个人优势编辑」等价迁入。
 
 import { expect, test } from '../fixtures/test';
+import { type Page } from '@playwright/test';
 import { 抽屉搜企业并选中, 左滑附件行, 断言附件标题几何未漂移, hash直达 } from '../fixtures/数据源交互';
 import { 信封 } from '../fixtures/bff/协议';
 import { fixture简历, fixture意向列表 } from '../fixtures/bff/账号与目录';
@@ -1214,6 +1215,24 @@ function 存量日常fixture(
   return fixture;
 }
 
+/**
+ * 在**同一文档**内进入一个 hash 地址并带上给定 state（旧地址归一用例专用）：
+ * pushState 之后补发 popstate —— react-router 的 hash history 正是从 history.state.usr
+ * 读 location.state，因此这一格带着调用方给的来路证明。不用 hash 直达是因为 goto 会换
+ * 新文档，模块内的本次页面会话标识随之失效，来路证明必然不成立。
+ */
+async function 应用内进入旧地址(page: Page, 旧哈希: string, 状态: unknown) {
+  await page.evaluate(({ 哈希, 来路 }) => {
+    const 现格 = window.history.state as { idx?: number } | null;
+    window.history.pushState(
+      { idx: (现格?.idx ?? 0) + 1, key: 'legacy-experience', usr: 来路 },
+      '',
+      哈希,
+    );
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
+  }, { 哈希: 旧哈希, 来路: 状态 });
+}
+
 test.describe('Onboarding简历修正 日常编辑历史栈 @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
 
@@ -1287,6 +1306,55 @@ test.describe('Onboarding简历修正 日常编辑历史栈 @backend', () => {
     await page.goBack();
     await expect(page).not.toHaveURL(/from=resume/);
     await expect(page).not.toHaveURL(/#\/resume$/);
+  });
+
+  // codex review-r1 F2：旧 /experience?from=resume 归一必须保留合法来路 state（合同 A）。
+  // 旧地址只由历史链接产生，没有 UI 入口，所以本用例先用真实入口（点经历行）拿到应用自己
+  // 写下的来路证明，再在**同一文档**内把旧地址 push 进去 —— 不是新文档 hash 直达（那会换
+  // 会话标识，来路证明自动失效，测不到本条）。判据是真实历史栈：归一后返回退一格回简历，
+  // 再退一步应到「我」，而不是第二张简历首页。
+  test('旧 /experience?from=resume 归一保留来路：返回退一格回简历，再退一步到「我」 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 存量日常fixture();
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-onr-daily-legacy-normalize',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: 隐私,
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+
+    // 真实入口：我 → 我的简历 → 经历行（应用在该点击里用 跳转(url, 创建候选编辑来路) 写下本会话来路）
+    await page.getByRole('button', { name: '我', exact: true }).click();
+    await page.getByRole('button', { name: '我的简历' }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    await expect(page).toHaveURL(
+      /#\/experience\?from=resume&section=work&item=exp-fixture-legacy$/,
+      { timeout: 15_000 },
+    );
+    const 来路 = await page.evaluate(
+      () => (window.history.state as { usr?: unknown } | null)?.usr ?? null,
+    );
+    expect(来路).not.toBeNull();
+    // 退回简历那一格（来路证明的 格号 就是它），再从这一格进旧地址
+    await page.goBack();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 15_000 });
+    await 应用内进入旧地址(page, '/#/experience?from=resume', 来路);
+    // 归一：原地替换成 work 分区列表（不留归一用的第二格），本帧就按 work 渲染
+    await expect(page).toHaveURL(/#\/experience\?from=resume&section=work$/, { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /添加工作经历/ })).toBeVisible();
+
+    // 分区列表返回 = 退出日常编辑：来路被归一保留 → 退一格回原简历（不替换成第二张简历页）
+    await page.getByRole('button', { name: '返回' }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 15_000 });
+    // 再退一步：落到「我」，不重复简历页、不残留编辑地址
+    await page.goBack();
+    await expect(page).not.toHaveURL(/#\/resume$/);
+    await expect(page).not.toHaveURL(/from=resume/);
   });
 });
 
