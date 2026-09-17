@@ -1137,7 +1137,9 @@ describe('工作经历 · 聚合资料页个人优势（Task 3）', () => {
     expect(优势框().value).toBe('待保存的优势');
   });
 
-  it('优势失败后的重试只补优势：不重跑简历链、不重复确认 work、输入仍在', async () => {
+  // 合同 C Step 5「重试只补未达成项」：优势失败后**没再动过链上输入**的重试只补优势 ——
+  // 不重发简历写、不重复确认 work、不重放已落地的隐私命令。
+  it('优势失败后的紧接重试只补优势：不重跑简历链、不重复确认 work、输入仍在', async () => {
     const 保存简历 = vi.fn(async () => {});
     const 保存个人优势 = vi.fn(async () => {})
       .mockRejectedValueOnce(new Error('保存失败'))
@@ -1154,6 +1156,55 @@ describe('工作经历 · 聚合资料页个人优势（Task 3）', () => {
     await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.引导问答));
     expect(保存简历).toHaveBeenCalledTimes(1);
     expect(mock确认分区.mock.calls.map(([段]) => 段)).toEqual(['work', 'summary']);
+  });
+
+  // fix-r1（quality Important 1）：「只补优势」只对紧接的重试成立。链上输入一改就必须
+  // 重新走整条简历链（含全部写前校验），否则一次优势失败会把后面的编辑静默吞掉 ——
+  // 保存简历不再发出、校验全被跳过，页面却按整链成功照常前进。
+  it('优势失败后改了经历条目再保存：简历链照走、新条目随 保存简历 带上', async () => {
+    const 保存简历 = vi.fn(async (_next?: unknown, _来源?: string) => {});
+    const 保存个人优势 = vi.fn(async () => {})
+      .mockRejectedValueOnce(new Error('保存失败'))
+      .mockResolvedValue(undefined);
+    render工作经历({
+      经历: [完整经历行], 教育: [完整教育], 建档: {}, 个人优势: '',
+      保存简历, 保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存个人优势).toHaveBeenCalledTimes(1));
+    // 留页后改一条经历（列表 → 条目编辑页 → 完成），再点保存
+    await 用户.click(screen.getByText('字节跳动'));
+    await 用户.clear(screen.getByPlaceholderText('必填'));
+    await 用户.type(screen.getByPlaceholderText('必填'), '后端架构师');
+    await 用户.click(screen.getByRole('button', { name: '完成' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(2));
+    const 第二次next = 保存简历.mock.calls[1][0] as { 经历: { 职位: string }[] };
+    expect(第二次next.经历.map((段) => 段.职位)).toEqual(['后端架构师']);
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.引导问答));
+    expect(保存个人优势).toHaveBeenCalledTimes(2);
+  });
+
+  it('优势失败后留下非法作品集链接再保存：写前校验恢复生效，简历写入不再被跳过', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 保存个人优势 = vi.fn(async () => {})
+      .mockRejectedValueOnce(new Error('保存失败'))
+      .mockResolvedValue(undefined);
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '',
+      保存简历, 保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存个人优势).toHaveBeenCalledTimes(1));
+    await 用户.type(screen.getByLabelText('作品集或项目链接'), '不是链接 有空格');
+    mock轻提示.mockClear();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('请输入有效的作品集或项目链接'));
+    expect(保存简历).toHaveBeenCalledTimes(1);
+    expect(保存个人优势).toHaveBeenCalledTimes(1);
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 
   it('简历写入失败：个人优势不再写、summary 不确认、不前进', async () => {
