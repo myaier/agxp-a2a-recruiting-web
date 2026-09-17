@@ -1,6 +1,7 @@
 // 候选 onboarding 简历预填的路由恢复边界（设计 §9 / Task 7）。
 //
-// 只包装可能消费 suggestion 的 onboarding 页面（六个资料页 + 向导偏好段）：
+// 只包装可能消费 suggestion 的 onboarding 页面（六个资料页）：
+// Task 3 起向导不再是消费位 —— 个人优势题（summary 建议的唯一消费者）已迁到简历资料页。
 // 刷新后内存轮丢失、session 恢复元数据仍指向当前附件 exact tuple 时，先按 exact
 // tuple 恢复这轮建议 —— 恢复期间复用既有 路由加载中，绝不挂载消费表单（含附件库
 // 水合落地前的首帧窗口：pristine 消费轮不先挂表单再被恢复卸掉，敲进的键不丢）；
@@ -12,11 +13,11 @@
 // 边界返回 Fragment，不新增任何布局 DOM / 类名 / 样式。
 //
 // 本文件还拥有两个纯位置判定，供 应用.tsx 的退出清理与测试共用：
-//   · 是预填消费位置 —— 哪些 (pathname, search) 会消费 suggestion（向导段写在
-//     query 上：偏好段消费，薪资段绝不消费 summary 建议）；
+//   · 是预填消费位置 —— 哪些 (pathname, search) 会消费 suggestion（只有六个资料页；
+//     日常编辑标记写在 query 上，带合法来源的完整位置不消费）；
 //   · 是活跃Onboarding位置 —— 注册会话还活着的路径集合，以 Onboarding流程 为唯一
 //     事实源（两条候选合同进主壳前的并集 + 学生分流 打开的 city/job 子页），
-//     薪资段 / 求职状态 / 披露说明 / 头像页只保状态不清理；离开集合才由 应用.tsx 清理。
+//     求职状态 / 披露说明 / 头像页只保状态不清理；离开集合才由 应用.tsx 清理。
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -26,9 +27,11 @@ import 确认层 from '../组件/确认层';
 import { use应用状态 } from '../状态/应用状态';
 import { 创建空候选预填状态, type 候选预填状态 } from '../状态/后端/类型';
 import { 读候选编辑来源 } from './候选日常编辑';
-import { Onboarding流程, 读向导段, 向导段参数名 } from './onboarding配置';
+import { Onboarding流程 } from './onboarding配置';
 
-/** 消费 suggestion 的资料页（设计 §9 的窄集合；向导只有偏好段的个人优势题消费）。 */
+/** 消费 suggestion 的资料页（设计 §9 的窄集合）。Task 3 起向导不再是消费位：
+ *  个人优势题随 summary 建议一起迁到简历资料页（工作经历 聚合页），向导只剩补充偏好一题，
+ *  不读任何 suggestion —— 进本屏也不再触发恢复（salary 旧地址由屏幕自己替换回首屏）。 */
 const 消费预填路径 = new Set<string>([
   路径.基本信息,
   路径.最高学历,
@@ -63,15 +66,14 @@ function 是日常编辑位置(pathname: string, search: string): boolean {
   return 来源 === 'resume' || pathname === 路径.求职状态;
 }
 
-/** 该位置是否会消费 suggestion：路由身份必须含 search —— 向导段写在 query 上。
+/** 该位置是否会消费 suggestion：路由身份必须含 search —— 日常编辑标记写在 query 上。
  *  带合法日常编辑来源的完整位置绝不消费（从我的简历进来的编辑刷新后也不恢复建议）。 */
 export function 是预填消费位置(pathname: string, search: string): boolean {
   if (是日常编辑位置(pathname, search)) return false;
-  if (消费预填路径.has(pathname)) return true;
-  return pathname === 路径.引导问答 && 读向导段(new URLSearchParams(search).get(向导段参数名)) === '偏好段';
+  return 消费预填路径.has(pathname);
 }
 
-/** 去掉 query 的裸路径（合同里薪资段带着 ?stage=salary 登记，站点比对只看路径）。 */
+/** 去掉 query 的裸路径（合同里可能有带 query 的登记地址，站点比对只看路径）。 */
 function 剥问号(路径串: string): string {
   const 位 = 路径串.indexOf('?');
   return 位 === -1 ? 路径串 : 路径串.slice(0, 位);
@@ -90,8 +92,8 @@ const 活跃Onboarding路径 = new Set<string>(
 );
 
 /**
- * 该位置是否仍在候选注册会话内。向导两段（含薪资段）都在合同里，活跃与否不看
- * query —— 唯一例外是日常编辑标记：带合法来源的完整位置（/basic?from=resume、
+ * 该位置是否仍在候选注册会话内。向导在合同里，活跃与否不看 query（旧薪资段地址仍
+ * 属注册会话，由屏幕自己替换回首屏）—— 唯一例外是日常编辑标记：带合法来源的完整位置（/basic?from=resume、
  * /onboard/status?from=intentions）属简历域，绝不是注册会话；否则已退出的引导状态
  * 会被资料编辑路径重新当作活跃。错配来源（/basic?from=intentions）不算日常位置，
  * 与原判定一致。其余离开集合的位置由 应用.tsx 清理。
@@ -106,7 +108,7 @@ export function 是活跃Onboarding位置(路径串: string): boolean {
 /**
  * J-PILOT-02 Task 9（Spec §6 回访分流 / §7 白名单）：未完成建档草稿的恢复落点。
  * 位置 只信任活跃集合内的 pathname —— 路径恢复接受当前候选流程白名单，不拿存储值
- * 任意导航；search 原样带回（向导段写在 query 上）；无位置记录或白名单外位置一律
+ * 任意导航；search 原样带回；无位置记录或白名单外位置一律
  * 回旅程入口 学生分流。题序/编辑中等其余恢复坐标随 建档 草稿本身走，不在这里展开。
  */
 export function 恢复落点(位置?: { pathname: string; search: string; 题序?: number }): string {
@@ -154,7 +156,7 @@ export function 候选Onboarding预填边界({ children }: { children: ReactNode
       });
   }, [消费中, 候选会话就绪, 附件已水合, 预填, 操作]);
 
-  // 非消费位置（如向导薪资段）原样放行；恢复在途先出既有加载屏；本边界触发的
+  // 非消费位置（如向导）原样放行；恢复在途先出既有加载屏；本边界触发的
   // 恢复结算成 failed 时复用 确认层（重试 / 继续手填）——继续手填后操作层落 manual，
   // 本组件随状态重渲染自然放行表单，无需另一份本地界面态。
   if (!消费中) return <>{children}</>;

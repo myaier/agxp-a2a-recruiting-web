@@ -80,6 +80,10 @@ export function render工作经历(选项: {
   查询Taxonomy?: ReturnType<typeof vi.fn>;
   查询Institution?: ReturnType<typeof vi.fn>;
   保存简历?: ReturnType<typeof vi.fn>;
+  /** Task 3：聚合保存链在简历保存成功之后调它（个人优势） */
+  保存个人优势?: ReturnType<typeof vi.fn>;
+  /** Task 3：已水合的权威个人优势（资料页优势正文的初值来源之一） */
+  个人优势?: string;
   /** 合同 C：公司选择抽屉的目录搜索/创建（Backend 走操作层） */
   搜索组织?: ReturnType<typeof vi.fn>;
   创建组织?: ReturnType<typeof vi.fn>;
@@ -122,7 +126,7 @@ export function render工作经历(选项: {
       简历教育: 选项.教育 ?? [],
       简历技能: 选项.技能 ?? [],
       简历证书: 选项.证书 ?? [],
-      个人优势: '',
+      个人优势: 选项.个人优势 ?? '',
       简历作品集链接: 选项.作品集链接 ?? '',
       基本信息: 选项.基本信息 ?? { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
       引导预填: 选项.建档 === undefined ? null : { 城市们: [], 职位: [], 建档: 选项.建档 },
@@ -151,6 +155,7 @@ export function render工作经历(选项: {
     }),
     操作: {
       保存简历: 选项.保存简历 ?? vi.fn(async () => {}),
+      保存个人优势: 选项.保存个人优势 ?? vi.fn(async () => {}),
       确认候选Onboarding预填分区: mock确认分区,
       更新候选建档草稿: mock更新草稿.mockImplementation((建档: 候选引导建档草稿) => {
         mock应用状态.状态.引导预填 = { 城市们: [], 职位: [], 建档 };

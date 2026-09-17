@@ -6,12 +6,10 @@ import {
   Onboarding流程,
   初筛字段矩阵,
   判断求职薪资单位,
-  向导出口,
   向导段参数名,
-  向导题序,
+  是旧薪资段地址,
   并入建档草稿,
   教育段缺项,
-  读向导段,
   规范化作品集链接,
   校验作品集链接,
   校验起止年月,
@@ -37,16 +35,42 @@ describe('多角色 onboarding 合同', () => {
     expect(Onboarding流程.招聘方).not.toContain(路径.企业邀请加入);
   });
 
-  it('学生路径不会跳过实习经历、技能与证书所在页', () => {
-    const 流程 = Onboarding流程.学生求职;
-    expect(流程.indexOf(路径.工作经历)).toBeGreaterThan(流程.indexOf(路径.就读时间段));
-    expect(流程.indexOf(路径.工作经历)).toBeLessThan(流程.indexOf(路径.求职状态));
+  it('两身份共用同一主序（求职意向首屏 → 基本 → 状态 → 学历四页 → 资料 → 偏好 → 披露 → 头像 → 主壳）', () => {
+    // 合同 C：薪资并入首屏后两身份不再走两条顺序；学生原来把 求职状态 排在资料之后，
+    // 本次一并移到 基本信息 之后 —— 这条用例守的就是「主顺序不能再次分叉」
+    const 主序 = [
+      路径.学生分流,
+      路径.基本信息,
+      路径.求职状态,
+      路径.最高学历,
+      路径.毕业院校,
+      路径.选专业,
+      路径.就读时间段,
+      路径.工作经历,
+      路径.引导问答,
+      路径.披露说明,
+      路径.添加头像,
+      路径.主壳,
+    ];
+    expect(Onboarding流程.学生求职).toEqual(主序);
+    expect(Onboarding流程.社招求职).toEqual(主序);
   });
 
-  it('学生和社招的配置顺序明确不同', () => {
-    expect(Onboarding流程.学生求职).not.toEqual(Onboarding流程.社招求职);
-    expect(Onboarding流程.学生求职.indexOf(路径.基本信息)).toBeLessThan(Onboarding流程.学生求职.indexOf(路径.引导问答));
-    expect(Onboarding流程.社招求职.indexOf(路径.引导问答薪资段)).toBeLessThan(Onboarding流程.社招求职.indexOf(路径.基本信息));
+  it('两身份都先收口求职状态再进学历四页，且不跳过教育、资料与补充偏好', () => {
+    for (const 身份 of ['学生求职', '社招求职'] as const) {
+      const 流程 = Onboarding流程[身份];
+      expect(流程.indexOf(路径.求职状态)).toBeGreaterThan(流程.indexOf(路径.基本信息));
+      expect(流程.indexOf(路径.求职状态)).toBeLessThan(流程.indexOf(路径.最高学历));
+      expect(流程.indexOf(路径.工作经历)).toBeGreaterThan(流程.indexOf(路径.就读时间段));
+      expect(流程.indexOf(路径.引导问答)).toBeGreaterThan(流程.indexOf(路径.工作经历));
+      expect(流程.indexOf(路径.引导问答)).toBeLessThan(流程.indexOf(路径.披露说明));
+    }
+  });
+
+  it('薪资不再单独成屏：两身份的合同里都没有薪资段地址', () => {
+    // Spec §3.2：学生/社招都取消独立薪资题，薪资在首屏与职位/城市同一区域采集
+    expect(Onboarding流程.学生求职).not.toContain(路径.引导问答薪资段);
+    expect(Onboarding流程.社招求职).not.toContain(路径.引导问答薪资段);
   });
 
   it('求职端首屏是完善资料（引导说明页已删）', () => {
@@ -55,15 +79,9 @@ describe('多角色 onboarding 合同', () => {
     expect(Onboarding流程.社招求职[0]).toBe(路径.学生分流);
   });
 
-  it('社招两次进向导登记成两个不同的地址，屏幕才分得清自己是第几次', () => {
-    const 流程 = Onboarding流程.社招求职;
-    expect(流程.filter((屏) => 屏 === 路径.引导问答薪资段)).toHaveLength(1);
-    expect(流程.filter((屏) => 屏 === 路径.引导问答)).toHaveLength(1);
-    // 薪资段在补档案之前，偏好段在工作经历之后 —— 顺序反了就说明合同被改坏了
-    expect(流程.indexOf(路径.引导问答薪资段)).toBeLessThan(流程.indexOf(路径.工作经历));
-    expect(流程.indexOf(路径.引导问答)).toBeGreaterThan(流程.indexOf(路径.工作经历));
-    // 学生只进一次向导，且只走偏好段
-    expect(Onboarding流程.学生求职).not.toContain(路径.引导问答薪资段);
+  it('两身份的向导都只出现一次（薪资段的第二次进入已取消）', () => {
+    expect(Onboarding流程.社招求职.filter((屏) => 屏 === 路径.引导问答)).toHaveLength(1);
+    expect(Onboarding流程.学生求职.filter((屏) => 屏 === 路径.引导问答)).toHaveLength(1);
   });
 
   it('选择实习时必须补齐时长和每周到岗天数', () => {
@@ -148,54 +166,15 @@ describe('多角色 onboarding 合同', () => {
     expect(校验作品集链接('')).toBeNull();
   });
 
-  it('向导段从地址上读，缺省是偏好段', () => {
-    expect(读向导段('salary')).toBe('薪资段');
-    expect(读向导段(null)).toBe('偏好段');
-    expect(读向导段('')).toBe('偏好段');
-    // 路径表登记的薪资段地址必须真能被解析成薪资段，两边不能各写各的
+  it('旧薪资段地址仍可识别（最小兼容），其余段值一律不重定向', () => {
+    // Spec §3.2：旧 /wizard?stage=salary 地址保留最小兼容 —— 屏幕读到它替换回首屏。
+    // 路径表登记的薪资段地址必须真能被解析出来，两边不能各写各的
     const 查询 = 路径.引导问答薪资段.split('?')[1] ?? '';
-    expect(读向导段(new URLSearchParams(查询).get(向导段参数名))).toBe('薪资段');
-  });
-
-  it('向导题序：薪资段只问薪资，偏好段问排除项和个人优势', () => {
-    expect(向导题序({ 段: '薪资段', 已有引导预填: true, 在校: false })).toEqual(['期望薪资']);
-    expect(向导题序({ 段: '偏好段', 已有引导预填: true, 在校: false })).toEqual(['硬性排除', '个人优势']);
-    // 学生只进一次向导，薪资题必须跟着偏好段一起问，否则永远采不到
-    expect(向导题序({ 段: '偏好段', 已有引导预填: true, 在校: true })).toEqual([
-      '期望薪资',
-      '硬性排除',
-      '个人优势',
-    ]);
-  });
-
-  it('没有引导预填时才在向导里补问期望职位与工作城市', () => {
-    expect(向导题序({ 段: '薪资段', 已有引导预填: false, 在校: false })).toEqual([
-      '期望职位',
-      '工作城市',
-      '期望薪资',
-    ]);
-    expect(向导题序({ 段: '偏好段', 已有引导预填: false, 在校: false })).toEqual([
-      '期望职位',
-      '工作城市',
-      '硬性排除',
-      '个人优势',
-    ]);
-  });
-
-  it('题序在任何组合下都非空 —— 游标取不到「没有题」这种状态', () => {
-    for (const 段 of ['薪资段', '偏好段'] as const) {
-      for (const 已有引导预填 of [true, false]) {
-        for (const 在校 of [true, false]) {
-          expect(向导题序({ 段, 已有引导预填, 在校 }).length).toBeGreaterThan(0);
-        }
-      }
-    }
-  });
-
-  it('向导出口按段分开：薪资段回主干补档案，偏好段才去披露说明', () => {
-    // 两段共用一个出口正是「社招第一次进向导两步冲到披露页、跳过 7 屏」的根因
-    expect(向导出口('薪资段')).toBe(路径.基本信息);
-    expect(向导出口('偏好段')).toBe(路径.披露说明);
+    expect(是旧薪资段地址(new URLSearchParams(查询).get(向导段参数名))).toBe(true);
+    expect(是旧薪资段地址('salary')).toBe(true);
+    expect(是旧薪资段地址('preference')).toBe(false);
+    expect(是旧薪资段地址(null)).toBe(false);
+    expect(是旧薪资段地址('')).toBe(false);
   });
 });
 

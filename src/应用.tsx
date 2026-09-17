@@ -333,7 +333,7 @@ export default function 应用() {
   // 离开注册会话（进主壳、切其它产品路由）就作废预填轮与恢复元数据（内存 + session
   // 存储随 清候选Onboarding预填 一起清），防止中断注册后从主壳进消费页被误判为
   // onboarding。活跃集合以 Onboarding流程 为唯一事实源（见 流程/候选Onboarding预填边界），
-  // 薪资段 / 求职状态 / 披露说明 / 头像页只保状态；完成注册的收尾清理另在 添加头像 显式做。
+  // 求职状态 / 披露说明 / 头像页只保状态；完成注册的收尾清理另在 添加头像 显式做。
   // 只在 Backend + 已登录 candidate 且初始化完成后清理 —— 主体未落地时恢复元数据适配器
   // 还是 null，先清只会烧掉内存态而删不掉存储；同一路径只清一次（清本身会写状态，
   // 不设栅栏会与设态互相驱动成环）。
@@ -341,7 +341,7 @@ export default function 应用() {
     && 后端状态.初始化 === '完成'
     && 后端状态.已登录
     && 后端状态.主体?.last_used_role === 'candidate';
-  // 活跃判定的路由身份是完整位置（pathname+search）：向导段与日常编辑标记（from=resume）
+  // 活跃判定的路由身份是完整位置（pathname+search）：日常编辑标记（from=resume）
   // 都写在 query 上，只看 pathname 会把 /basic?from=resume 的编辑位置误判成注册会话。
   const 完整位置 = `${位置.pathname}${位置.search}`;
   const 已清理路径引用 = useRef<string | null>(null);
@@ -490,17 +490,19 @@ export default function 应用() {
     <Suspense fallback={<路由加载中 />}>
       <Routes>
       {/* 注册引导（2026-08-20 按 BOSS 截图顺序重排；引导说明页 2026-08-21 按标注删除）：
-          登录 → 选身份 → 完善资料(/student，可进 /onboard/city、/onboard/job)
-          → 期望月薪(/wizard?stage=salary) → 创建在线简历(/basic) → 求职状态 → 最高学历
-          → 你毕业于 → 你的专业是 → 就读时间段 →（非学生先 /experience）→ 向导偏好段(/wizard)
-          → 披露说明 → 添加头像 → 主壳
-          向导两段共用一条路由：段写在 query 上，query 不参与路由匹配 */}
+          登录 → 选身份 → 完善资料(/student：求职意向含期望薪资，可进 /onboard/city、
+          /onboard/job) → 创建在线简历(/basic) → 求职状态 → 最高学历 → 你毕业于 →
+          你的专业是 → 就读时间段 → 工作经历(/experience：简历资料含个人优势)
+          → 向导(/wizard：补充偏好，答完创建首次意向) → 披露说明 → 添加头像 → 主壳
+          Task 3（合同 C）：两身份共用这一条主序 —— 薪资并入首屏、个人优势并入简历资料，
+          向导只剩补充偏好一题；旧 /wizard?stage=salary 由屏幕自己替换回首屏补齐。
+          向导只有一条路由，query 不参与路由匹配（旧 stage 参数只作兼容识别）。 */}
       <Route path={路径.登录} element={<登录 />} />
       <Route path={路径.选身份} element={<选身份 />} />
       <Route path={路径.学生分流} element={<学生分流 />} />
-      {/* Task 7：消费 suggestion 的七条路由（六资料页 + 向导）套非视觉恢复边界 ——
-          刷新后先按 exact tuple 恢复一轮未完成预填再挂表单；向导薪资段由边界内
-          的 query 判定原样放行（不消费 summary）。路由顺序与登记不变。 */}
+      {/* Task 7：消费 suggestion 的六条资料路由套非视觉恢复边界 ——
+          刷新后先按 exact tuple 恢复一轮未完成预填再挂表单（Task 3 起向导不再是
+          消费位：summary 建议随个人优势迁到 /experience）。路由顺序与登记不变。 */}
       <Route path={路径.基本信息} element={<候选Onboarding预填边界><基本信息 /></候选Onboarding预填边界>} />
       <Route path={路径.工作经历} element={<候选Onboarding预填边界><工作经历 /></候选Onboarding预填边界>} />
       <Route path={路径.引导问答} element={<候选Onboarding预填边界><引导问答 /></候选Onboarding预填边界>} />

@@ -375,13 +375,14 @@ describe('基本信息 · 空身份延迟 profile（M）', () => {
     expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
   });
 
-  it('Backend 学生 在校 仍走既有 operation 并跳最高学历', async () => {
+  it('Backend 学生 在校 同样先收口求职状态（Task 3 取消学生专属分叉）', async () => {
     render基本信息({ 基本信息: { 真名: '沈', 身份: '在校' } });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
     expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledWith('basic');
-    expect(mock跳转).toHaveBeenCalledWith(路径.最高学历);
+    expect(mock跳转).toHaveBeenCalledWith(路径.求职状态);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.最高学历);
   });
 });
 

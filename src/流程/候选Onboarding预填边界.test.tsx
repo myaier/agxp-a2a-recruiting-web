@@ -178,16 +178,17 @@ beforeEach(() => {
 
 // ── 纯位置判定：消费集合与活跃集合 ────────────────────────────────
 
-describe('消费位置判定（向导段写在 query 上，消费必须看 search）', () => {
+describe('消费位置判定（只有六个资料页消费，日常编辑标记写在 query 上）', () => {
   it('六个资料页是消费位置', () => {
     for (const 站 of [路径.基本信息, 路径.最高学历, 路径.毕业院校, 路径.选专业, 路径.就读时间段, 路径.工作经历]) {
       expect(是预填消费位置(站, '')).toBe(true);
     }
   });
 
-  it('向导只有偏好段消费，薪资段不消费', () => {
-    expect(是预填消费位置(路径.引导问答, '')).toBe(true);
-    expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
+  // Task 3：个人优势题（summary 建议的唯一消费者）迁到简历资料页后，向导不再读任何
+  // suggestion —— 进本屏（含旧薪资段地址）都不触发恢复，所以它不是消费位。
+  it('向导不再是消费位（summary 建议随个人优势迁到 /experience）', () => {
+    expect(是预填消费位置(路径.引导问答, '')).toBe(false);
     expect(是预填消费位置(路径.引导问答, '?stage=salary')).toBe(false);
   });
 
@@ -202,12 +203,11 @@ describe('消费位置判定（向导段写在 query 上，消费必须看 searc
   it('编辑标记优先：带 from=resume 的完整位置不消费建议', () => {
     expect(是预填消费位置(路径.基本信息, '?from=resume')).toBe(false);
     expect(是预填消费位置(路径.工作经历, '?from=resume')).toBe(false);
-    expect(是预填消费位置(路径.引导问答, '?stage=preference&from=resume')).toBe(false);
-    // 个人优势独立编辑（Task 4）的固定地址不带段参数：同样不消费建议，
-    // 刷新后绝不触发恢复（编辑初值只来自已水合的全局简历切片）
+    // 个人优势独立编辑（Task 4）的固定地址：同样不消费建议，刷新后绝不触发恢复
+    //（编辑初值只来自已水合的全局简历切片）
     expect(是预填消费位置(路径.引导问答, '?from=resume')).toBe(false);
     // 其余 query 不受影响：无标记的消费页照旧消费
-    expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
+    expect(是预填消费位置(路径.工作经历, '?section=skills')).toBe(true);
   });
 
   // 求职状态页的第二个合法日常来源（合同 A：intentions 仅状态页可用）：在状态页上
@@ -216,7 +216,7 @@ describe('消费位置判定（向导段写在 query 上，消费必须看 searc
     expect(是预填消费位置(路径.求职状态, '?from=intentions')).toBe(false);
     expect(是预填消费位置(路径.基本信息, '?from=intentions')).toBe(true);
     expect(是预填消费位置(路径.基本信息, '?from=evil')).toBe(true);
-    expect(是预填消费位置(路径.引导问答, '?stage=preference')).toBe(true);
+    expect(是预填消费位置(路径.工作经历, '?from=evil')).toBe(true);
   });
 
   // review fix-1（Important 1）：路径限定在边界层收口 —— 错配来源不得让边界层与页面层
@@ -367,19 +367,17 @@ describe('候选Onboarding预填边界：消费页刷新恢复', () => {
     expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
   });
 
-  it('keeps salary wizard active without reading the summary suggestion', () => {
-    renderBoundary(路径.引导问答薪资段, activeRecoveryMetadata());
-    expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
-    expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled();
-    // 薪资段不是消费位置：表单照常挂载
-    expect(screen.getByTestId('consumer-form')).toBeTruthy();
-  });
-
-  it('向导偏好段是消费位置：pristine 内存轮触发恢复', async () => {
-    renderBoundary(路径.引导问答, activeRecoveryMetadata());
-    await waitFor(() => expect(mock操作.恢复候选Onboarding预填).toHaveBeenCalledWith({ 允许等待解析: false }));
-    await waitFor(() => expect(screen.getByTestId('consumer-form')).toBeTruthy());
-  });
+  // Task 3：向导不再是消费位（summary 建议随个人优势迁到 /experience）—— 旧薪资段地址
+  // 与偏好段地址都一样：直接挂载表单、零恢复调用（旧地址由屏幕自己替换回首屏）。
+  it.each([路径.引导问答, 路径.引导问答薪资段])(
+    '%s 不是消费位：pristine 内存轮也直接挂载、零恢复调用',
+    (站) => {
+      renderBoundary(站, activeRecoveryMetadata());
+      expect(screen.getByTestId('consumer-form')).toBeTruthy();
+      expect(mock操作.恢复候选Onboarding预填).not.toHaveBeenCalled();
+      expect(mock操作.清候选Onboarding预填).not.toHaveBeenCalled();
+    },
+  );
 
   it('内存 ready 轮直接挂载：零恢复读取、零状态改动', () => {
     renderBoundary(路径.基本信息, activeRecoveryMetadata(), {

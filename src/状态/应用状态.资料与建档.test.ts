@@ -667,6 +667,45 @@ describe('应用状态提供者 候选引导草稿持久化', () => {
     await waitFor(() => expect(当前.状态.引导预填?.薪资).toEqual({ 下限: 30, 上限: 40, 单位: '月薪K' }));
   });
 
+  // ── 合同 C（Task 3）：薪资并入首屏后的周期守卫也要落到持久化层 ——
+  //    跨周期切换删掉薪资后，重挂不得把旧区间从 sessionStorage 里复活 ──
+  /** 该主体当前的持久化草稿原文（断言落盘内容，不看内存态）。 */
+  const 落盘原文 = () => globalThis.sessionStorage.getItem(键('sub_1')) ?? '';
+
+  it('跨周期切换删掉薪资后刷新：旧区间不复活（同周期则原样保留）', async () => {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 上下文探针() { 当前 = use应用状态(); return null; }
+    const 后端 = 创建后端桩('candidate');
+    const 后端源 = 后端 as unknown as HTTP招聘数据源;
+    const 数据源 = { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端: 后端源 };
+    const 基底 = { 城市们: [], 职位: [], 城市引用们: [], 职位引用们: [] };
+    const { unmount } = render(createElement(应用状态提供者, { 数据源 }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    当前.派发({ 型: '存薪资预填', 下限: 30, 上限: 40, 单位: '月薪K', ...基底 });
+    await waitFor(() => expect(当前.状态.引导预填?.薪资).toEqual({ 下限: 30, 上限: 40, 单位: '月薪K' }));
+    // 同周期：只改办公方式，薪资跟着草稿一起落盘
+    当前.派发({
+      型: '存求职筛选偏好',
+      偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+      ...基底,
+    });
+    await waitFor(() => expect(落盘原文()).toContain('"下限":30'));
+    // 跨周期（转实习生 = 日薪）：薪资属性被删，落盘里也不再有它
+    当前.派发({
+      型: '存求职筛选偏好',
+      偏好: { 求职类型: ['实习生'], 办公方式: ['现场'], 实习月数: 3, 每周到岗天数: 4 },
+      ...基底,
+    });
+    await waitFor(() => expect(当前.状态.引导预填).not.toHaveProperty('薪资'));
+    await waitFor(() => expect(落盘原文()).not.toContain('"下限"'));
+    unmount();
+    render(createElement(应用状态提供者, { 数据源 }, createElement(上下文探针)));
+    await waitFor(() => expect(当前.后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(当前.状态.引导预填?.筛选偏好?.求职类型).toEqual(['实习生']));
+    // 重启后仍是「未确认薪资」：旧区间没有被恢复
+    expect(当前.状态.引导预填).not.toHaveProperty('薪资');
+  });
+
   it('预置 sub_A 草稿的重挂恢复薪资与到岗', async () => {
     写候选引导草稿(globalThis.sessionStorage, { 模式: 'backend', 环境: 'stg', 账号: 'sub_A' }, 草稿样本());
     let 当前!: ReturnType<typeof use应用状态>;

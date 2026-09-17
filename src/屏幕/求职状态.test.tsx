@@ -112,6 +112,20 @@ describe('求职状态 · 显式选择（M）', () => {
     expect(mock跳转).toHaveBeenCalledWith(路径.最高学历);
   });
 
+  it('学生（在校）同样先进学历四页：状态不再直接跳向导（Task 3 同一主序）', async () => {
+    渲染({ 身份: '在校' });
+    const 用户 = userEvent.setup();
+    // 学生档位全程「在校 ·」措辞，身份保持 在校 不动
+    await 用户.click(screen.getByRole('button', { name: /在校 · 考虑机会/ }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 身份: '在校' }),
+    }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.最高学历);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.引导问答);
+  });
+
   it('选择「在职 · 考虑机会」后下一步：保存 身份:在职', async () => {
     渲染({ 身份: '' });
     const 用户 = userEvent.setup();

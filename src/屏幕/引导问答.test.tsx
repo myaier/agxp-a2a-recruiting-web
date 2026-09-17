@@ -1,20 +1,20 @@
-// 引导问答 存引导预填测试：
-// Mock 分支：期望职位题落盘带 职位引用们 占位空数组（Task 4）。
-// Backend 分支（Task 6）：
-//   (a) 默认字符串不会提交 —— 无选中时 refs 为空；
-//   (b) 点远程候选后字符串+refs 原子写入 —— 存引导预填 带 职位引用们 含 ID；
-//   (c) 同名职位不同 ID：选中 tax_selected 后 保存首次意向 body 用 tax_selected。
+// 引导问答（向导）测试 —— Task 3 合同 C 之后本屏每个模式只有一道题：
+//   · onboarding（无 from=resume）= 补充偏好一题（硬性排除 + 屏蔽公司）：明确继续时
+//     只调 保存首次意向（读最新 引导预填 refs/薪资/类型 + 本页偏好），成功才进披露说明；
+//     缺首屏必需数据则替换回首屏补齐，绝不从空默认串提交。
+//   · 日常编辑 /wizard?from=resume = 只编辑个人优势一题（Task 2/4 语义不变）。
+// 期望职位/工作城市/期望薪资/个人优势四题已随 Spec §3 迁出本屏：它的预填、恢复与
+// 提取说明改由 工作经历.资料与预填.test.tsx 覆盖，薪资抽屉与首屏写线由
+// 学生分流.test.tsx 覆盖；本文件只保留补充偏好、屏蔽公司与日常编辑三条线。
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 引导问答 from './引导问答';
 import { 路径 } from '../路由/路径表';
 import { 创建候选编辑来路 } from '../流程/候选日常编辑';
-import type { 向导段 } from '../流程/onboarding配置';
 import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
-import { 个人优势文本 } from '../数据/模拟数据';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 屏蔽项 } from '../数据/类型';
 import { BFF错误 } from '../数据/HTTP客户端';
@@ -24,8 +24,8 @@ const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
 const mock替换跳转 = vi.fn();
 const mock操作 = vi.hoisted(() => ({
-  保存个人优势: vi.fn(async () => {}),
-  保存首次意向: vi.fn(async () => {}),
+  保存个人优势: vi.fn(async (_文本?: string) => {}),
+  保存首次意向: vi.fn(async (_输入?: Record<string, unknown>) => {}),
   确认候选Onboarding预填分区: vi.fn(),
   更新候选建档草稿: vi.fn(),
 }));
@@ -34,545 +34,6 @@ let mock应用状态: any;
 
 vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回, 替换跳转: mock替换跳转 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
-
-/** 在既有滚动容器上触发一次「已到底」滚动事件——不新增任何节点 */
-function 滚到底(容器: Element) {
-  Object.defineProperty(容器, 'scrollHeight', { value: 1000, configurable: true });
-  Object.defineProperty(容器, 'clientHeight', { value: 400, configurable: true });
-  Object.defineProperty(容器, 'scrollTop', { value: 600, configurable: true, writable: true });
-  fireEvent.scroll(容器);
-}
-
-/** 第 n 个既有滚动容器（0=左分类栏，1=右说明卡栏） */
-function 滚动容器(序: number): Element {
-  const 容器 = document.querySelectorAll('.滚动区')[序];
-  if (!容器) throw new Error(`找不到第 ${序} 个既有滚动容器`);
-  return 容器;
-}
-
-/** deferred promise：测试可控制异步 resolve 的时机（用于模拟慢响应到达） */
-function deferredPromise<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  const promise = new Promise<T>((ok) => { resolve = ok; });
-  return { promise, resolve };
-}
-
-/** 引导预填 可选：传非 null 时已有预填（题序塌到只剩当前段），不传就是全量五题 */
-function render引导问答Mock(引导预填: object | null = null) {
-  const 派发 = vi.fn();
-  const 保存个人优势 = vi.fn(async () => {});
-  const 保存首次意向 = vi.fn(async () => {});
-  mock应用状态 = {
-    数据源模式: 'mock',
-    目录查询: null,
-    状态: {
-      引导预填,
-      个人优势: '',
-      简历作品集链接: '',
-      简历经历: [],
-      屏蔽名单: [],
-      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
-    },
-    派发,
-    操作: { 保存个人优势, 保存首次意向, 确认候选Onboarding预填分区: vi.fn() },
-  };
-  render(
-    <MemoryRouter initialEntries={['/onboard/wizard?stage=salary']}>
-      <引导问答 />
-    </MemoryRouter>,
-  );
-  return { 派发, 保存个人优势, 保存首次意向 };
-}
-
-describe('引导问答 Mock 存引导预填', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  it('期望职位题存盘带 职位引用们 占位', async () => {
-    const { 派发 } = render引导问答Mock();
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() =>
-      expect(派发).toHaveBeenCalledWith(
-        expect.objectContaining({
-          型: '存引导预填',
-          职位引用们: [],
-        }),
-      ),
-    );
-  });
-});
-
-// ── 期望薪资：共用 薪资区间层（bottom-drawer 统一 Task 5）──
-// 页内自写双轮已删：入口行显示 面议/区间，点开底部抽屉（用途='求职引导'），
-// 确定才调用两侧 setter、离开该题时照旧派发 存薪资预填；取消 / Escape 零回填。
-// 弹层内滚轮的键盘 / 滚动 / 重复写值矩阵由 薪资区间层.test.tsx 与 内嵌双滚轮.test.tsx 守。
-
-const 月薪题预填 = {
-  城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
-  筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
-};
-
-describe('引导问答 期望薪资 共用薪资区间层', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  it('打开抽屉键盘与点选后确定，下一步落盘同一值', async () => {
-    const { 派发 } = render引导问答Mock(月薪题预填);
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /薪资要求（月薪/ }));
-    // 面议起步：左轮选中面议档，右轮整列隐藏
-    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
-    expect(within(下限列).getByRole('option', { name: '面议' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
-
-    下限列.focus();
-    await 用户.keyboard('{ArrowDown}');
-    expect(within(下限列).getByRole('option', { name: '1' }).getAttribute('aria-selected')).toBe('true');
-    await 用户.click(within(下限列).getByRole('option', { name: '20' }));
-    expect(document.activeElement).toBe(下限列);
-
-    // 联动：min(20+10,260)=30 出现在右轮
-    const 上限列 = screen.getByRole('listbox', { name: '薪资上限' });
-    await 用户.click(within(上限列).getByRole('option', { name: '30' }));
-    await 用户.click(screen.getByRole('button', { name: '确定' }));
-    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
-    await 用户.click(screen.getByRole('button', { name: /下一步/ }));
-    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-      型: '存薪资预填', 下限: 20, 上限: 30, 单位: '月薪K',
-    }));
-  });
-
-  it('点回面议：右轮消失，确定后落盘 0/0', async () => {
-    const { 派发 } = render引导问答Mock(月薪题预填);
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /薪资要求（月薪/ }));
-    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
-    await 用户.click(within(下限列).getByRole('option', { name: '20' }));
-    expect(screen.getByRole('listbox', { name: '薪资上限' })).toBeTruthy();
-    await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
-    expect(screen.queryByRole('listbox', { name: '薪资上限' })).toBeNull();
-    await 用户.click(screen.getByRole('button', { name: '确定' }));
-    await 用户.click(screen.getByRole('button', { name: /下一步/ }));
-    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-      型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
-    }));
-  });
-
-  it('取消零回填：改过再取消，下一步落盘仍是原面议 0/0', async () => {
-    const { 派发 } = render引导问答Mock(月薪题预填);
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /薪资要求（月薪/ }));
-    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '20' }));
-    await 用户.click(screen.getByRole('button', { name: '取消' }));
-    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
-    await 用户.click(screen.getByRole('button', { name: /下一步/ }));
-    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-      型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
-    }));
-  });
-
-  it('日薪已答回显区间并接入同一抽屉合同', async () => {
-    const { 派发 } = render引导问答Mock({
-      城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
-      筛选偏好: { 求职类型: ['实习生'], 办公方式: ['混合'] },
-      薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
-    });
-    const 用户 = userEvent.setup();
-    // 入口行回显已答区间
-    expect(screen.getByRole('button', { name: /薪资要求（日薪/ }).textContent).toContain('300-500/天');
-    await 用户.click(screen.getByRole('button', { name: /薪资要求（日薪/ }));
-    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
-    expect(within(下限列).getByRole('option', { name: '300' }).getAttribute('aria-selected')).toBe('true');
-    下限列.focus();
-    await 用户.keyboard('{ArrowDown}');
-    // 键盘按档序移动：300 的下一档是 320（220–500 段步长 20）
-    expect(within(下限列).getByRole('option', { name: '320' }).getAttribute('aria-selected')).toBe('true');
-    await 用户.click(screen.getByRole('button', { name: '确定' }));
-    await 用户.click(screen.getByRole('button', { name: /下一步/ }));
-    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-      型: '存薪资预填', 下限: 320, 上限: 500, 单位: '元/天',
-    }));
-  });
-});
-
-// ── Backend 分支（Task 6）──
-
-/** Backend 期望职位题的 mock：roots 非可选，展开 roots 出两个同名不同 ID 的可选叶子 */
-function 后端查询Taxonomy桩(子项: { id: string; display_name: string; selectable: boolean; has_children?: boolean }[]) {
-  return vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
-    if (query.parentId === 'tax_root') {
-      return {
-        items: 子项.map((项) => ({ has_children: false, ...项, parent_id: 'tax_root' })),
-        nextCursor: null,
-        catalogVersion: 'v2',
-      };
-    }
-    return {
-      items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    };
-  });
-}
-
-function render引导问答后端(选项: {
-  引导预填?: object;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  查询Taxonomy?: any;
-  查询Location?: ReturnType<typeof vi.fn>;
-}) {
-  const 派发 = vi.fn();
-  const 保存个人优势 = vi.fn(async () => {});
-  const 保存首次意向 = vi.fn(async () => {});
-  mock应用状态 = {
-    数据源模式: 'backend',
-    目录查询: {
-      查询Taxonomy: 选项.查询Taxonomy ?? 后端查询Taxonomy桩([]),
-      查询Location: 选项.查询Location ?? vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
-      查询Institution: vi.fn(),
-    },
-    状态: {
-      引导预填: 选项.引导预填 ?? null,
-      个人优势: '',
-      简历作品集链接: '',
-      简历经历: [],
-      屏蔽名单: [],
-      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在校' as const },
-    },
-    派发,
-    操作: { 保存个人优势, 保存首次意向, 确认候选Onboarding预填分区: vi.fn() },
-  };
-  render(
-    <MemoryRouter initialEntries={['/onboard/wizard?stage=salary']}>
-      <引导问答 />
-    </MemoryRouter>,
-  );
-  return { 派发, 保存个人优势, 保存首次意向 };
-}
-
-describe('引导问答 Backend 分支', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  // (a) 默认字符串不会提交：Backend 进入时已选职位 初始为空，
-  // 未点候选就落盘 → 职位引用们 为空数组（不是 stale 默认）。
-  it('默认字符串不会提交：无选中时 refs 为空', async () => {
-    const { 派发 } = render引导问答后端({});
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() =>
-      expect(派发).toHaveBeenCalledWith(
-        expect.objectContaining({
-          型: '存引导预填',
-          职位引用们: [],
-          职位: [],
-        }),
-      ),
-    );
-  });
-
-  // (b) 点远程候选后字符串+refs 原子写入：点一个职位候选 → 存引导预填 同时带 职位（字符串）和 职位引用们（refs）。
-  it('点远程候选后字符串+refs 原子写入', async () => {
-    const 查询Taxonomy = 后端查询Taxonomy桩([
-      { id: 'tax_selected', display_name: '产品经理', selectable: true },
-      { id: 'tax_other', display_name: '产品经理', selectable: true },
-    ]);
-    const { 派发 } = render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    // 等待子项加载（两个同名「产品经理」按钮，选第一个 tax_selected）
-    const 按钮 = await waitFor(() => {
-      const 所有 = screen.getAllByRole('button', { name: /产品经理/ });
-      expect(所有.length).toBeGreaterThanOrEqual(1);
-      return 所有[0];
-    });
-    await 用户.click(按钮);
-    // 点保存落盘
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    // 字符串 和 refs 原子写入：职位 有 display_name，职位引用们 有 id
-    await waitFor(() =>
-      expect(派发).toHaveBeenCalledWith(
-        expect.objectContaining({
-          型: '存引导预填',
-          职位: ['产品经理'],
-          职位引用们: [{ id: 'tax_selected', display_name: '产品经理' }],
-        }),
-      ),
-    );
-  });
-
-  // (c) 同名职位不同 ID：选中 tax_selected 后 保存首次意向 body 用 tax_selected。
-  // 引导预填=null + preference 段（非在校）→ 题序 = 期望职位 → 工作城市 → 硬性排除 → 个人优势。
-  it('同名职位不同 ID：完整向导流保存首次意向 用选中 ID', async () => {
-    const 查询Taxonomy = 后端查询Taxonomy桩([
-      { id: 'tax_selected', display_name: '产品经理', selectable: true },
-      { id: 'tax_other', display_name: '产品经理', selectable: true },
-    ]);
-    const 查询Location = vi.fn(async (query: { q?: string }) => ({
-      items: query.q && query.q.includes('上海')
-        ? [{ id: 'loc_sh', display_name: '上海市', country_code: 'CN', country_name: '中国', admin1_code: '31', admin1_name: '上海市', timezone: 'Asia/Shanghai', population: 0 }]
-        : [],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    }));
-    const 派发 = vi.fn();
-    const 保存个人优势 = vi.fn(async () => {});
-    const 保存首次意向 = vi.fn(async () => {});
-    mock应用状态 = {
-      数据源模式: 'backend',
-      目录查询: { 查询Taxonomy, 查询Location, 查询Institution: vi.fn() },
-      状态: {
-        引导预填: null,
-        个人优势: '',
-        简历作品集链接: '',
-        简历经历: [],
-        屏蔽名单: [],
-        // 非在校 + preference 段 → 题序 = 期望职位 → 工作城市 → 硬性排除 → 个人优势
-        基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
-      },
-      派发,
-      操作: { 保存个人优势, 保存首次意向, 确认候选Onboarding预填分区: vi.fn() },
-    };
-    render(
-      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
-        <引导问答 />
-      </MemoryRouter>,
-    );
-    const 用户 = userEvent.setup();
-    // 第一题期望职位：等子项加载，选 tax_selected（第一个产品经理）
-    const 职位按钮 = await waitFor(() => {
-      const 所有 = screen.getAllByRole('button', { name: /产品经理/ });
-      expect(所有.length).toBeGreaterThanOrEqual(1);
-      return 所有[0];
-    });
-    await 用户.click(职位按钮);
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    // 第二题工作城市：搜索 '上海'，等 debounce 后结果出现，点选
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '上海');
-    // 等待 250ms debounce + 查询结果
-    const 城市按钮 = await waitFor(() => {
-      const 所有 = screen.getAllByRole('button', { name: '上海市' });
-      expect(所有.length).toBeGreaterThanOrEqual(1);
-      return 所有[0];
-    }, { timeout: 3000 });
-    await 用户.click(城市按钮);
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    // 第三题硬性排除：下一步
-    await waitFor(() => expect(screen.getByRole('button', { name: '下一步' })).toBeDefined());
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    // 第四题个人优势：保存并继续
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined());
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(保存首次意向).toHaveBeenCalled());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const 传入 = (保存首次意向.mock.calls[0] as any[])[0];
-    expect(传入.职位引用).toEqual({ id: 'tax_selected', display_name: '产品经理' });
-    expect(传入.城市引用们).toEqual([{ id: 'loc_sh', display_name: '上海市' }]);
-  });
-});
-
-// ── review-r3 R3-I-5/I-6/I-7：期望职位题 分页 + 代际守 stale + 查询重置 ──
-
-describe('引导问答 Backend 期望职位题 分页与代际（review-r3）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  // review-r3 R3-I-5 / Task 5：roots 返回 nextCursor 时滚到底追加第二页（不新增「加载更多」节点）
-  it('左栏滚到底追加第二页根（R3-I-5 / Task 5）', async () => {
-    let 根调用 = 0;
-    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; cursor?: string; q?: string }) => {
-      if (!query.parentId && !query.q) {
-        根调用 += 1;
-        if (根调用 === 1) {
-          return {
-            items: [{ id: 'cat_a', display_name: '大类A', parent_id: null, selectable: false, has_children: true }],
-            nextCursor: 'root_cur_1',
-            catalogVersion: 'v2',
-          };
-        }
-        return {
-          items: [{ id: 'cat_b', display_name: '大类B', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'cat_a') {
-        return {
-          items: [{ id: 'job_a1', display_name: 'A岗位1', parent_id: 'cat_a', selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    render引导问答后端({ 查询Taxonomy });
-    await screen.findByText('大类A');
-    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
-    滚到底(滚动容器(0));
-    await screen.findByText('大类B');
-    expect(screen.getByText('大类A')).toBeTruthy();
-  });
-
-  // review-r3 R3-I-6：搜索 stale——输 A 慢响应在飞行中，再输 B 快响应到达 → B 胜
-  it('搜索 stale：A 慢响应不覆盖 B 结果（R3-I-6）', async () => {
-    const { promise: 慢Promise, resolve: 慢Resolve } = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
-    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
-      if (!query.parentId && !query.q && !query.cursor) {
-        return {
-          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'cat_root') {
-        return {
-          items: [{ id: 'job_r1', display_name: '后端', parent_id: 'cat_root', selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.q === 'A') {
-        return 慢Promise;
-      }
-      if (query.q === 'AB') {
-        return {
-          items: [{ id: 'job_ab', display_name: 'AB岗位', parent_id: null, selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    await screen.findByText('技术');
-    // 搜索「A」——慢响应在飞行中
-    await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), 'A');
-    // 等 debounce 触发
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: 'A' })));
-    // 快速续输成「AB」——快响应到达
-    await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), 'B');
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: 'AB' })), { timeout: 3000 });
-    await screen.findByText('AB岗位');
-    // A 的慢响应到达——不应覆盖 AB 的结果
-    慢Resolve({
-      items: [{ id: 'job_a', display_name: 'A岗位（过期）', parent_id: null, selectable: true, has_children: false }],
-      nextCursor: null,
-      catalogVersion: 'v2',
-    });
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
-    expect(screen.getByText('AB岗位')).toBeTruthy();
-    expect(screen.queryByText('A岗位（过期）')).toBeNull();
-  });
-
-  // review-r3 R3-I-6 P2-3 / Task 5：搜索命中一个可下钻节点 → 进原方向细选页看它的子项
-  it('搜索点可下钻命中后在方向细选页看到子项（R3-I-6 P2-3）', async () => {
-    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
-      if (!query.parentId && !query.q && !query.cursor) {
-        return {
-          items: [{ id: 'cat_tech', display_name: '互联网', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.q === '互联') {
-        return {
-          items: [{ id: 'cat_tech', display_name: '互联网', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'cat_tech') {
-        return {
-          items: [{ id: 'job_be', display_name: '后端开发', parent_id: 'cat_tech', selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    await screen.findByText('互联网');
-    await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), '互联');
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: '互联' })));
-    // 左栏根 + 右栏搜索命中卡同名：命中卡是 DOM 里靠后的那枚（与 Mock 同一版式）
-    const 命中卡 = await waitFor(() => {
-      const 全部 = screen.getAllByText('互联网');
-      expect(全部.length).toBeGreaterThanOrEqual(2);
-      return 全部[全部.length - 1];
-    });
-    // 点可下钻命中 → 进方向细选页 → 子项「后端开发」出现
-    await 用户.click(命中卡);
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ parentId: 'cat_tech' })));
-    await screen.findByText('后端开发');
-  });
-
-  // review-r3 R3-I-7：查询变化时重置分页状态——搜索 A 有结果+游标 → 搜索 B → A 的结果/游标清空
-  it('查询变化重置分页状态：A 结果被 B 替换（R3-I-7）', async () => {
-    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
-      if (!query.parentId && !query.q && !query.cursor) {
-        return {
-          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'cat_root') {
-        return {
-          items: [{ id: 'job_r1', display_name: '后端', parent_id: 'cat_root', selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.q === 'A') {
-        return {
-          items: [{ id: 'job_a', display_name: 'A岗位', parent_id: null, selectable: true, has_children: false }],
-          nextCursor: 'a_cur_1',
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.q === 'B') {
-        return {
-          items: [{ id: 'job_b', display_name: 'B岗位', parent_id: null, selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    await screen.findByText('技术');
-    // 搜索 A → 结果 + 游标
-    await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), 'A');
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: 'A' })));
-    await screen.findByText('A岗位');
-    // 清空并搜索 B → A 的结果和游标被重置
-    await 用户.clear(screen.getByPlaceholderText('搜索职位 / 方向'));
-    await 用户.type(screen.getByPlaceholderText('搜索职位 / 方向'), 'B');
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalledWith('job-categories', expect.objectContaining({ q: 'B' })), { timeout: 3000 });
-    await screen.findByText('B岗位');
-    expect(screen.queryByText('A岗位')).toBeNull();
-    // B 无游标 → 再滚到底也不会带着 A 的旧游标发请求
-    滚到底(滚动容器(1));
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
-    expect(查询Taxonomy.mock.calls.some((调用) => (调用[1] as { cursor?: string }).cursor === 'a_cur_1')).toBe(false);
-  });
-});
-
-// ── 候选 onboarding 简历预填的个人优势（Spec §8 /wizard 偏好段，Task 6）──
-// draft.summary 只在偏好段的个人优势题作为初值；确认 summary 分区紧跟 保存个人优势
-// 成功，与随后的首次意向请求成败无关。
 
 const 全可预填: 候选预填Eligibility = {
   profile: { real_name: true, work_start_year: true, gender: true, birth_year: true, birth_month: true, current_education: true },
@@ -595,199 +56,249 @@ function readySummary(): 候选预填状态 {
   };
 }
 
-/** 非空 引导预填：偏好段题序塌到 硬性排除 → 个人优势（期望职位/工作城市 已在完善资料采过） */
-const 已采前两题 = {
-  城市们: [], 职位: [], 城市引用们: [], 职位引用们: [],
-  筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+/** 首屏采集齐备的 引导预填（合同 C：refs/薪资/偏好都在首屏采完，本屏只读） */
+const 首屏已采 = {
+  城市们: ['上海'],
+  职位: ['产品经理'],
+  城市引用们: [{ id: 'loc_sh', display_name: '上海' }],
+  职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
+  筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['混合'] },
+  薪资: { 下限: 20, 上限: 30, 单位: '月薪K' as const },
 };
 
+/** 渲染向导（两身份同一个地址；旧薪资段地址由用例显式传 条目） */
 function render引导问答(选项: {
-  段: 向导段;
   预填?: 候选预填状态;
-  个人优势?: string;
-  /** 建档草稿增量（Task 7：排除项/自定义诉求 的恢复侧） */
+  /** 显式覆盖整份 引导预填（null = 没有首屏数据） */
+  引导预填?: unknown;
+  /** 建档草稿增量（排除项/自定义诉求 的恢复侧、位置写入） */
   建档?: object;
-}) {
+  数据源?: 'backend' | 'mock';
+  个人优势?: string;
+  条目?: string | { pathname: string; search: string; state?: unknown };
+  保存首次意向?: ReturnType<typeof vi.fn>;
+} = {}) {
+  const 引导预填 = 选项.引导预填 !== undefined
+    ? 选项.引导预填
+    : (选项.建档 === undefined ? 首屏已采 : { ...首屏已采, 建档: 选项.建档 });
   mock应用状态 = {
-    数据源模式: 'backend',
-    目录查询: {
-      查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
-      查询Location: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
-      查询Institution: vi.fn(),
-    },
+    数据源模式: 选项.数据源 ?? 'backend',
+    目录查询: null,
     状态: {
-      引导预填: 选项.建档 === undefined ? 已采前两题 : { ...已采前两题, 建档: 选项.建档 },
+      引导预填,
       个人优势: 选项.个人优势 ?? '',
       简历作品集链接: '',
       简历经历: [],
+      简历教育: [],
+      简历技能: [],
+      简历证书: [],
       屏蔽名单: [],
-      // 非在校：偏好段题序 = 硬性排除 → 个人优势
-      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
+      基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '在职' as const },
     },
-    后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态() },
+    后端状态: { 候选预填状态: 选项.预填 ?? 创建空候选预填状态(), 主体: null },
     派发: vi.fn(),
-    操作: mock操作,
+    操作: {
+      ...mock操作,
+      保存首次意向: 选项.保存首次意向 ?? mock操作.保存首次意向,
+    },
   };
-  return render(
-    <MemoryRouter initialEntries={[`/onboard/wizard?stage=${选项.段 === '薪资段' ? 'salary' : 'preference'}`]}>
+  render(
+    <MemoryRouter initialEntries={[选项.条目 ?? 路径.引导问答]}>
       <引导问答 />
     </MemoryRouter>,
   );
 }
 
-/** 个人优势题 textarea */
+/** 个人优势题 textarea（日常编辑模式） */
 function 优势框(): HTMLTextAreaElement {
   return screen.getByLabelText('个人优势') as HTMLTextAreaElement;
 }
 
-/** 从偏好段首题（硬性排除）推进到个人优势题并提交 */
-async function 提交到个人优势题() {
-  const 用户 = userEvent.setup();
-  await 用户.click(screen.getByRole('button', { name: '下一步' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined());
-  await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-  await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
-}
-
-describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
+describe('引导问答 onboarding 只问补充偏好（Task 3 合同 C）', () => {
   beforeEach(() => {
     mock跳转.mockClear();
     mock返回.mockClear();
+    mock替换跳转.mockClear();
     mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
     mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
     mock操作.确认候选Onboarding预填分区.mockReset();
+    mock操作.更新候选建档草稿.mockReset();
   });
 
-  it('偏好段空白时种入 summary 作为个人优势初值，保存个人优势携带预填文本', async () => {
-    render引导问答({ 段: '偏好段', 预填: readySummary() });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(优势框().value).toBe('Builds reliable synthetic systems.');
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('Builds reliable synthetic systems.'));
-    // 引导旅程不传保存来源（缺省 = onboarding 跟踪语义）
-    expect(mock操作.保存个人优势.mock.calls[0]).toHaveLength(1);
-  });
-
-  it('薪资段不问个人优势题（summary 不在社招首次薪资段应用）', () => {
-    render引导问答({ 段: '薪资段', 预填: readySummary() });
+  it('本屏只问补充偏好：期望职位/城市/薪资/个人优势四题都不再进场', () => {
+    render引导问答();
+    expect(screen.getByText('哪些情况直接排除？')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '下一步' })).toBeTruthy();
     expect(screen.queryByLabelText('个人优势')).toBeNull();
+    expect(screen.queryByText('期望职位是')).toBeNull();
+    expect(screen.queryByText('你理想的工作城市是')).toBeNull();
+    expect(screen.queryByRole('button', { name: /薪资要求（/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '保存并继续' })).toBeNull();
   });
 
-  it('当前已有个人优势时保留（页面现值优先）', async () => {
-    render引导问答({ 段: '偏好段', 预填: readySummary(), 个人优势: '我自己写的介绍' });
+  it('明确继续动作只调 保存首次意向：读最新首屏 refs/薪资/类型 + 本页偏好，成功才进披露说明', async () => {
+    render引导问答();
     const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '大小周' }));
+    await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '不接受夜班');
+    await 用户.click(screen.getByRole('button', { name: '添加' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(优势框().value).toBe('我自己写的介绍');
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalledTimes(1));
+    const 传入 = mock操作.保存首次意向.mock.calls[0][0] as Record<string, unknown>;
+    expect(传入.职位们).toEqual(['产品经理']);
+    expect(传入.城市们).toEqual(['上海']);
+    expect(传入.薪资).toEqual({ 下限: 20, 上限: 30, 单位: '月薪K' });
+    expect(传入.筛选偏好).toEqual({ 求职类型: ['社招全职'], 办公方式: ['混合'] });
+    expect(传入.职位引用).toEqual({ id: 'tax_pm', display_name: '产品经理' });
+    expect(传入.城市引用们).toEqual([{ id: 'loc_sh', display_name: '上海' }]);
+    expect(传入.排除项).toEqual(['大小周']);
+    expect(传入.自定义诉求).toEqual(['不接受夜班']);
+    // 优势与首次意向已解耦：本屏不保存个人优势、不确认任何分区
+    expect(mock操作.保存个人优势).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(路径.披露说明);
+  });
+
+  it('薪资/偏好逐字取自 引导预填（本屏不再自算周期，也不读页面副本）', async () => {
+    render引导问答({
+      引导预填: {
+        ...首屏已采,
+        筛选偏好: { 求职类型: ['实习生'], 办公方式: ['现场'] },
+        薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
+      },
+    });
+    await userEvent.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalledTimes(1));
+    const 传入 = mock操作.保存首次意向.mock.calls[0][0] as Record<string, unknown>;
+    expect(传入.薪资).toEqual({ 下限: 300, 上限: 500, 单位: '元/天' });
+    expect(传入.筛选偏好).toEqual({ 求职类型: ['实习生'], 办公方式: ['现场'] });
+  });
+
+  it('回到首屏补齐后再回来：本屏不缓存旧值，提交读的是最新 引导预填', async () => {
+    render引导问答({ 引导预填: { ...首屏已采, 薪资: undefined } });
+    const 用户 = userEvent.setup();
+    // 同一挂载内的权威草稿更新（用户回首屏确认薪资后回到本屏）
+    mock应用状态.状态.引导预填 = 首屏已采;
+    await 用户.click(screen.getByRole('button', { name: '大小周' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalledTimes(1));
+    expect((mock操作.保存首次意向.mock.calls[0][0] as Record<string, unknown>).薪资)
+      .toEqual({ 下限: 20, 上限: 30, 单位: '月薪K' });
   });
 
   it.each([
-    ['manual 轮', (轮: 候选预填状态) => { 轮.phase = 'manual'; }],
-    ['summary 已确认', (轮: 候选预填状态) => { 轮.confirmed.summary = true; }],
-    ['inactive 轮（无建议）', null],
-  ])('%s 保留旧初始化（个人优势为空）', async (_名, 改) => {
-    const 轮 = readySummary();
-    if (改) 改(轮);
-    render引导问答({ 段: '偏好段', 预填: 改 ? 轮 : undefined });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(优势框().value).toBe('');
-  });
-
-  it('confirms summary after summary save even when first intention fails', async () => {
-    mock操作.保存个人优势.mockResolvedValue(undefined);
-    mock操作.保存首次意向.mockRejectedValue(new Error('offline'));
-    render引导问答({ 段: '偏好段', 预填: readySummary() });
-    await 提交到个人优势题();
-    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledWith('summary');
-    // 确认发生在 保存个人优势 成功之后、首次意向尝试之前；首次意向失败不回滚
-    expect(mock操作.保存个人优势.mock.invocationCallOrder[0])
-      .toBeLessThan(mock操作.确认候选Onboarding预填分区.mock.invocationCallOrder[0]);
-    expect(mock操作.确认候选Onboarding预填分区.mock.invocationCallOrder[0])
-      .toBeLessThan(mock操作.保存首次意向.mock.invocationCallOrder[0]);
-    // 首次意向失败：不跳转，错误走 轻提示
-    expect(mock跳转).not.toHaveBeenCalled();
-  });
-
-  it('保存个人优势被拒时 summary 不确认、不发首次意向', async () => {
-    mock操作.保存个人优势.mockRejectedValue(new Error('保存失败'));
-    render引导问答({ 段: '偏好段', 预填: readySummary() });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1));
-    // catch 分支已跑完（真实 轻提示 落错误文案）后再做否定断言
-    await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
-    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    ['没有首屏数据（引导预填 缺席）', null],
+    ['薪资未确认', { ...首屏已采, 薪资: undefined }],
+    ['城市引用为空', { ...首屏已采, 城市们: [], 城市引用们: [] }],
+    ['职位引用为空', { ...首屏已采, 职位: [], 职位引用们: [] }],
+  ])('缺首屏必需数据（%s）：不提交空默认串，替换回首屏补齐', async (_名, 引导预填) => {
+    render引导问答({ 引导预填 });
+    await userEvent.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.学生分流));
     expect(mock操作.保存首次意向).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
   });
 
-  it('成功路径：summary 确认后保存首次意向并跳转披露说明', async () => {
-    render引导问答({ 段: '偏好段', 预填: readySummary() });
-    await 提交到个人优势题();
-    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.披露说明));
-    expect(mock操作.确认候选Onboarding预填分区).toHaveBeenCalledTimes(1);
-  });
-
-  // ── S：Backend 不再用 Mock 种子 个人优势文本 充当恢复来源 ──
-
-  it('Backend ready summary 只恢复当前轮真实建议', async () => {
-    const 轮 = readySummary();
-    轮.suggestion!.draft.summary.value = '当前轮真实建议';
-    render引导问答({ 段: '偏好段', 预填: 轮, 个人优势: '用户改写' });
+  it('双击只发一次命令：提交锁 + 按钮禁用，不为同一轮造第二条意向', async () => {
+    let resolve提交!: () => void;
+    const 保存首次意向 = vi.fn(() => new Promise<void>((resolve) => { resolve提交 = resolve; }));
+    render引导问答({ 保存首次意向 });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(优势框().value).toBe('用户改写');
-    // Mock 种子文本（9 年高并发交易系统…）不出现在屏上
-    expect(screen.queryByText(/9 年高并发交易系统/)).toBeNull();
-    await 用户.click(screen.getByRole('button', { name: /恢复简历识别建议/ }));
-    expect(优势框().value).toBe('当前轮真实建议');
-    // 恢复只改页面草稿，仍由「保存并继续」统一 mutation
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(保存首次意向).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('button', { name: '下一步' }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => { resolve提交(); });
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.披露说明));
+  });
+
+  it('首次意向失败：留页保留偏好、不跳转，也不重存个人优势或重确认分区', async () => {
+    mock操作.保存首次意向.mockRejectedValue(new Error('offline'));
+    render引导问答();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '大小周' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock操作.保存个人优势).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    // 重试只补意向：已成功的分区与个人优势一概不重跑
+    mock操作.保存首次意向.mockResolvedValue(undefined);
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.披露说明));
+    expect(mock操作.保存首次意向).toHaveBeenCalledTimes(2);
     expect(mock操作.保存个人优势).not.toHaveBeenCalled();
   });
 
-  it('Backend 无可用建议时无恢复动作，手工文本仍可保存', async () => {
-    const 轮 = readySummary();
-    轮.phase = 'manual';
-    render引导问答({ 段: '偏好段', 预填: 轮, 个人优势: '' });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(screen.queryByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toBeNull();
-    await 用户.type(优势框(), '用户本人填写');
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('用户本人填写'));
+  it('Mock 分支同样只调 保存首次意向 并进披露说明（预置意向不由本屏新增）', async () => {
+    render引导问答({ 数据源: 'mock' });
+    await userEvent.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalledTimes(1));
+    expect(mock跳转).toHaveBeenCalledWith(路径.披露说明);
   });
 
-  it('Mock 保留原型恢复：重新从简历提取写回种子文本', async () => {
-    mock应用状态 = {
-      数据源模式: 'mock',
-      目录查询: null,
-      状态: {
-        引导预填: 已采前两题,
-        个人优势: '',
-        简历作品集链接: '',
-        简历经历: [],
-        // 非在校：偏好段题序 = 硬性排除 → 个人优势
-        基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
-      },
-      派发: vi.fn(),
-      操作: mock操作,
-    };
-    render(
-      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
-        <引导问答 />
-      </MemoryRouter>,
-    );
+  it('建档草稿里的 排除项/自定义诉求 恢复成本题答案并原样提交', async () => {
+    render引导问答({ 建档: { 排除项: ['全现场办公'], 自定义诉求: ['不接受夜班'] } });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.clear(优势框());
-    await 用户.type(优势框(), '我改过的内容');
-    await 用户.click(screen.getByRole('button', { name: /重新从简历提取/ }));
-    expect(优势框().value).toBe(个人优势文本);
+    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalledTimes(1));
+    const 传入 = mock操作.保存首次意向.mock.calls[0][0] as Record<string, unknown>;
+    expect(传入.排除项).toEqual(['全现场办公']);
+    expect(传入.自定义诉求).toEqual(['不接受夜班']);
+    // 答案与位置同一次草稿写（分两次写会拿过期建档互相覆盖）
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledTimes(1);
+    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(expect.objectContaining({
+      排除项: ['全现场办公'],
+      自定义诉求: ['不接受夜班'],
+      位置: { pathname: 路径.引导问答, search: '' },
+    }));
+  });
+
+  it('单题形态不读 位置.题序：越界/损坏下标不影响本屏（不会白屏或跳到不存在的题）', () => {
+    render引导问答({
+      建档: { 位置: { pathname: 路径.引导问答, search: '', 题序: 9 } },
+    });
+    expect(screen.getByText('哪些情况直接排除？')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '下一步' })).toBeTruthy();
   });
 });
 
+// ── 旧薪资段地址最小兼容（Spec §3.2 / 合同 C）：薪资已并入首屏，本屏不再有薪资段。
+//    「判定日常模式之后」才替换重定向 —— 恶意/旧组合 query 不得把日常编辑带进注册流。
+describe('引导问答 · 旧薪资段地址兼容（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock替换跳转.mockClear();
+    mock操作.更新候选建档草稿.mockReset();
+  });
+
+  it('旧 ?stage=salary 替换回首屏补齐：不挂本屏表单、不动草稿与待写入槽', async () => {
+    render引导问答({
+      条目: 路径.引导问答薪资段,
+      建档: {
+        待写入: { 种类: 'summary', 幂等键: 'k1', 阶段: 'prepared' },
+        资料: { 个人优势: '一半' },
+      },
+    });
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.学生分流));
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(screen.queryByText('哪些情况直接排除？')).toBeNull();
+    expect(screen.queryByLabelText('个人优势')).toBeNull();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+  });
+
+  it('日常编辑标记优先：?stage=salary&from=resume 仍是个人优势编辑，不被带进注册流', () => {
+    render引导问答({
+      条目: `${路径.引导问答}?stage=salary&from=resume`,
+      引导预填: null,
+    });
+    expect(mock替换跳转).not.toHaveBeenCalled();
+    expect(screen.getByText('编辑个人优势')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+  });
+});
 // ── 个人优势独立编辑入口（Task 4 / Task 2）：/wizard?from=resume 在向导内唯一表示
 //    「只编辑个人优势」—— 题序直接为个人优势单题，标题「编辑个人优势」，初值是已水合
 //    全局.个人优势（不消费候选预填建议、不显示“已根据你上传的简历预先提取”与恢复动作）；
@@ -943,486 +454,6 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
   });
 });
 
-// ── DF-004：提取说明服从「初始化是否真正采用了有效建议」──
-// 注册流的副标说明只有两种事实态：挂载时 取个人优势预填 真把当前轮有效建议种进了
-// 空输入（且输入仍非空）→ “已根据你上传的简历预先提取…”；其余（未上传/无建议、
-// 建议空白或不可用、由已有用户文本初始化——哪怕文本恰与建议相同、用户清空）一律
-// 中性说明。来源只在挂载算一次：恢复按钮沿用原动作不回改来源，后到建议不覆盖用户
-// 文本、也不让说明误称已应用。独立编辑（Task 4）仍不带任何说明。──
-
-describe('引导问答 个人优势提取说明服从实际预填来源（DF-004）', () => {
-  const 提取说明 = '已根据你上传的简历预先提取，直接删改即可。';
-  const 中性说明 = '可以介绍你的经验、技能和擅长的事情。';
-
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
-    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
-    mock操作.确认候选Onboarding预填分区.mockReset();
-  });
-
-  /** 偏好段首题（硬性排除）推进到个人优势题，返回已建立的 userEvent */
-  async function 推进到个人优势题() {
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await waitFor(() => expect(screen.getByLabelText('个人优势')).toBeTruthy());
-    return 用户;
-  }
-
-  it('无建议（未上传）用中性说明，不声称已提取', async () => {
-    render引导问答({ 段: '偏好段' });
-    await 推进到个人优势题();
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    expect(screen.queryByText(提取说明)).toBeNull();
-  });
-
-  it('建议空白（全空白 summary）不种入，仍用中性说明', async () => {
-    const 轮 = readySummary();
-    轮.suggestion!.draft.summary.value = '   ';
-    render引导问答({ 段: '偏好段', 预填: 轮 });
-    await 推进到个人优势题();
-    expect(优势框().value).toBe('');
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    expect(screen.queryByText(提取说明)).toBeNull();
-  });
-
-  it.each([
-    ['manual 轮', (轮: 候选预填状态) => { 轮.phase = 'manual'; }],
-    ['summary 已确认', (轮: 候选预填状态) => { 轮.confirmed.summary = true; }],
-  ])('%s 的建议不可用：中性说明', async (_名, 改) => {
-    const 轮 = readySummary();
-    改(轮);
-    render引导问答({ 段: '偏好段', 预填: 轮 });
-    await 推进到个人优势题();
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    expect(screen.queryByText(提取说明)).toBeNull();
-  });
-
-  it('有效建议真正作为初值应用且输入非空时显示提取说明', async () => {
-    render引导问答({ 段: '偏好段', 预填: readySummary() });
-    await 推进到个人优势题();
-    expect(优势框().value).toBe('Builds reliable synthetic systems.');
-    expect(screen.getByText(提取说明)).toBeTruthy();
-    expect(screen.queryByText(中性说明)).toBeNull();
-  });
-
-  it('已有个人优势初始化（即便文本恰与建议相同）仍属用户文本：中性说明', async () => {
-    render引导问答({ 段: '偏好段', 预填: readySummary(), 个人优势: 'Builds reliable synthetic systems.' });
-    await 推进到个人优势题();
-    expect(优势框().value).toBe('Builds reliable synthetic systems.');
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    expect(screen.queryByText(提取说明)).toBeNull();
-  });
-
-  it('用户清空输入后立即回中性说明', async () => {
-    render引导问答({ 段: '偏好段', 预填: readySummary() });
-    const 用户 = await 推进到个人优势题();
-    expect(screen.getByText(提取说明)).toBeTruthy();
-    await 用户.clear(优势框());
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    expect(screen.queryByText(提取说明)).toBeNull();
-  });
-
-  it('用户文本初始化后点恢复写回建议，说明仍为中性', async () => {
-    const 轮 = readySummary();
-    轮.suggestion!.draft.summary.value = '当前轮真实建议';
-    render引导问答({ 段: '偏好段', 预填: 轮, 个人优势: '用户改写' });
-    const 用户 = await 推进到个人优势题();
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: /恢复简历识别建议/ }));
-    expect(优势框().value).toBe('当前轮真实建议');
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    expect(screen.queryByText(提取说明)).toBeNull();
-  });
-
-  it('挂载后到达的建议不覆盖用户文本，也不让说明误称已应用', async () => {
-    const 轮 = readySummary();
-    轮.suggestion!.draft.summary.value = '后到的建议';
-    const 视图 = render引导问答({ 段: '偏好段', 个人优势: '用户先写的' });
-    await 推进到个人优势题();
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    mock应用状态.后端状态 = { 候选预填状态: 轮 };
-    视图.rerender(
-      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
-        <引导问答 />
-      </MemoryRouter>,
-    );
-    expect(优势框().value).toBe('用户先写的');
-    expect(screen.getByText(中性说明)).toBeTruthy();
-    // 建议可用后恢复按钮照常出现，动作沿用原实现
-    expect(screen.getByRole('button', { name: /恢复简历识别建议/ })).toBeTruthy();
-  });
-
-  it('独立编辑（from=resume）不带任何说明', () => {
-    render个人优势编辑({ 个人优势: '存量优势', 预填: readySummary() });
-    expect(screen.queryByText(提取说明)).toBeNull();
-    expect(screen.queryByText(中性说明)).toBeNull();
-  });
-});
-// ── Task 5：职位与城市两模式共用各自原 Mock 展示 ──
-
-describe('引导问答 Backend 期望职位题 接原 Mock 说明卡与方向细选页（Task 5）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  it('真实根→中间说明卡→方向细选页里的可选叶子才写引用', async () => {
-    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
-      if (!query.parentId && !query.q) {
-        return {
-          items: [{ id: 'cat_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'cat_root') {
-        return {
-          items: [{ id: 'cat_mid', display_name: '后端方向', parent_id: 'cat_root', selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'cat_mid') {
-        return {
-          items: [{ id: 'job_leaf', display_name: 'Java 工程师', parent_id: 'cat_mid', selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    const { 派发 } = render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    // 中间节点用原 Mock 说明卡承载：没有行业说明就是真实空值，不补「暂无说明」
-    const 说明卡 = await screen.findByRole('button', { name: /后端方向/ });
-    expect(说明卡.textContent).not.toContain('暂无说明');
-    await 用户.click(说明卡);
-    // 进原方向细选页，叶子在这里才可选
-    await 用户.click(await screen.findByRole('button', { name: /Java 工程师/ }));
-    await 用户.click(await screen.findByRole('button', { name: '完成' }));
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() =>
-      expect(派发).toHaveBeenCalledWith(
-        expect.objectContaining({
-          型: '存引导预填',
-          职位: ['Java 工程师'],
-          职位引用们: [{ id: 'job_leaf', display_name: 'Java 工程师' }],
-        }),
-      ),
-    );
-  });
-
-  it('同名不同 ID 的已选条各自独立移除', async () => {
-    const 查询Taxonomy = 后端查询Taxonomy桩([
-      { id: 'tax_selected', display_name: '产品经理', selectable: true },
-      { id: 'tax_other', display_name: '产品经理', selectable: true },
-    ]);
-    const { 派发 } = render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    const 两枚 = await waitFor(() => {
-      const 全部 = screen.getAllByRole('button', { name: /产品经理/ });
-      expect(全部.length).toBeGreaterThanOrEqual(2);
-      return 全部;
-    });
-    await 用户.click(两枚[0]);
-    await 用户.click(两枚[1]);
-    const chips = screen.getAllByRole('button', { name: '产品经理 ✕' });
-    expect(chips).toHaveLength(2);
-    await 用户.click(chips[0]);
-    expect(screen.getAllByRole('button', { name: '产品经理 ✕' })).toHaveLength(1);
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() =>
-      expect(派发).toHaveBeenCalledWith(
-        expect.objectContaining({
-          型: '存引导预填',
-          职位: ['产品经理'],
-          职位引用们: [{ id: 'tax_other', display_name: '产品经理' }],
-        }),
-      ),
-    );
-  });
-});
-
-describe('引导问答 Backend 城市题：精选区 + 四支默认目录（Task 4）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  /** 造一条 Location 目录项（字段全部来自后端返回） */
-  function 城(项: { id: string; display_name: string; countryCode?: string; admin1_name: string | null }) {
-    return {
-      id: 项.id,
-      display_name: 项.display_name,
-      country_code: 项.countryCode ?? 'CN',
-      country_name: 项.countryCode ?? '中国',
-      admin1_code: '31',
-      admin1_name: 项.admin1_name,
-      timezone: 'Asia/Shanghai',
-      population: 0,
-    };
-  }
-
-  type 页形 = { items: ReturnType<typeof 城>[]; nextCursor: string | null };
-  type 国家名 = 'CN' | 'TW' | 'HK' | 'MO';
-
-  /** 四支分发桩：按 countryCode 返回各自页；搜索词命中时返回搜索结果 */
-  function 四国桩(配置: Partial<Record<国家名, 页形>> & { 搜索?: 页形 }) {
-    return vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string; limit?: number }) => {
-      if (query.q !== undefined) {
-        return { ...(配置.搜索 ?? { items: [], nextCursor: null }), catalogVersion: 'v2' };
-      }
-      const 页 = 配置[(query.countryCode ?? 'CN') as 国家名] ?? { items: [], nextCursor: null };
-      return { ...页, catalogVersion: 'v2' };
-    });
-  }
-
-  /** 从第一题（期望职位）推进到工作城市题 */
-  async function 进城市题() {
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    return 用户;
-  }
-
-  it('当前定位缺失态点不出上海；两精选区上屏且无港澳台精选；默认查询按国家分支不带 q', async () => {
-    const 查询Location = 四国桩({
-      CN: {
-        items: [
-          城({ id: 'loc_sh', display_name: '上海', admin1_name: '上海市' }),
-          城({ id: 'loc_gz', display_name: '广州市', admin1_name: '广东省' }),
-        ],
-        nextCursor: null,
-      },
-    });
-    const { 派发 } = render引导问答后端({ 查询Location });
-    const 用户 = await 进城市题();
-    const 定位 = await screen.findByText('暂未获取定位');
-    await 用户.click(定位);
-    // 缺失态点不出任何城市：没有已选 chip，下一步仍禁用
-    expect(screen.queryByRole('button', { name: '上海 ✕' })).toBeNull();
-    expect((screen.getByRole('button', { name: /保存/ }) as HTMLButtonElement).disabled).toBe(true);
-    // 默认查询按国家分支，不带 q
-    const 调用 = 查询Location.mock.calls as unknown[][];
-    expect(调用.length).toBeGreaterThanOrEqual(4);
-    for (const 单调用 of 调用) {
-      expect(Object.keys(单调用[0] as Record<string, unknown>)).not.toContain('q');
-    }
-    // 两精选区（静态配置）与精选条目；港澳台不进精选（TW/HK/MO 支为空也不出现英文名）
-    expect(screen.getByText('国内热门城市')).toBeTruthy();
-    expect(screen.getByText('海外热门城市')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Singapore' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Singapore市' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Hong Kong' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Macau' })).toBeNull();
-    // 不造「其他地区」、不显示 Mock 硬编码省墙
-    expect(screen.queryByText('其他地区')).toBeNull();
-    expect(screen.queryByText('直辖市')).toBeNull();
-    expect(screen.queryByText('港澳台')).toBeNull();
-    // 真实项仍可选并按 ID 保存（精选区同名「广州市」在前，取末枚点目录项）
-    await 用户.click(screen.getAllByRole('button', { name: '广州市' }).at(-1)!);
-    expect(screen.getByRole('button', { name: '广州市 ✕' })).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    expect(派发).toHaveBeenCalledWith(
-      expect.objectContaining({
-        型: '存引导预填',
-        城市引用们: [{ id: 'loc_gz', display_name: '广州市' }],
-      }),
-    );
-  });
-
-  it('三个中文组标题与英文条目：TW/HK/MO 返回无视 admin1 细分，组内可选保存', async () => {
-    const 查询Location = 四国桩({
-      TW: { items: [城({ id: 'loc_tpe', display_name: 'Taipei', countryCode: 'TW', admin1_name: 'Taipei' })], nextCursor: null },
-      HK: { items: [城({ id: 'loc_hk', display_name: 'Hong Kong', countryCode: 'HK', admin1_name: 'Hong Kong' })], nextCursor: null },
-      MO: { items: [城({ id: 'loc_mo', display_name: 'Macau', countryCode: 'MO', admin1_name: null })], nextCursor: null },
-    });
-    const { 派发 } = render引导问答后端({ 查询Location });
-    const 用户 = await 进城市题();
-    await screen.findByText('台湾省');
-    expect(screen.getByText('香港特别行政区')).toBeTruthy();
-    expect(screen.getByText('澳门特别行政区')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Taipei' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Hong Kong' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Macau' })).toBeTruthy();
-    await 用户.click(screen.getByRole('button', { name: 'Taipei' }));
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    expect(派发).toHaveBeenCalledWith(
-      expect.objectContaining({
-        型: '存引导预填',
-        城市引用们: [{ id: 'loc_tpe', display_name: 'Taipei' }],
-      }),
-    );
-  });
-
-  it('列表尾「加载更多」：默认第二页与搜索第二页可达，初始加载不当无结果', async () => {
-    const CN第二页 = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
-    const A第二页 = deferredPromise<{ items: unknown[]; nextCursor: string | null; catalogVersion: string }>();
-    const 查询Location = vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string }) => {
-      if (query.cursor === 'cn_1') return CN第二页.promise;
-      if (query.cursor === 'a_cur_1') return A第二页.promise;
-      if (query.q === 'A') {
-        return { items: [城({ id: 'loc_a1', display_name: 'A城', admin1_name: null })], nextCursor: 'a_cur_1', catalogVersion: 'v2' };
-      }
-      if (query.countryCode === 'CN') {
-        return { items: [城({ id: 'loc_cn1', display_name: '广州市', admin1_name: '广东省' })], nextCursor: 'cn_1', catalogVersion: 'v2' };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    render引导问答后端({ 查询Location });
-    const 用户 = await 进城市题();
-    // 默认第二页可达：列表尾按钮翻 CN 的下一页（精选区同名在前，取行政区分组那枚）
-    expect((await screen.findAllByText('广州市')).length).toBeGreaterThanOrEqual(2);
-    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
-    await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ countryCode: 'CN', cursor: 'cn_1' })));
-    await CN第二页.resolve({ items: [城({ id: 'loc_cn2', display_name: '杭州市', admin1_name: '浙江省' })], nextCursor: null, catalogVersion: 'v2' });
-    expect(await screen.findByText('杭州市')).toBeTruthy();
-
-    // 搜索：词在飞行中不显示「没有匹配」；结果到后搜索第二页经同一按钮可达
-    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'A');
-    await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ q: 'A' })));
-    expect(screen.queryByText('没有匹配的城市，换个词试试。')).toBeNull();
-    // 全球搜索：q 直达端点、不带国家限制（review fix 1；页面级断言）
-    const 搜索调用 = ((查询Location as ReturnType<typeof vi.fn>).mock.calls as unknown[][]).find(
-      (单调用) => (单调用[0] as { q?: string }).q === 'A',
-    );
-    expect(搜索调用).toBeTruthy();
-    expect(Object.keys(搜索调用![0] as Record<string, unknown>)).not.toHaveProperty('countryCode');
-    await screen.findByText('A城');
-    await 用户.click(screen.getByRole('button', { name: '加载更多' }));
-    await waitFor(() => expect(查询Location).toHaveBeenCalledWith(expect.objectContaining({ q: 'A', cursor: 'a_cur_1' })));
-    await A第二页.resolve({ items: [城({ id: 'loc_a2', display_name: 'A城2', admin1_name: null })], nextCursor: null, catalogVersion: 'v2' });
-    expect(await screen.findByText('A城2')).toBeTruthy();
-  });
-
-  it('搜索清空恢复默认目录：精选区与已选保持（Task 4 review fix 1）', async () => {
-    const 查询Location = 四国桩({
-      CN: { items: [城({ id: 'loc_cn1', display_name: '广州市', admin1_name: '广东省' })], nextCursor: null },
-      搜索: { items: [城({ id: 'loc_a1', display_name: 'A城', admin1_name: null })], nextCursor: null },
-    });
-    render引导问答后端({ 查询Location });
-    const 用户 = await 进城市题();
-    // 精选区先选一枚 → 搜索离开默认目录 → 清空恢复
-    await 用户.click(await screen.findByRole('button', { name: 'Singapore' }));
-    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'A');
-    await screen.findByText('A城');
-    await 用户.clear(screen.getByPlaceholderText('搜索城市 / 省份'));
-    // 恢复：精选区与默认分组回来，已选不丢
-    expect(await screen.findByText('国内热门城市')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: '广州市' }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole('button', { name: 'Singapore ✕' })).toBeTruthy();
-  });
-
-  it('选海外精选保存 canonical ID（原建档引用保存）', async () => {
-    const 查询Location = 四国桩({});
-    const { 派发 } = render引导问答后端({ 查询Location });
-    const 用户 = await 进城市题();
-    await 用户.click(await screen.findByRole('button', { name: 'Singapore' }));
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    expect(派发).toHaveBeenCalledWith(
-      expect.objectContaining({
-        型: '存引导预填',
-        城市引用们: [{ id: 'loc_qdyx7r6fcyjrcokobaxsorhhrm', display_name: 'Singapore' }],
-      }),
-    );
-  });
-});
-
-describe('引导问答 Mock 城市题（Task 4）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  it('默认分组：港澳台三中文组标题配英文条目、无海外长组；搜索读搜索字典仍可搜海外', async () => {
-    render引导问答Mock();
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    expect(screen.getByText('台湾省')).toBeTruthy();
-    expect(screen.getByText('香港特别行政区')).toBeTruthy();
-    expect(screen.getByText('澳门特别行政区')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Taipei' })).toBeTruthy();
-    expect(screen.queryByText('海外', { selector: 'div' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '迪拜' })).toBeNull();
-    expect(screen.queryByText('港澳台')).toBeNull();
-    // Mock 无默认目录查询：列表尾不出现永不消失的死按钮（review fix 2）
-    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
-    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), '新加坡');
-    expect(await screen.findByRole('button', { name: 'Singapore' })).toBeTruthy();
-  });
-});
-
-// ── Task 6：热门城市规范显示名与有限别名兼容 ──────────────────────
-describe('引导问答 城市题 规范名与有限别名（Task 6）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  it('Mock 默认「上海」按规范名回显，与热门「上海市」同项：再点即取消', async () => {
-    render引导问答Mock();
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    // Mock 默认种子「上海」按规范名回显，与热门「上海市」同项
-    expect(screen.getByRole('button', { name: '上海市 ✕' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '上海 ✕' })).toBeNull();
-    // 点热门区「上海市」= 取消同一项
-    await 用户.click(screen.getAllByRole('button', { name: '上海市' })[0]);
-    expect(screen.queryByRole('button', { name: '上海市 ✕' })).toBeNull();
-    // 分省组里的「上海市」（同键）也跟着取消
-    expect(screen.getByText('保存（已选 0）')).toBeTruthy();
-  });
-
-  it('Mock 城市题取消（返回上一题）不落盘：返回后无新的 存引导预填 派发', async () => {
-    const { 派发 } = render引导问答Mock();
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    const 落盘数 = 派发.mock.calls.filter(
-      (调用: unknown[]) => (调用[0] as { 型: string }).型 === '存引导预填',
-    ).length;
-    // 回到上一题 = 取消，不落盘工作城市答案
-    await 用户.click(screen.getByRole('button', { name: /返回/ }));
-    expect(mock跳转).not.toHaveBeenCalled();
-    const 落盘数后 = 派发.mock.calls.filter(
-      (调用: unknown[]) => (调用[0] as { 型: string }).型 === '存引导预填',
-    ).length;
-    expect(落盘数后).toBe(落盘数);
-  });
-
-  it('Mock 搜索旧中文海外名命中规范项；同项去重只出现一枚', async () => {
-    render引导问答Mock();
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    await 用户.type(screen.getByPlaceholderText('搜索城市 / 省份'), 'Singapore');
-    // 别名匹配：规范英文名也能搜到（经旧中文名命中）
-    expect(await screen.findByRole('button', { name: 'Singapore' })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Singapore' })).toHaveLength(1);
-  });
-
-  it('Backend 精选区与已选共享 ID：点热门「北京市」保存按 canonical ID 提交且显示名为规范名', async () => {
-    // 进城市题后先点热门区「北京市」（canonical ID），保存按 ID 提交、显示名为规范名
-    const 查询Location = vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' }));
-    const { 派发 } = render引导问答后端({ 查询Location });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    await waitFor(() => expect(screen.getByPlaceholderText('搜索城市 / 省份')).toBeDefined());
-    await 用户.click(await screen.findByRole('button', { name: '北京市' }));
-    await 用户.click(screen.getByRole('button', { name: /保存/ }));
-    expect(派发).toHaveBeenCalledWith(
-      expect.objectContaining({
-        型: '存引导预填',
-        城市引用们: [{ id: 'loc_7gn74qrcymqcwwuqwotm47dbba', display_name: '北京市' }],
-      }),
-    );
-  });
-});
-
 // ── J-PILOT-02 Task 7：私有诉求与权威屏蔽状态 ──
 // 固定卡进 排除项、用户原文进 自定义诉求（映射层据此拼私有诉求）；
 // 屏蔽只回显权威确认快照，不能因社招简历公司名默认已屏蔽或自动写入。
@@ -1464,7 +495,7 @@ function render排除题(选项: {
       查询Institution: vi.fn(),
     },
     状态: {
-      引导预填: 已采前两题,
+      引导预填: 首屏已采,
       个人优势: '',
       简历作品集链接: '',
       简历经历: 选项.简历经历 ?? [],
@@ -1476,7 +507,7 @@ function render排除题(选项: {
     操作: { ...mock操作, 解除组织屏蔽, 添加组织屏蔽, 搜索组织, 创建组织 },
   };
   render(
-    <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+    <MemoryRouter initialEntries={[路径.引导问答]}>
       <引导问答 />
     </MemoryRouter>,
   );
@@ -1511,7 +542,7 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
   });
 
   it('固定卡进 排除项、用户自定义原文进 自定义诉求（不再混进排除项被丢弃）', async () => {
-    render引导问答({ 段: '偏好段' });
+    render引导问答();
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '大小周' }));
     await 用户.click(screen.getByRole('button', { name: '频繁出差' }));
@@ -1520,7 +551,6 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
     await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '大小周也能接受');
     await 用户.click(screen.getByRole('button', { name: '添加' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
     await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
@@ -1538,12 +568,11 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
   // review r1 #1：行内输入写的是「用户自己的话」，与卡片同名也不例外 ——
   // 走 排除项 就会被映射改写成「不接受大小周」，那是 Spec §5.1 明令禁止的改写用户原话。
   it('自定义输入里逐字打出卡片同名文字，仍进 自定义诉求（不被当卡片改写）', async () => {
-    render引导问答({ 段: '偏好段' });
+    render引导问答();
     const 用户 = userEvent.setup();
     await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '大小周');
     await 用户.click(screen.getByRole('button', { name: '添加' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
     await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
@@ -1554,11 +583,10 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
   // review r1 #1 第二面：草稿恢复出来的同名自定义原话必须能被点掉，
   // 且点它不能反而往 排除项 里塞一张卡（否则会多出一条「不接受大小周」且删不掉）。
   it('草稿恢复的同名自定义原话可点掉，且点击不会变成勾选固定卡', async () => {
-    render引导问答({ 段: '偏好段', 建档: { 排除项: ['频繁出差'], 自定义诉求: ['大小周'] } });
+    render引导问答({ 建档: { 排除项: ['频繁出差'], 自定义诉求: ['大小周'] } });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '大小周' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
     await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
@@ -1568,10 +596,9 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
 
   // review r1 #5：草稿恢复这一侧同样要有断言 —— 刷新回来两个载体都在原位
   it('建档草稿里的 排除项/自定义诉求 恢复成本题答案并原样提交', async () => {
-    render引导问答({ 段: '偏好段', 建档: { 排除项: ['全现场办公'], 自定义诉求: ['不接受夜班'] } });
+    render引导问答({ 建档: { 排除项: ['全现场办公'], 自定义诉求: ['不接受夜班'] } });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
     await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
@@ -1580,14 +607,13 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
   });
 
   it('取消一枚自定义 chip 只动 自定义诉求，不影响固定卡', async () => {
-    render引导问答({ 段: '偏好段' });
+    render引导问答();
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '全现场办公' }));
     await 用户.type(screen.getByPlaceholderText('用你自己的话写'), '不接受夜班');
     await 用户.click(screen.getByRole('button', { name: '添加' }));
     await 用户.click(screen.getByRole('button', { name: '不接受夜班' }));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
     await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const 传入 = (mock操作.保存首次意向.mock.calls[0] as any[])[0];
@@ -1663,7 +689,7 @@ describe('引导问答 硬性排除：私有诉求与权威屏蔽（Task 7）', 
       数据源模式: 'mock',
       目录查询: null,
       状态: {
-        引导预填: 已采前两题,
+        引导预填: 首屏已采,
         个人优势: '',
         简历作品集链接: '',
         简历经历: [{ 公司: '云衢科技' }],
@@ -1920,223 +946,5 @@ describe('引导问答 再加一家：公司选择抽屉与手动屏蔽（Task 5
     await 用户.click(开关);
     await waitFor(() => expect(document.body.textContent).toContain('简历里还没有可一键屏蔽的公司'));
     expect(开关.getAttribute('aria-checked')).toBe('false');
-  });
-});
-
-// ── Task 7：末题的作品集校验/规范化读同一份草稿值（不恢复已被 PM 移除的输入行）──
-
-describe('引导问答 末题作品集控制读建档草稿（Task 7）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
-    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
-    mock操作.确认候选Onboarding预填分区.mockReset();
-    mock操作.更新候选建档草稿.mockReset();
-  });
-
-  /** 草稿里带一个用户已修改但非法的 URL：末题校验必须读它（而不是权威空值） */
-  /** 作品集链接 传 undefined = 草稿里没有该属性（用户没改过，回显权威值） */
-  function render带草稿URL(作品集链接: string | null | undefined) {
-    mock应用状态 = {
-      数据源模式: 'backend',
-      目录查询: {
-        查询Taxonomy: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
-        查询Location: vi.fn(async () => ({ items: [], nextCursor: null, catalogVersion: 'v2' })),
-        查询Institution: vi.fn(),
-      },
-      状态: {
-        引导预填: {
-          ...已采前两题,
-          建档: { 资料: 作品集链接 === undefined ? {} : { 作品集链接 } },
-        },
-        个人优势: '',
-        简历作品集链接: '',
-        简历经历: [],
-        屏蔽名单: [],
-        基本信息: { 真名: '沈', 开始工作年: '2017', 身份: '离职' as const },
-      },
-      后端状态: { 候选预填状态: 创建空候选预填状态() },
-      派发: vi.fn(),
-      操作: mock操作,
-    };
-    render(
-      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
-        <引导问答 />
-      </MemoryRouter>,
-    );
-  }
-
-  it('草稿里的非法 URL 让末题保存按钮禁用（读同一值与修改状态）', async () => {
-    render带草稿URL('不是链接 有空格');
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    expect(screen.getByRole('button', { name: '保存并继续' }).hasAttribute('disabled')).toBe(true);
-    // 不恢复已移除的 URL 输入行
-    expect(screen.queryByPlaceholderText(/github/i)).toBeNull();
-  });
-
-  // review r1 #2：本屏没有 URL 输入行，末题的规范化不能把「没改过」变成「用户改过」——
-  // 简历还没水合/水合失败时权威值是空串，无条件回写会往草稿里盖一个 null，
-  // 完成时就把服务端已有的 URL 清掉了。
-  it('未改过的 URL 不因末题规范化被写成已修改（不制造 dirty）', async () => {
-    render带草稿URL(undefined);
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
-    const 写过链接 = mock操作.更新候选建档草稿.mock.calls.some(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ([建档]: any[]) => 建档?.资料 !== undefined && '作品集链接' in 建档.资料,
-    );
-    expect(写过链接).toBe(false);
-  });
-
-  it('草稿里的合法 URL 规范化后写回同一草稿字段', async () => {
-    render带草稿URL('example.com/me');
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await 用户.click(screen.getByRole('button', { name: '保存并继续' }));
-    await waitFor(() => expect(mock操作.保存首次意向).toHaveBeenCalled());
-    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
-      expect.objectContaining({ 资料: expect.objectContaining({ 作品集链接: 'https://example.com/me' }) }),
-    );
-  });
-});
-
-// ── J-PILOT-02 Task 9：题目级恢复 —— 游标从草稿 位置.题序 恢复，推进/回退回写 ──
-// Spec §6「恢复中断页面、向导段和题目」：偏好段题序 = 硬性排除 → 个人优势
-//（render引导问答 的非在校 + 已采前两题），题序 1 即 个人优势。
-describe('引导问答 题目级恢复（Task 9）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
-    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
-    mock操作.确认候选Onboarding预填分区.mockReset();
-    mock操作.更新候选建档草稿.mockReset();
-  });
-
-  it('挂载游标按草稿 位置.题序 恢复到中断的那道题（偏好段第 2 题 = 个人优势）', async () => {
-    render引导问答({
-      段: '偏好段',
-      建档: { 位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 1 } },
-    });
-    // 个人优势题：按钮是「保存并继续」；不在首题（下一步按钮不存在）
-    expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
-  });
-
-  it('位置.题序 越界（跨段旧下标/损坏值）安全回退到本段首题', () => {
-    render引导问答({
-      段: '偏好段',
-      建档: { 位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 5 } },
-    });
-    // 首题硬性排除：按钮是「下一步」，不取 undefined 题白屏
-    expect(screen.getByRole('button', { name: '下一步' })).toBeDefined();
-    expect(screen.queryByRole('button', { name: '保存并继续' })).toBeNull();
-  });
-
-  it('硬性排除推进：答案与题目下标同一次草稿写（位置.题序=1，不另发第二次写）', async () => {
-    render引导问答({ 段: '偏好段' });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '大小周' }));
-    await 用户.click(screen.getByRole('button', { name: '下一步' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: '保存并继续' })).toBeDefined());
-    // 离开硬性排除的那一次写同时带 排除项 与 位置（含题序 1）；不再有第二次只写位置的草稿写
-    expect(mock操作.更新候选建档草稿).toHaveBeenCalledTimes(1);
-    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
-      expect.objectContaining({
-        排除项: ['大小周'],
-        位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 1 },
-      }),
-    );
-  });
-
-  it('个人优势回退到硬性排除：游标下标单独回写（位置.题序=0）', async () => {
-    render引导问答({
-      段: '偏好段',
-      建档: { 位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 1 } },
-    });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '返回' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: '下一步' })).toBeDefined());
-    expect(mock操作.更新候选建档草稿).toHaveBeenCalledWith(
-      expect.objectContaining({
-        位置: { pathname: '/onboard/wizard', search: '?stage=preference', 题序: 0 },
-      }),
-    );
-  });
-});
-
-// ── review-cx F5：细选层分页按 catalogVersion 静默重同步（冻结合同 2）──
-// 细选层是引导问答 期望职位题 自有的 originating query：第一页记录 catalogVersion，
-// 追加页返回不同版本时不跨版本合并 —— 丢弃该层累计旧页与游标，从该层第一页重开。
-describe('引导问答 细选层 catalogVersion 重同步（review-cx F5）', () => {
-  beforeEach(() => {
-    mock跳转.mockClear();
-    mock返回.mockClear();
-  });
-
-  it('细选追加页换版本：细选列表整组替换为新版本第一页，不带死游标重试', async () => {
-    let 细选首页调用 = 0;
-    const 查询Taxonomy = vi.fn(async (_kind: string, query: { parentId?: string; q?: string; cursor?: string }) => {
-      if (!query.parentId && !query.q && !query.cursor) {
-        return {
-          items: [{ id: 'tax_root', display_name: '技术', parent_id: null, selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'tax_root') {
-        return {
-          items: [{ id: 'tax_mid', display_name: '后端方向', parent_id: 'tax_root', selectable: false, has_children: true }],
-          nextCursor: null,
-          catalogVersion: 'v2',
-        };
-      }
-      if (query.parentId === 'tax_mid' && query.cursor === 'mid_cur_1') {
-        return {
-          items: [{ id: 'dir_stale', display_name: '方向过期页', parent_id: 'tax_mid', selectable: true, has_children: false }],
-          nextCursor: 'dead' as string | null,
-          catalogVersion: 'v3',
-        };
-      }
-      if (query.parentId === 'tax_mid') {
-        细选首页调用 += 1;
-        if (细选首页调用 === 1) {
-          return {
-            items: [{ id: 'dir_old', display_name: '方向旧一', parent_id: 'tax_mid', selectable: true, has_children: false }],
-            nextCursor: 'mid_cur_1' as string | null,
-            catalogVersion: 'v2',
-          };
-        }
-        return {
-          items: [{ id: 'dir_new', display_name: '方向新一', parent_id: 'tax_mid', selectable: true, has_children: false }],
-          nextCursor: null,
-          catalogVersion: 'v3',
-        };
-      }
-      return { items: [], nextCursor: null, catalogVersion: 'v2' };
-    });
-    render引导问答后端({ 查询Taxonomy });
-    const 用户 = userEvent.setup();
-    // roots → 子项（说明卡）→ 点有下级的「后端方向」进细选层
-    await 用户.click(await screen.findByText('后端方向'));
-    await screen.findByText('方向旧一');
-    // 细选层自己的滚动容器（左栏 0 / 右栏 1 / 细选列表 2）滚到底：追加页 v3 → 整组重开
-    滚到底(滚动容器(2));
-    await screen.findByText('方向新一');
-    expect(screen.queryByText('方向旧一')).toBeNull();
-    expect(screen.queryByText('方向过期页')).toBeNull();
-    // review-cx-r2：重开请求带 强制刷新（真数据源上会定向失效旧快照缓存，不吃 v2 首页）
-    expect(
-      查询Taxonomy.mock.calls.some(
-        (调用) => ((调用 as unknown[])[2] as { 强制刷新?: boolean } | undefined)?.强制刷新 === true,
-      ),
-    ).toBe(true);
-    // 重开后不再带死游标发请求
-    滚到底(滚动容器(2));
-    await waitFor(() => expect(查询Taxonomy).toHaveBeenCalled());
-    expect(查询Taxonomy.mock.calls.some((调用) => (调用[1] as { cursor?: string }).cursor === 'dead')).toBe(false);
   });
 });

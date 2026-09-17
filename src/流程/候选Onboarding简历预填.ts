@@ -11,14 +11,13 @@
 // prefill: 开头（仅供 React key/diff，不匹配服务端 ID grammar，确定可复现）；
 // 解析经历沿用 UI 新建段的默认 隐藏:false（契约B：企业屏蔽改走组织屏蔽 API，不再把
 // 屏蔽误写成公司名遮蔽）；internship 缺席保持未设置；
-// 证书 year:null 落页面空串；summary 只在偏好段的个人优势题应用。
+// 证书 year:null 落页面空串；summary 只在简历资料页的个人优势应用（Task 3 起）。
 // 本模块不 import React，不建立通用表单框架或统一「大 Profile」聚合。
 
 import type { 候选预填状态, 候选预填分区 } from '../状态/后端/类型';
 import type { BFF简历预填建议, BFF简历预填目录建议 } from '../数据/BFF契约';
 import type { 目录选择值 } from '../数据/招聘数据源类型';
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书 } from '../数据/类型';
-import type { 向导段 } from './onboarding配置';
 
 // ── 页面控件范围与词表（与 屏幕/基本信息、最高学历、就读时间段 的既有档表逐字一致）──
 
@@ -384,16 +383,19 @@ export function 取工作页预填(state: 候选预填状态, current: 候选工
   return { experiences, educations, skills, certificates, unresolvedCount };
 }
 
-// ── 引导问答的个人优势（/wizard 偏好段）──
+// ── 简历资料页的个人优势（/experience 聚合页）──
+//
+// Task 3（合同 C / Spec §3.3）：个人优势题从向导偏好段迁到简历资料页，两处 helper 的
+// stage 参数（旧「只有偏好段消费 summary」的页面职责）随之移除；资格 / 确认 /
+// 用户已有内容三个守卫逐字保留 —— 只有 onboarding 资料页调用它们，日常编辑不调。
 
 /**
- * S：当前轮真实 summary 建议的只读出口。偏好段「个人优势」题的「恢复」动作
+ * S：当前轮真实 summary 建议的只读出口。资料页「个人优势」的「恢复」动作
  * 只认 ready + eligible + 未确认 + 非空的服务端建议文本；其余（manual/loading/
  * failed/inactive/已确认/不可填/空白）一律 null —— 页面据此不渲染恢复按钮，
  * Mock 种子文本不进入 Backend 分支。
  */
-export function 取可恢复个人优势建议(state: 候选预填状态, stage: 向导段): string | null {
-  if (stage !== '偏好段') return null;
+export function 取可恢复个人优势建议(state: 候选预填状态): string | null {
   const 建议 = 可用建议(state, 'summary');
   if (建议 === null || state.eligibility?.summary !== true) return null;
   const 文本 = 建议.draft.summary.value?.trim();
@@ -401,10 +403,10 @@ export function 取可恢复个人优势建议(state: 候选预填状态, stage:
 }
 
 /**
- * draft.summary 只在偏好段的「个人优势」题作为初值（社招首次薪资段不应用）；
+ * draft.summary 只在资料页的个人优势作为初值；
  * 当前已有个人优势或 summary 缺席/不可填时原样返回 current。
  */
-export function 取个人优势预填(state: 候选预填状态, stage: 向导段, current: string): string {
-  if (stage !== '偏好段' || current.trim() !== '') return current;
-  return 取可恢复个人优势建议(state, stage) ?? current;
+export function 取个人优势预填(state: 候选预填状态, current: string): string {
+  if (current.trim() !== '') return current;
+  return 取可恢复个人优势建议(state) ?? current;
 }

@@ -7,7 +7,7 @@
 // 临时编号以 prefill: 开头且不匹配服务端 ID grammar；parser 顺序保持；
 // 解析经历沿用 UI 新建段默认 隐藏:false（契约B：企业屏蔽不再写 hidden）；
 // internship 缺席保持未设置；
-// 证书 year:null 落页面空串；个人优势只在偏好段应用。
+// 证书 year:null 落页面空串；个人优势只在简历资料页应用（Task 3 起）。
 // 不可变 wire fixture（简历预填成功信封）经 构造映射变体基底() 深拷贝进状态（绝不改写）；
 // 正向值用 fixture 文件里标注「前端映射变体」的本地构造器；边界/缺席改写一律深拷贝副本。
 
@@ -40,7 +40,6 @@ import {
 } from '../数据/招聘数据源/简历预填.fixture';
 import type { BFF简历预填建议 } from '../数据/BFF契约';
 import type { 基本信息, 简历经历段 } from '../数据/类型';
-import type { 向导段 } from './onboarding配置';
 
 /** 与后端各域公开 ID 同族的 grammar（前缀 + 32 位小写十六进制）：prefill: 临时编号绝不能撞上。 */
 const 服务端ID样式 = /^[a-z]{2,4}_[0-9a-f]{32}$/;
@@ -746,33 +745,28 @@ describe('DF-002 取经历缺项', () => {
 });
 
 describe('取个人优势预填', () => {
-  it('偏好段空白时种入 summary', () => {
+  it('当前值为空时种入 summary', () => {
     const state = readyState(wire建议());
-    expect(取个人优势预填(state, '偏好段' as 向导段, '')).toBe('Builds reliable synthetic systems.');
-  });
-
-  it('薪资段不应用 summary（社招首次薪资段）', () => {
-    const state = readyState(wire建议());
-    expect(取个人优势预填(state, '薪资段' as 向导段, '')).toBe('');
+    expect(取个人优势预填(state, '')).toBe('Builds reliable synthetic systems.');
   });
 
   it('当前已有个人优势时保留', () => {
     const state = readyState(wire建议());
-    expect(取个人优势预填(state, '偏好段' as 向导段, '我自己的介绍')).toBe('我自己的介绍');
+    expect(取个人优势预填(state, '我自己的介绍')).toBe('我自己的介绍');
   });
 
   it('summary 缺席、eligibility 关闭或已确认时保留当前值', () => {
     const 缺席 = readyState(映射变体((建议) => {
       建议.draft.summary = { value: null, confidence: null };
     }));
-    expect(取个人优势预填(缺席, '偏好段' as 向导段, '')).toBe('');
+    expect(取个人优势预填(缺席, '')).toBe('');
 
     const 关闭 = readyState(wire建议(), { summary: false });
-    expect(取个人优势预填(关闭, '偏好段' as 向导段, '')).toBe('');
+    expect(取个人优势预填(关闭, '')).toBe('');
 
     const 已确认 = readyState(wire建议());
     已确认.confirmed.summary = true;
-    expect(取个人优势预填(已确认, '偏好段' as 向导段, '')).toBe('');
+    expect(取个人优势预填(已确认, '')).toBe('');
   });
 });
 
@@ -780,34 +774,30 @@ describe('取个人优势预填', () => {
 //    summary 文本，其余（含 Mock 种子）一律 null，页面据此不渲染恢复按钮 ──
 describe('取可恢复个人优势建议', () => {
   it('ready + eligible + 未确认 + 非空 → 返回当前轮真实建议', () => {
-    expect(取可恢复个人优势建议(readyState(wire建议()), '偏好段' as 向导段))
+    expect(取可恢复个人优势建议(readyState(wire建议())))
       .toBe('Builds reliable synthetic systems.');
-  });
-
-  it('非偏好段 → null（社招首次薪资段不恢复）', () => {
-    expect(取可恢复个人优势建议(readyState(wire建议()), '薪资段' as 向导段)).toBeNull();
   });
 
   it.each(['manual', 'loading', 'failed', 'inactive'] as const)('%s 轮 → null', (阶段) => {
     const state = readyState(wire建议());
     state.phase = 阶段;
-    expect(取可恢复个人优势建议(state, '偏好段' as 向导段)).toBeNull();
+    expect(取可恢复个人优势建议(state)).toBeNull();
   });
 
   it('summary 已确认 → null', () => {
     const state = readyState(wire建议());
     state.confirmed.summary = true;
-    expect(取可恢复个人优势建议(state, '偏好段' as 向导段)).toBeNull();
+    expect(取可恢复个人优势建议(state)).toBeNull();
   });
 
   it('eligibility.summary 关闭 → null', () => {
-    expect(取可恢复个人优势建议(readyState(wire建议(), { summary: false }), '偏好段' as 向导段)).toBeNull();
+    expect(取可恢复个人优势建议(readyState(wire建议(), { summary: false }))).toBeNull();
   });
 
   it('空建议文本 → null', () => {
     const 空白 = readyState(映射变体((建议) => {
       建议.draft.summary = { value: '   ', confidence: 'medium' };
     }));
-    expect(取可恢复个人优势建议(空白, '偏好段' as 向导段)).toBeNull();
+    expect(取可恢复个人优势建议(空白)).toBeNull();
   });
 });

@@ -16,10 +16,12 @@ import {
   登记工作经历,
   type 入口形,
 } from './工作经历.测试辅助';
+
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 路径 } from '../路由/路径表';
 import { 创建候选编辑来路 } from '../流程/候选日常编辑';
+import { 个人优势文本 } from '../数据/模拟数据';
 import { type BFF简历预填建议 } from '../数据/BFF契约';
 import { 构造映射变体基底, 多条教育变体 } from '../数据/招聘数据源/简历预填.fixture';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
@@ -961,5 +963,239 @@ describe('工作经历 · Task 4 资料接线', () => {
     expect(末次.明确删除条目).toEqual([
       { 种类: 'experience', 资源编号: 'exp_server', revision: 2 },
     ]);
+  });
+});
+
+// ── 聚合资料页的个人优势（Task 3 合同 C / Spec §3.3）：优势正文从向导偏好段迁到
+//    简历资料页（onboarding 聚合页）。初值只认「已水合权威现值 / 建档草稿里用户明确
+//    输入过的值」，当前轮真实建议（ready + eligible + 未确认）只在二者皆空时种入；
+//    用户已输入（含清空后的空串）不被迟到建议覆盖。聚合保存链在简历写入成功后写
+//    个人优势、成功才确认 summary 并进补充偏好（引导问答）；优势失败留页保留输入。
+const 建议优势文本 = 'Builds reliable synthetic systems.';
+const 提取说明 = '已根据你上传的简历预先提取，直接删改即可。';
+const 中性说明 = '可以介绍你的经验、技能和擅长的事情。';
+
+/** 个人优势正文的 textarea（共用组件冻结的 aria-label） */
+function 优势框(): HTMLTextAreaElement {
+  return screen.getByLabelText('个人优势') as HTMLTextAreaElement;
+}
+
+describe('工作经历 · 聚合资料页个人优势（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+    mock确认分区.mockClear();
+    mock更新草稿.mockClear();
+  });
+
+  it('聚合资料页挂上个人优势正文：初值取已水合现值，无当前轮建议时无恢复动作', () => {
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '存量优势',
+    });
+    expect(优势框().value).toBe('存量优势');
+    expect(screen.getByText('4 / 500')).toBeTruthy();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toBeNull();
+    // 已移除的长按说明不再进场
+    expect(screen.queryByText(/长按/)).toBeNull();
+  });
+
+  it('Ready 轮且权威为空：种入当前轮真实建议、显示提取说明并给恢复动作', () => {
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '', 预填: readyWork(),
+    });
+    expect(优势框().value).toBe(建议优势文本);
+    expect(screen.getByText(提取说明)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /恢复简历识别建议/ })).toBeTruthy();
+    // Mock 种子文本不因 Backend 有建议而混进页面
+    expect(screen.queryByText(/9 年高并发交易系统/)).toBeNull();
+  });
+
+  it('权威现值优先于建议：用户已有文本不被建议替换，说明保持中性', () => {
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '我自己写的优势', 预填: readyWork(),
+    });
+    expect(优势框().value).toBe('我自己写的优势');
+    expect(screen.queryByText(提取说明)).toBeNull();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+  });
+
+  it.each([
+    ['manual 轮', (轮: 候选预填状态) => { 轮.phase = 'manual'; }],
+    ['summary 已确认', (轮: 候选预填状态) => { 轮.confirmed.summary = true; }],
+    ['inactive 轮（无建议）', null],
+  ])('当前轮 %s：不种入建议、不给恢复动作', (_名, 改) => {
+    const 轮 = readyWork();
+    if (改) 改(轮);
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '', 预填: 改 ? 轮 : undefined,
+    });
+    expect(优势框().value).toBe('');
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toBeNull();
+  });
+
+  it('旧草稿恢复：建档草稿里的优势优先，空串是明确清空（迟到的建议不覆盖）', async () => {
+    const 视图 = render工作经历({
+      经历: [], 教育: [完整教育],
+      建档: { 资料: { 个人优势: '' } },
+      个人优势: '存量优势',
+    });
+    expect(优势框().value).toBe('');
+    expect(screen.queryByText(提取说明)).toBeNull();
+    // 迟到到达的建议（轮变成 ready）不覆盖用户已清空的输入
+    mock应用状态.后端状态.候选预填状态 = readyWork();
+    await act(async () => { 视图.重渲染(); });
+    expect(优势框().value).toBe('');
+  });
+
+  it('挂载后到达的建议不覆盖用户已敲入的文本，也不让说明误称已应用', async () => {
+    const 视图 = render工作经历({ 经历: [], 教育: [完整教育], 建档: {}, 个人优势: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '用户本人填写');
+    mock应用状态.后端状态.候选预填状态 = readyWork();
+    await act(async () => { 视图.重渲染(); });
+    expect(优势框().value).toBe('用户本人填写');
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it('用户清空后立即回中性说明（不再声称已提取）', async () => {
+    render工作经历({ 经历: [], 教育: [完整教育], 建档: {}, 个人优势: '', 预填: readyWork() });
+    const 用户 = userEvent.setup();
+    await 用户.clear(优势框());
+    expect(screen.queryByText(提取说明)).toBeNull();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+  });
+
+  it('输入即写建档草稿（含清空后的空串），恢复动作只改页面草稿不写草稿', async () => {
+    const 视图 = render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '', 预填: readyWork(),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '我写的');
+    expect(mock更新草稿.mock.calls.at(-1)![0].资料.个人优势).toBe(`${建议优势文本}我写的`);
+    await 用户.clear(优势框());
+    expect(mock更新草稿.mock.calls.at(-1)![0].资料.个人优势).toBe('');
+    // 恢复只把建议写回输入框，不当作「用户明确输入」落草稿
+    const 写次数 = mock更新草稿.mock.calls.length;
+    await 用户.click(screen.getByRole('button', { name: /恢复简历识别建议/ }));
+    expect(优势框().value).toBe(建议优势文本);
+    expect(mock更新草稿.mock.calls.length).toBe(写次数);
+    void 视图;
+  });
+
+  it('Mock 保留原型恢复：重新从简历提取写回种子文本', async () => {
+    render工作经历({ 数据源: 'mock', 经历: [], 教育: [完整教育], 建档: {}, 个人优势: '' });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '我改过的内容');
+    await 用户.click(screen.getByRole('button', { name: /重新从简历提取/ }));
+    expect(优势框().value).toBe(个人优势文本);
+  });
+
+  it('聚合保存整链：简历写入 → 个人优势 → 确认 summary → 进补充偏好', async () => {
+    const 保存简历 = vi.fn(async (_next?: unknown, _来源?: string) => {});
+    const 保存个人优势 = vi.fn(async (文本?: string) => { void 文本; });
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '存量优势',
+      保存简历, 保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.clear(优势框());
+    await 用户.type(优势框(), '新的个人优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.引导问答));
+    // 合同 C：本次待保存优势在局部/建档草稿，简历写入携带的是进入保存前的已存值
+    expect((保存简历.mock.calls[0][0] as { 个人优势: string }).个人优势).toBe('存量优势');
+    expect(保存简历.mock.calls[0][1]).toBeUndefined(); // onboarding 不传保存来源
+    expect(保存个人优势).toHaveBeenCalledWith('新的个人优势');
+    expect(mock确认分区).toHaveBeenCalledWith('work');
+    expect(mock确认分区).toHaveBeenCalledWith('summary');
+    const 序 = (桩: { mock: { invocationCallOrder: number[] } }) => 桩.mock.invocationCallOrder[0];
+    const 确认序 = (段: string) =>
+      mock确认分区.mock.invocationCallOrder[mock确认分区.mock.calls.findIndex(([值]) => 值 === 段)];
+    expect(序(保存简历)).toBeLessThan(序(保存个人优势));
+    expect(序(保存个人优势)).toBeLessThan(确认序('summary'));
+    expect(序(保存个人优势)).toBeLessThan(序(mock跳转));
+    // work 分区确认在整条链之前（Task 2 既有语义），summary 只在优势写入成功后确认
+    expect(mock确认分区.mock.calls.map(([段]) => 段)).toEqual(['work', 'summary']);
+  });
+
+  it('个人优势保存失败：summary 不确认、不前进、留页且保留输入', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 保存个人优势 = vi.fn(async () => { throw new Error('保存失败'); });
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '',
+      保存简历, 保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '待保存的优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('请求失败，请稍后再试'));
+    expect(mock确认分区).not.toHaveBeenCalledWith('summary');
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(优势框().value).toBe('待保存的优势');
+  });
+
+  it('优势失败后的重试只补优势：不重跑简历链、不重复确认 work、输入仍在', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 保存个人优势 = vi.fn(async () => {})
+      .mockRejectedValueOnce(new Error('保存失败'))
+      .mockResolvedValue(undefined);
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '',
+      保存简历, 保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '待保存的优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存个人优势).toHaveBeenCalledTimes(1));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.引导问答));
+    expect(保存简历).toHaveBeenCalledTimes(1);
+    expect(mock确认分区.mock.calls.map(([段]) => 段)).toEqual(['work', 'summary']);
+  });
+
+  it('简历写入失败：个人优势不再写、summary 不确认、不前进', async () => {
+    const 保存简历 = vi.fn(async () => { throw new Error('保存失败'); });
+    const 保存个人优势 = vi.fn(async () => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '',
+      保存简历, 保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '待保存的优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('请求失败，请稍后再试'));
+    expect(保存个人优势).not.toHaveBeenCalled();
+    expect(mock确认分区).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('学生身份同样把优势写进资料页并进补充偏好（不再先进求职状态）', async () => {
+    const 保存个人优势 = vi.fn(async () => {});
+    render工作经历({
+      经历: [], 教育: [完整教育], 建档: {}, 个人优势: '',
+      基本信息: { 真名: '沈', 开始工作年: '', 身份: '在校' },
+      保存个人优势,
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(优势框(), '在校生的优势');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存个人优势).toHaveBeenCalledWith('在校生的优势'));
+    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.引导问答));
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.求职状态);
+  });
+
+  it('日常编辑（from=resume）不挂优势正文：资料页优势只服务 onboarding', () => {
+    window.history.replaceState({ idx: 4, key: 'k4', usr: null }, '');
+    const 来路 = 创建候选编辑来路('resume');
+    window.history.replaceState({ idx: 5, key: 'k5', usr: null }, '');
+    render工作经历({
+      经历: [完整经历行], 教育: [完整教育],
+      入口: { pathname: 路径.工作经历, search: '?from=resume&section=work', state: 来路 },
+    });
+    expect(screen.queryByLabelText('个人优势')).toBeNull();
+    expect(mock更新草稿).not.toHaveBeenCalled();
   });
 });

@@ -730,7 +730,7 @@ describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7�
   });
 
   it.each([
-    ['薪资段', 路径.引导问答薪资段, '屏幕:引导问答'],
+    ['旧薪资段地址', 路径.引导问答薪资段, '屏幕:引导问答'],
     ['求职状态', 路径.求职状态, '屏幕:求职状态'],
     ['披露说明', 路径.披露说明, '屏幕:披露说明'],
     ['城市子页', 路径.选工作城市, '屏幕:选工作城市'],
@@ -1095,7 +1095,9 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
     mock应用状态.mockReset();
   });
 
-  /** 位置与编辑中坐标都在的未完成建档草稿（缺省指向向导薪资段）。 */
+  /** 位置与编辑中坐标都在的未完成建档草稿。
+   *  缺省坐标用**旧薪资段兼容地址**（Task 3 之前社招第一次进向导的地址）：它仍在活跃
+   *  集合内，恢复时 search 原样带回；真实挂载后由 引导问答 自己替换回首屏补齐。 */
   function 未完成草稿值(位置?: { pathname: string; search: string; 题序?: number }) {
     const 值 = 候选后端应用值({ Onboarding: Onboarding未完成('candidate') });
     return {
@@ -1115,10 +1117,10 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
     };
   }
 
-  const 薪资段位置 = { pathname: 路径.引导问答, search: '?stage=salary', 题序: 1 };
+  const 旧薪资段位置 = { pathname: 路径.引导问答, search: '?stage=salary' };
 
-  it('刷新任一候选页：草稿在场的向导薪资段原位挂载，路径与 query 不被改写', async () => {
-    mock应用状态.mockReturnValue(未完成草稿值(薪资段位置));
+  it('刷新任一候选页：草稿在场的旧薪资段坐标原位挂载，路径与 query 不被改写', async () => {
+    mock应用状态.mockReturnValue(未完成草稿值(旧薪资段位置));
     render(
       <MemoryRouter initialEntries={[路径.引导问答薪资段]}><应用 /><位置探针 /></MemoryRouter>,
     );
@@ -1129,7 +1131,7 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
   });
 
   it('直接访问主壳且草稿未完成：replace 回草稿记录的位置（pathname+search），主壳不挂载', async () => {
-    mock应用状态.mockReturnValue(未完成草稿值(薪资段位置));
+    mock应用状态.mockReturnValue(未完成草稿值(旧薪资段位置));
     render(
       <MemoryRouter initialEntries={[路径.主壳]}><应用 /><位置探针 /></MemoryRouter>,
     );
@@ -1139,7 +1141,7 @@ describe('应用路由：候选 onboarding 回访落点（Task 9）', () => {
   });
 
   it('直接访问初始化且草稿未完成：同样 replace 回草稿位置，不借直达跳过保存', async () => {
-    mock应用状态.mockReturnValue(未完成草稿值(薪资段位置));
+    mock应用状态.mockReturnValue(未完成草稿值(旧薪资段位置));
     render(
       <MemoryRouter initialEntries={[路径.初始化]}><应用 /><位置探针 /></MemoryRouter>,
     );

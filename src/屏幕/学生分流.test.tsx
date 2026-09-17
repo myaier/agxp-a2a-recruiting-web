@@ -85,8 +85,19 @@ function 预填轮(覆盖: Partial<候选预填状态> = {}): 候选预填状态
   return { ...创建空候选预填状态(), ...覆盖 };
 }
 
-/** 城市与职位引用齐备的 引导预填（下一步可点） */
+/** 城市与职位引用齐备的 引导预填（下一步可点）—— 薪资由各用例按需给：Task 3 起
+ *  未确认薪资（薪资属性缺席）同样拦下一步，所以「能走到出口」的用例必须显式带薪资 */
 const 完整预填 = {
+  城市们: ['上海'],
+  职位: ['产品经理'],
+  城市引用们: [{ id: 'loc_sh', display_name: '上海' }],
+  职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
+  筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
+  薪资: { 下限: 20, 上限: 30, 单位: '月薪K' as const },
+};
+
+/** 城市/职位/偏好齐备但薪资未确认的首屏草稿（Task 3：下一步被薪资拦下） */
+const 无薪资预填 = {
   城市们: ['上海'],
   职位: ['产品经理'],
   城市引用们: [{ id: 'loc_sh', display_name: '上海' }],
@@ -198,16 +209,7 @@ describe('学生分流 Backend onboarding（R2-I-1）', () => {
   });
 
   it('Backend 城市与职位引用齐备时下一步可点且派发携带引用的启程引导', async () => {
-    const { 派发 } = render学生分流({
-      数据源: 'backend',
-      引导预填: {
-        城市们: ['上海'],
-        职位: ['产品经理'],
-        城市引用们: [{ id: 'loc_sh', display_name: '上海' }],
-        职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
-        筛选偏好: { 求职类型: ['社招全职'], 办公方式: ['现场'] },
-      },
-    });
+    const { 派发 } = render学生分流({ 数据源: 'backend', 引导预填: 完整预填 });
     const 用户 = userEvent.setup();
     const 下一步 = screen.getByRole('button', { name: '下一步' });
     expect(禁用(下一步)).toBe(false);
@@ -219,6 +221,130 @@ describe('学生分流 Backend onboarding（R2-I-1）', () => {
         职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
       }),
     );
+    // 薪资并入首屏后两身份从同一出口进旅程主干（原来的社招薪资段已取消）
+    expect(mock跳转).toHaveBeenCalledWith(路径.基本信息);
+  });
+});
+
+// ── 首屏期望薪资（Task 3 合同 C / Spec §3.2）：薪资并入求职意向区域，与职位、城市、
+//    类型、办公方式同一屏采集，两身份都不再有独立薪资页。
+//    · 未确认用 薪资 属性缺席（undefined），明确面议用 {下限:0,上限:0}；
+//    · 打开抽屉只改临时值：确定才 存薪资预填（携带当前城市/职位 refs），取消零回填；
+//    · 行上的「月薪 · K / 日薪 · 元/天」跟随主要求职类型。
+describe('学生分流 · 首屏期望薪资（Task 3）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock轻提示.mockClear();
+  });
+
+  it('未确认薪资：行上显示请选择，下一步在既有校验之后被薪资拦下，零启程引导零跳转', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'backend', 引导预填: 无薪资预填 });
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('请选择');
+    await userEvent.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请确认期望薪资，也可以选择面议');
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '启程引导' }));
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
+  it('打开抽屉确定区间：一次 存薪资预填，带当前周期与当前城市/职位 refs', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'backend', 引导预填: 无薪资预填 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '期望薪资' }));
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    await 用户.click(within(下限列).getByRole('option', { name: '20' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '30' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(screen.queryByRole('listbox', { name: '薪资下限' })).toBeNull();
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存薪资预填',
+      下限: 20,
+      上限: 30,
+      单位: '月薪K',
+      城市们: ['上海'],
+      职位: ['产品经理'],
+      城市引用们: [{ id: 'loc_sh', display_name: '上海' }],
+      职位引用们: [{ id: 'tax_pm', display_name: '产品经理' }],
+    }));
+  });
+
+  it('取消零回填：改过再取消不落盘；再次打开回到原值（未确认仍是未确认）', async () => {
+    const { 派发 } = render学生分流({ 数据源: 'backend', 引导预填: 无薪资预填 });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '期望薪资' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资下限' })).getByRole('option', { name: '20' }));
+    await 用户.click(screen.getByRole('button', { name: '取消' }));
+    expect(派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存薪资预填' }));
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请确认期望薪资，也可以选择面议');
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('请选择');
+  });
+
+  it('点回面议并确定：落 0/0（与未确认可区分），行上显示面议', async () => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      引导预填: { ...无薪资预填, 薪资: { 下限: 20, 上限: 30, 单位: '月薪K' } },
+    });
+    const 用户 = userEvent.setup();
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20-30K');
+    await 用户.click(screen.getByRole('button', { name: '期望薪资' }));
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存薪资预填', 下限: 0, 上限: 0, 单位: '月薪K',
+    }));
+  });
+
+  it('显式面议不算缺项：下一步放行并进基本信息', async () => {
+    render学生分流({
+      数据源: 'backend',
+      引导预填: { ...无薪资预填, 薪资: { 下限: 0, 上限: 0, 单位: '月薪K' } },
+    });
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('面议');
+    await userEvent.click(screen.getByRole('button', { name: '下一步' }));
+    expect(mock轻提示).not.toHaveBeenCalled();
+    expect(mock跳转).toHaveBeenCalledWith(路径.基本信息);
+  });
+
+  it('实习生按日薪采集：标签与抽屉走同一份 薪资区间层 合同（元/天）', async () => {
+    const { 派发 } = render学生分流({
+      数据源: 'backend',
+      引导预填: {
+        ...无薪资预填,
+        筛选偏好: { 求职类型: ['实习生'], 办公方式: ['现场'], 实习月数: 3, 每周到岗天数: 4 },
+      },
+    });
+    expect(screen.getByText('期望薪资（日薪 · 元/天）')).toBeTruthy();
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '期望薪资' }));
+    const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
+    await 用户.click(within(下限列).getByRole('option', { name: '300' }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '薪资上限' })).getByRole('option', { name: '500' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '存薪资预填', 下限: 300, 上限: 500, 单位: '元/天',
+    }));
+  });
+
+  it('已确认日薪区间回显 /天（月薪显示 K），同一份结构区分三种态', () => {
+    const 日薪 = render学生分流({
+      数据源: 'backend',
+      引导预填: {
+        ...无薪资预填,
+        筛选偏好: { 求职类型: ['实习生'], 办公方式: ['现场'] },
+        薪资: { 下限: 300, 上限: 500, 单位: '元/天' },
+      },
+    });
+    expect(screen.getByText('期望薪资（日薪 · 元/天）')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('300-500/天');
+    日薪.视图.unmount();
+  });
+
+  it('月薪标签显示 月薪 · K，行文字带 K 后缀', () => {
+    render学生分流({ 数据源: 'backend', 引导预填: 完整预填 });
+    expect(screen.getByText('期望薪资（月薪 · K）')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20-30K');
   });
 });
 
