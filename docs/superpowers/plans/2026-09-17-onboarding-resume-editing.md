@@ -429,3 +429,13 @@ R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude �
 - R1（3 findings，全部 required/Important/契约违反，控制器逐条代码核实后 3/3 接受）：①日常新增条目在保存末尾权威回读失败后重复创建——数据源成功路径的最终 `GET /me/resume` 在 try 之外，日常分支无跟踪/权威重读，失败时镜像不更新，重试以新幂等键二次 POST；②旧 `/experience?from=resume` 归一化 `替换跳转` 丢 `location.state`，违反合同 A「保留合法来路」；③`from=resume` 在边界层不限路径，`/onboard/degree?from=resume` 两层语义矛盾（与 Task 1 已修的 intentions 同类）。fix `ab5ee5c1`（8 文件 +229/−21）：日常分支失败时 best-effort 权威重读+设权威简历快照（BFF错误且无权威简历且栅栏仍立才触发）；`替换跳转` 可选 state 第二参、归一化原样转交；`是日常编辑位置` 把 resume 限定到合同 A 四类路径。定向 411p、全仓 6108p、e2e Onboarding简历修正 5p（新增真实历史栈用例：同一文档 pushState+popstate 推入旧地址，第二次返回到「我」）。
 - R2（1 new required，接受）：教育/证书/两条嵌套项目 create 路径不回写服务端 ID 到本地对象（经历主体有），POST 成功+最终 GET 失败+补救重读后，保留临时编号草稿重试会「再 POST + 把首次创建的服务端条目判缺失发 DELETE」；r1 经历回归还从权威快照重建页面、未测真实保留草稿窗口。fix `a3b8f37f`（4 文件 +338/−37）：四条 create 路径响应成功即回写 ID 到正在编辑的本地对象（证书编辑器改为先 设草稿 再保存使回写落在幸存草稿）；5 条新用例按「同一保留草稿重试→零 POST 零 DELETE」口径，r1 用例同步改造。onboarding 路径条目为 `准备写入` 副本、有意不回写（靠已存身份/单槽跟踪，语义零变化）。定向 267p、全仓 6113p、e2e 5p。
 - R3：精确 `NO FINDINGS`，闭环。修复 commit：`ab5ee5c1`、`a3b8f37f`。裁决摘要：R1 3/3 接受修复、R2 1/1 接受修复、无拒绝/递延项。reviewer 提出的验证需求均由实施侧以定向回归落证（不因格式跑产品套件）。
+
+### affected（L0–L2）对账记录（收尾步骤 3，2026-09-17）
+
+- 候选：`d3648955`（产品 HEAD `a3b8f37f`，其后仅 docs 提交）。实际 diff → 消费者 → 精确选集（INCREMENTAL_EVIDENCE，复用有效、只补失效）：
+  - **L0 静态**：`npm run lint`（oxlint）清；`npm run typecheck` 清；`npm run build` ✓ 1.12s；`git diff --check` 清。
+  - **L1 单元（全仓）**：265 files / 6113 passed（`a3b8f37f`，`--retry=0`）——覆盖 Task 1–4 全部定向 Vitest 文件去重合集与 场景.test。其后仅 docs 提交，证据有效。
+  - **L2 Playwright（全部在 `d3648955` 实跑，`--retries=0`）**：七文件选集（onboarding/J-PILOT-02接线/候选建档/招聘建档与JD/简历与附件/求职意向/岗位编辑）`--list` 48 条 → **48 passed (1.3m)**；隐私 `--grep '聊天推荐前端修复|Onboarding简历修正'` → **3 passed (15.0s)**；展示与交互 `--project=fixture` → **25 passed (35.6s)**；消费者 招聘组织 fixture **15 passed (18.9s)**、抽屉稳定性 mock **15 passed (14.8s)**、换壳无闪屏 mock **2 passed (18.1s)**。
+  - **视觉**：`ui:capture` 7 场景 7/7 回执（`fc409445`）——review 修复均为逻辑层（失败重读、ID 回写、可选参数、路径限定），不改 DOM/样式，视觉回执按 INCREMENTAL_EVIDENCE 复用；场景 ID 唯一性测试含于全仓单测。
+  - **清单**：`test:list --write` 后 `--check` 一致（第一层 6113 / 第二层 368），提交 `d3648955`。
+- fallback_reason：无——全部所选责任在最终候选上实跑，无缺选择粒度或依赖证明项。正式 STG/L3 全 NOT_RUN，归 final gate 确认后的步骤 5。
