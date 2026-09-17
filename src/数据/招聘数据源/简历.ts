@@ -135,11 +135,19 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
       const 旧项目 = 旧项目Map.get(项目.编号);
       if (!旧项目) {
         const body = { name: 项目.名称, role: 项目.角色, result: 项目.结果 };
-        出.push(() => 发出<BFF简历条目变更>(
-          { path: `/api/v1/me/resume/experiences/${段.编号}/projects`, method: 'POST', body, 幂等: true },
-          跟踪 ? { 种类: 'project-create', 本地编号: 项目.编号, 父编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
-          (r) => 条目创建回执(r.result),
-        ).then((r) => r.result));
+        出.push(async () => {
+          const 回应 = await 发出<BFF简历条目变更>(
+            { path: `/api/v1/me/resume/experiences/${段.编号}/projects`, method: 'POST', body, 幂等: true },
+            跟踪 ? { 种类: 'project-create', 本地编号: 项目.编号, 父编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
+            (r) => 条目创建回执(r.result),
+          );
+          // 与经历主体同一做法：创建成功后把服务端 id 回写到正在编辑的本地对象。保存末尾的
+          // 权威回读失败时页面保留这份草稿，重试按同一资源判定（不再 POST，也不把服务端那条
+          // 已有项目判为缺失而 DELETE）。
+          const 新项目Id = 回应.result.entry.project?.id;
+          if (新项目Id) 项目.编号 = 新项目Id;
+          return 回应.result;
+        });
       } else if (JSON.stringify({ 编号: 旧项目.id, 名称: 旧项目.name, 角色: 旧项目.role, 结果: 旧项目.result }) !== JSON.stringify(项目)) {
         const body = { name: 项目.名称, role: 项目.角色, result: 项目.结果 };
         出.push(() => 发出<BFF简历>(
@@ -171,6 +179,9 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
    * 任何 客户端校验错误（缺引用、证书年份非法）都在第一个 mutation 之前抛出，零请求发出。
    * 中途失败 → GET 权威快照附在 BFF错误.权威简历 上后抛出（失败绝不包装成成功）；成功 → GET 最终快照返回。
    * Task 3：跟踪在场时每个请求前 发送前、每个成功后立即 已确认（先落回执，之后才下一步或 GET）。
+   * review-r2：四类 create（经历主体 / 教育 / 证书 / 嵌套项目）成功后都把服务端 id 回写到
+   * next 里正在编辑的那个本地对象 —— 保存末尾的最终 GET 失败时页面保留这份草稿，重试按同一
+   * 资源判定（只 PATCH），不会「再 POST 一条 + 把服务端已建条目判为缺失而 DELETE」。
    */
   async function 保存简历(next: 页面简历写入, previous: BFF简历, 跟踪?: 建档写入跟踪): Promise<页面简历快照> {
     const 旧页面 = 从BFF简历(previous);
@@ -261,11 +272,14 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
           段.编号 = 新经历Id;
           // 跟踪在场时经历回执已在 发出 内立即 已确认（新经历 ID 在项目请求发出前落存储）。
           for (let 序 = 0; 序 < 项目请求体们.length; 序 += 1) {
-            await 发出<BFF简历条目变更>(
+            const 项目回应 = await 发出<BFF简历条目变更>(
               { path: `/api/v1/me/resume/experiences/${新经历Id}/projects`, method: 'POST', body: 项目请求体们[序], 幂等: true },
               跟踪 ? { 种类: 'project-create', 本地编号: 项目们[序].编号, 父编号: 新经历Id, 请求体: { ...项目请求体们[序] }, 阶段: 'prepared' as const } : null,
               (r) => 条目创建回执(r.result),
             );
+            // 项目服务端 id 同样回写本地对象（理由见 项目步骤 的创建分支）
+            const 新项目Id = 项目回应.result.entry.project?.id;
+            if (新项目Id) 项目们[序].编号 = 新项目Id;
           }
         });
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
@@ -303,11 +317,17 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
       }
       if (!旧Page) {
         const body = 转教育写入(段);
-        写入步骤们.push(() => 发出<BFF简历条目变更>(
-          { path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true },
-          跟踪 ? { 种类: 'education-create', 本地编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
-          (r) => 条目创建回执(r.result),
-        ).then((r) => r.result));
+        写入步骤们.push(async () => {
+          const 回应 = await 发出<BFF简历条目变更>(
+            { path: '/api/v1/me/resume/educations', method: 'POST', body, 幂等: true },
+            跟踪 ? { 种类: 'education-create', 本地编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
+            (r) => 条目创建回执(r.result),
+          );
+          // 服务端 id 回写正在编辑的本地对象（理由见 项目步骤 的创建分支）
+          const 新教育Id = 回应.result.entry.education?.id;
+          if (新教育Id) 段.编号 = 新教育Id;
+          return 回应.result;
+        });
       } else if (稳定序列化(旧Page) !== 稳定序列化(段)) {
         const body = 转教育写入(段);
         const 旧教育 = previous.educations.find((e) => e.id === 段.编号)!;
@@ -336,11 +356,17 @@ export function 创建简历数据源(请求: 请求函数): 简历数据源 {
       const 旧Page = 旧证书PageMap.get(段.编号);
       if (!旧Page) {
         const body = 转证书写入(段);
-        写入步骤们.push(() => 发出<BFF简历条目变更>(
-          { path: '/api/v1/me/resume/certificates', method: 'POST', body, 幂等: true },
-          跟踪 ? { 种类: 'certificate-create', 本地编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
-          (r) => 条目创建回执(r.result),
-        ).then((r) => r.result));
+        写入步骤们.push(async () => {
+          const 回应 = await 发出<BFF简历条目变更>(
+            { path: '/api/v1/me/resume/certificates', method: 'POST', body, 幂等: true },
+            跟踪 ? { 种类: 'certificate-create', 本地编号: 段.编号, 请求体: { ...body } as Record<string, unknown>, 阶段: 'prepared' as const } : null,
+            (r) => 条目创建回执(r.result),
+          );
+          // 服务端 id 回写正在编辑的本地对象（理由见 项目步骤 的创建分支）
+          const 新证书Id = 回应.result.entry.certificate?.id;
+          if (新证书Id) 段.编号 = 新证书Id;
+          return 回应.result;
+        });
       } else if (JSON.stringify(旧Page) !== JSON.stringify(段)) {
         const body = 转证书写入(段);
         const 旧证书 = previous.certificates.find((c) => c.id === 段.编号)!;

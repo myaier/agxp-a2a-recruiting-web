@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
-import type { BFF简历, BFF教育, BFF经历, BFFOwnerIntention } from '../../数据/BFF契约';
+import type { BFF简历, BFF证书, BFF教育, BFF经历, BFFOwnerIntention, BFF项目 } from '../../数据/BFF契约';
 import type { 简历经历段, 简历教育段 } from '../../数据/类型';
 import { 初始状态 } from '../初始状态';
 import { BFF意向样本, BFF简历样本 } from '../../测试/BFF样本';
@@ -396,6 +396,33 @@ const 经历段 = (编号: string): 简历经历段 => ({
   内容: '平台',
   隐藏: true,
 });
+
+const 证书DTO = (id: string, revision: number): BFF证书 => ({ id, name: 'PMP', year: 2024, revision });
+
+const 项目DTO = (id: string, revision: number): BFF项目 => ({
+  id, name: '新项目', role: '负责人', result: '上线', revision,
+});
+
+/** r1/r2 的失败窗口：mutation 全部成功、保存末尾的最终 GET 失败一次，随后的 best-effort
+ *  重读成功（r1 修复推进镜像）。除 resume GET 外的请求交 处理。 */
+function 失败窗口桩(
+  权威快照: BFF简历,
+  回读错误: BFF错误,
+  处理: (选项: BFF请求选项) => Promise<BFF响应<unknown>>,
+) {
+  let GET数 = 0;
+  const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+    if ((选项.method ?? 'GET') === 'GET' && 选项.path === '/api/v1/me/resume') {
+      GET数 += 1;
+      if (GET数 === 1) throw 回读错误;
+      return { result: 权威快照, etag: null, requestId: 'r' };
+    }
+    return 处理(选项);
+  });
+  return 请求Mock;
+}
+
+const 最终回读错误 = () => new BFF错误(0, 'network_error', '最终快照读取失败');
 
 /** 只允许 GET 的权威读桩；任何 mutation 请求都按「未预期」抛错。 */
 function 只读请求桩(简历们: BFF简历[]) {
@@ -942,10 +969,12 @@ describe('创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.
     expect(场景.deps.建档草稿引用!.current!.资料).toEqual({ 个人优势: '草稿优势' });
   });
 
-  // codex review-r1 F1：日常路径没有建档跟踪/已存身份映射，重复 POST 只靠镜像 previous 防住。
-  // 数据源的 catch 只覆盖 mutation 步骤 —— 全部 mutation 成功后的最终 GET /me/resume
-  // 在 try 之外，失败不带 权威简历，镜像因此停在旧快照；页面重试以旧 previous diff，
-  // 把已带服务端 id 的段再判为新增 → 新幂等键二次 POST → 服务端重复条目。
+  // ── codex review-r1 F1 + review-r2 F1：日常路径「全部 mutation 成功、保存末尾的最终
+  // GET 失败」窗口。r1 修的是镜像（重读后 previous 含已创建条目）；r2 修的是本地编号回写
+  // （教育/证书/嵌套项目的 create 成功后把服务端 id 写回正在编辑的本地对象）。两者缺一，
+  // 页面重试都会以保留的临时编号再 POST 一次、并把服务端已有条目判为缺失而 DELETE。
+  // 用例一律「用同一个保留中的页面草稿（临时编号）重试」—— 从权威快照重建页面测不到该窗口。
+
   it('日常保存：最终权威回读失败 → 原错误抛出、镜像已更新，重试只 PATCH 不二次 POST', async () => {
     const previous: BFF简历 = { ...BFF简历样本, educations: [] };
     // POST 已成功落库：权威快照 = previous + 服务端新经历
@@ -954,17 +983,12 @@ describe('创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.
       experiences: [...previous.experiences, 经历DTO('exp_srv_new', 1)],
       aggregate_revision: 10,
     };
-    const 最终回读错误 = new BFF错误(0, 'network_error', '最终快照读取失败');
+    const 回读错误 = 最终回读错误();
     let POST数 = 0;
     let PATCH数 = 0;
-    let GET数 = 0;
-    const 请求Mock = vi.fn(async (选项: BFF请求选项): Promise<BFF响应<unknown>> => {
+    let DELETE数 = 0;
+    const 请求Mock = 失败窗口桩(权威快照, 回读错误, async (选项) => {
       const 方法 = 选项.method ?? 'GET';
-      if (方法 === 'GET' && 选项.path === '/api/v1/me/resume') {
-        GET数 += 1;
-        if (GET数 === 1) throw 最终回读错误; // 第一次是保存末尾的最终 GET；第二次是失败后的 best-effort 重读
-        return { result: 权威快照, etag: null, requestId: 'r' };
-      }
       if (方法 === 'POST' && 选项.path === '/api/v1/me/resume/experiences') {
         POST数 += 1;
         return {
@@ -977,6 +1001,7 @@ describe('创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.
         PATCH数 += 1;
         return { result: 权威快照, etag: null, requestId: 'r' };
       }
+      if (方法 === 'DELETE') DELETE数 += 1;
       throw new Error(`未预期的请求 ${方法} ${选项.path}`);
     });
     const 场景 = 创建场景({
@@ -986,18 +1011,229 @@ describe('创建候选操作 · 日常编辑保存绕过建档跟踪（Spec §4.
     const 页面 = 从BFF简历(previous);
     const 新段 = 经历段('local_exp_1');
     await expect(场景.操作.保存简历({ ...页面, 经历: [...页面.经历, 新段] } as never, '日常编辑'))
-      .rejects.toBe(最终回读错误); // 失败绝不包装成成功、原错误原样抛出
+      .rejects.toBe(回读错误); // 失败绝不包装成成功、原错误原样抛出
     expect(新段.编号).toBe('exp_srv_new'); // POST 步骤已把本地编号换成服务端 id
     const 镜像 = 场景.后端状态引用.current.简历快照!;
     expect(镜像.experiences.some((e) => e.id === 'exp_srv_new')).toBe(true); // 重读已推进镜像
-    // 重试：同一段（带服务端 id）+ 改职务 → diff 判已有条目，只 PATCH，不再 POST
-    const 重试页 = 从BFF简历(权威快照);
-    await expect(场景.操作.保存简历({
-      ...重试页,
-      经历: 重试页.经历.map((e) => (e.编号 === 'exp_srv_new' ? { ...e, 职位: '工程师·改' } : e)),
-    } as never, '日常编辑')).resolves.toBeUndefined();
+    // 重试：页面保留的同一次编辑草稿（编号已在 POST 后回写）+ 改职务 → 按已有条目 PATCH
+    新段.职位 = '工程师·改';
+    await expect(场景.操作.保存简历({ ...页面, 经历: [...页面.经历, 新段] } as never, '日常编辑'))
+      .resolves.toBeUndefined();
     expect(POST数).toBe(1);
     expect(PATCH数).toBe(1);
+    expect(DELETE数).toBe(0);
+  });
+
+  // review-r2 F1：教育 POST 原本不回写服务端 id —— 页面保留的草稿带临时编号，
+  // 重试判新增（再 POST）+ 服务端那条不在 next 里（判缺失 → DELETE）。
+  it('日常新增教育：最终回读失败 → 服务端 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    const 权威快照: BFF简历 = {
+      ...previous,
+      educations: [教育DTO('edu_srv_new', 1)],
+      aggregate_revision: 10,
+    };
+    const 回读错误 = 最终回读错误();
+    let POST数 = 0;
+    let PATCH数 = 0;
+    let DELETE数 = 0;
+    const 请求Mock = 失败窗口桩(权威快照, 回读错误, async (选项) => {
+      const 方法 = 选项.method ?? 'GET';
+      if (方法 === 'POST' && 选项.path === '/api/v1/me/resume/educations') {
+        POST数 += 1;
+        return {
+          result: { entry: { kind: 'education', education: 教育DTO('edu_srv_new', 1) }, aggregate_revision: 10 },
+          etag: null,
+          requestId: 'r',
+        };
+      }
+      if (方法 === 'PATCH' && 选项.path === '/api/v1/me/resume/educations/edu_srv_new') {
+        PATCH数 += 1;
+        return { result: 权威快照, etag: null, requestId: 'r' };
+      }
+      if (方法 === 'DELETE') DELETE数 += 1;
+      throw new Error(`未预期的请求 ${方法} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const 页面 = 从BFF简历(previous);
+    const 草稿 = 教育段('edu_local_new');
+    await expect(场景.操作.保存简历({ ...页面, 教育: [...页面.教育, 草稿] } as never, '日常编辑'))
+      .rejects.toBe(回读错误);
+    expect(草稿.编号).toBe('edu_srv_new'); // 服务端 id 回写到保留中的草稿
+    // 重试：同一个草稿对象（临时编号已被回写）+ 改学历 → 按已有条目 PATCH
+    草稿.学历 = '硕士';
+    await expect(场景.操作.保存简历({ ...页面, 教育: [...页面.教育, 草稿] } as never, '日常编辑'))
+      .resolves.toBeUndefined();
+    expect(POST数).toBe(1);
+    expect(PATCH数).toBe(1);
+    expect(DELETE数).toBe(0);
+  });
+
+  // review-r2 F1：证书 POST 同样不回写 —— 证书编辑器还必须保证「回写命中的对象就是
+  // 失败后再次提交的那份草稿」（页面级断言见 工作经历.日常编辑.test.tsx）。
+  it('日常新增证书：最终回读失败 → 服务端 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, certificates: [] };
+    const 权威快照: BFF简历 = {
+      ...previous,
+      certificates: [证书DTO('cert_srv_new', 1)],
+      aggregate_revision: 10,
+    };
+    const 回读错误 = 最终回读错误();
+    let POST数 = 0;
+    let PATCH数 = 0;
+    let DELETE数 = 0;
+    const 请求Mock = 失败窗口桩(权威快照, 回读错误, async (选项) => {
+      const 方法 = 选项.method ?? 'GET';
+      if (方法 === 'POST' && 选项.path === '/api/v1/me/resume/certificates') {
+        POST数 += 1;
+        return {
+          result: { entry: { kind: 'certificate', certificate: 证书DTO('cert_srv_new', 1) }, aggregate_revision: 10 },
+          etag: null,
+          requestId: 'r',
+        };
+      }
+      if (方法 === 'PATCH' && 选项.path === '/api/v1/me/resume/certificates/cert_srv_new') {
+        PATCH数 += 1;
+        return { result: 权威快照, etag: null, requestId: 'r' };
+      }
+      if (方法 === 'DELETE') DELETE数 += 1;
+      throw new Error(`未预期的请求 ${方法} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const 页面 = 从BFF简历(previous);
+    const 草稿 = { 编号: 'cert_local_new', 名称: 'PMP', 年份: '2024' };
+    await expect(场景.操作.保存简历({ ...页面, 证书: [...页面.证书, 草稿] } as never, '日常编辑'))
+      .rejects.toBe(回读错误);
+    expect(草稿.编号).toBe('cert_srv_new'); // 服务端 id 回写到保留中的草稿
+    // 重试：同一个草稿对象 + 改年份 → 按已有条目 PATCH
+    草稿.年份 = '2025';
+    await expect(场景.操作.保存简历({ ...页面, 证书: [...页面.证书, 草稿] } as never, '日常编辑'))
+      .resolves.toBeUndefined();
+    expect(POST数).toBe(1);
+    expect(PATCH数).toBe(1);
+    expect(DELETE数).toBe(0);
+  });
+
+  // review-r2 F1：嵌套项目 POST（既有经历的 项目步骤）同样不回写 —— 重试会再 POST 新项目
+  // 并把服务端已建项目判为缺失而 DELETE。
+  it('日常新增嵌套项目：最终回读失败 → 项目 id 回写保留草稿，重试只 PATCH 不二次 POST/DELETE', async () => {
+    const 旧经历 = BFF简历样本.experiences[0]!;
+    const previous: BFF简历 = { ...BFF简历样本, educations: [] };
+    // POST 已成功落库：权威快照里这条经历带上了服务端新项目
+    const 权威快照: BFF简历 = {
+      ...previous,
+      experiences: [{ ...旧经历, projects: [项目DTO('proj_srv_1', 1)], revision: 5 }],
+      aggregate_revision: 10,
+    };
+    const 回读错误 = 最终回读错误();
+    let 项目POST数 = 0;
+    let 项目PATCH数 = 0;
+    let DELETE数 = 0;
+    let 经历PATCH数 = 0;
+    const 请求Mock = 失败窗口桩(权威快照, 回读错误, async (选项) => {
+      const 方法 = 选项.method ?? 'GET';
+      if (方法 === 'PATCH' && 选项.path === '/api/v1/me/resume/experiences/exp_1') {
+        经历PATCH数 += 1;
+        return { result: 权威快照, etag: null, requestId: 'r' };
+      }
+      if (方法 === 'POST' && 选项.path === '/api/v1/me/resume/experiences/exp_1/projects') {
+        项目POST数 += 1;
+        return {
+          result: { entry: { kind: 'project', project: 项目DTO('proj_srv_1', 1) }, aggregate_revision: 10 },
+          etag: null,
+          requestId: 'r',
+        };
+      }
+      if (方法 === 'PATCH' && 选项.path === '/api/v1/me/resume/experiences/exp_1/projects/proj_srv_1') {
+        项目PATCH数 += 1;
+        return { result: 权威快照, etag: null, requestId: 'r' };
+      }
+      if (方法 === 'DELETE') DELETE数 += 1;
+      throw new Error(`未预期的请求 ${方法} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const 页面 = 从BFF简历(previous);
+    const 草稿项目 = { 编号: 'proj_local_1', 名称: '新项目', 角色: '负责人', 结果: '上线' };
+    const 草稿经历: 简历经历段 = { ...经历段('exp_1'), 项目: [草稿项目] };
+    await expect(场景.操作.保存简历({ ...页面, 经历: [草稿经历] } as never, '日常编辑'))
+      .rejects.toBe(回读错误);
+    expect(草稿项目.编号).toBe('proj_srv_1'); // 项目 id 回写到保留中的草稿
+    // 重试：同一个草稿对象 + 改项目结果 → 按已有项目 PATCH
+    草稿项目.结果 = '上线·改';
+    await expect(场景.操作.保存简历({ ...页面, 经历: [草稿经历] } as never, '日常编辑'))
+      .resolves.toBeUndefined();
+    expect(项目POST数).toBe(1);
+    expect(项目PATCH数).toBe(1);
+    expect(经历PATCH数).toBe(2);
+    expect(DELETE数).toBe(0);
+  });
+
+  // review-r2 F1：新建经历时项目是在经历 POST 内联 POST 的（另一条 create 路径，同样回写）。
+  it('日常新增经历带嵌套项目：最终回读失败 → 经历与项目 id 都回写草稿，重试零 POST/DELETE', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [], experiences: [] };
+    const 权威快照: BFF简历 = {
+      ...previous,
+      experiences: [{ ...经历DTO('exp_srv_new', 1), projects: [项目DTO('proj_srv_1', 1)] }],
+      aggregate_revision: 10,
+    };
+    const 回读错误 = 最终回读错误();
+    let 经历POST数 = 0;
+    let 项目POST数 = 0;
+    let 经历PATCH数 = 0;
+    let DELETE数 = 0;
+    const 请求Mock = 失败窗口桩(权威快照, 回读错误, async (选项) => {
+      const 方法 = 选项.method ?? 'GET';
+      if (方法 === 'POST' && 选项.path === '/api/v1/me/resume/experiences') {
+        经历POST数 += 1;
+        return {
+          result: { entry: { kind: 'experience', experience: 经历DTO('exp_srv_new', 1) }, aggregate_revision: 10 },
+          etag: null,
+          requestId: 'r',
+        };
+      }
+      if (方法 === 'POST' && 选项.path === '/api/v1/me/resume/experiences/exp_srv_new/projects') {
+        项目POST数 += 1;
+        return {
+          result: { entry: { kind: 'project', project: 项目DTO('proj_srv_1', 1) }, aggregate_revision: 10 },
+          etag: null,
+          requestId: 'r',
+        };
+      }
+      if (方法 === 'PATCH' && 选项.path === '/api/v1/me/resume/experiences/exp_srv_new') {
+        经历PATCH数 += 1;
+        return { result: 权威快照, etag: null, requestId: 'r' };
+      }
+      if (方法 === 'DELETE') DELETE数 += 1;
+      throw new Error(`未预期的请求 ${方法} ${选项.path}`);
+    });
+    const 场景 = 创建场景({
+      后端覆盖: 创建简历数据源(请求Mock as unknown as 请求函数) as unknown as Partial<HTTP招聘数据源>,
+    });
+    场景.后端状态引用.current = { ...场景.后端状态引用.current, 简历快照: previous } as never;
+    const 页面 = 从BFF简历(previous);
+    const 草稿项目 = { 编号: 'proj_local_1', 名称: '新项目', 角色: '负责人', 结果: '上线' };
+    const 草稿经历: 简历经历段 = { ...经历段('local_exp_1'), 项目: [草稿项目] };
+    await expect(场景.操作.保存简历({ ...页面, 经历: [...页面.经历, 草稿经历] } as never, '日常编辑'))
+      .rejects.toBe(回读错误);
+    expect(草稿经历.编号).toBe('exp_srv_new'); // 经历 id 已回写
+    expect(草稿项目.编号).toBe('proj_srv_1'); // 内联项目 id 也已回写
+    // 重试：同一个草稿对象 + 改职务 → 经历 PATCH；项目未变 → 既不 POST 也不 DELETE
+    草稿经历.职位 = '工程师·改';
+    await expect(场景.操作.保存简历({ ...页面, 经历: [...页面.经历, 草稿经历] } as never, '日常编辑'))
+      .resolves.toBeUndefined();
+    expect(经历POST数).toBe(1);
+    expect(项目POST数).toBe(1);
+    expect(经历PATCH数).toBe(1);
+    expect(DELETE数).toBe(0);
   });
 
   it('显式 引导 来源（缺省语义）：未确认槽仍拦下简历命令，槽原样保留', async () => {

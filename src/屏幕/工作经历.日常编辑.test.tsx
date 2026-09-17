@@ -258,6 +258,39 @@ describe('工作经历 · 日常条目直达（item）', () => {
     expect((next.证书 as 简历证书[]).slice(0, 2)).toEqual(证书行);
     expect((next.证书 as 简历证书[])[2]).toMatchObject({ 名称: 'PMP', 年份: '2023' });
   });
+
+  // codex review-r2 F1：数据源在证书 POST 成功后把服务端 id 回写到「提交的那份草稿」
+  // （见 招聘数据源/简历.ts）。证书编辑器原来每次保存都交一份 {...草稿} 新对象，回写会落在
+  // 被丢弃的副本上 —— 重试又把临时编号判成新增（再 POST），并把服务端已建那条判为缺失
+  // （DELETE）。这里在桩里记录「提交时刻」的编号（回写前），钉住第二次提交已经带着回写的 id。
+  it('certificates 新增：失败后重试提交的草稿带着服务端回写的编号', async () => {
+    const 提交编号们: string[] = [];
+    const 保存简历 = vi.fn(async (next: { 证书?: 简历证书[] }) => {
+      const 末 = next.证书![next.证书!.length - 1]!;
+      提交编号们.push(末.编号); // 提交时刻的编号（早于下面的回写）
+      末.编号 = 'cert_srv_1'; // 模拟数据源 create 成功后的回写 + 保存失败（页面留编辑器与草稿）
+      throw new Error('保存失败');
+    });
+    render工作经历({
+      数据源: 'mock', 证书: [], 保存简历,
+      入口: 编辑入口('?from=resume&section=certificates&item=new'),
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByLabelText('证书名称'), 'PMP');
+    await 用户.type(screen.getByLabelText('取得年份'), '2023');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    // 失败后按钮恢复、同一份局部草稿还在：再点保存
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '保存' }) as HTMLButtonElement).disabled).toBe(false));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(2));
+    expect(提交编号们).toHaveLength(2);
+    expect(提交编号们[0]).toMatch(/^cert\d/); // 首次提交：本地临时编号
+    expect(提交编号们[1]).toBe('cert_srv_1'); // 重试提交：回写命中的就是这份草稿
+    const 第二次 = 取保存next(保存简历, 1);
+    expect((第二次.证书 as 简历证书[]).at(-1)).toMatchObject({ 名称: 'PMP', 年份: '2023' });
+  });
 });
 
 describe('工作经历 · 日常保存与取消（一份保存责任、取消零写）', () => {
