@@ -12,6 +12,7 @@ import userEventApi from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { 路径 } from '../路由/路径表';
+import { 创建候选编辑来路 } from '../流程/候选日常编辑';
 import type { BFF附件简历, BFF附件解析失败码, BFF附件解析状态 } from '../数据/BFF契约';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { 基本信息 as 基本信息类型, 简历经历段, 简历教育段, 简历证书 } from '../数据/类型';
@@ -757,8 +758,8 @@ describe('我的简历 · 候选 onboarding 预填边界（Task 8 日常域隔�
   });
 });
 
-// ── M：空身份稳定展示 —— 不把空状态算成在职；姓名是 profile 写路径，身份未定时先收口 ──
-describe('我的简历 · 空身份展示与姓名门（M）', () => {
+// ── M：空身份稳定展示 —— 不把空状态算成在职；姓名不再行内改名（统一进基本信息）──
+describe('我的简历 · 空身份展示（M）', () => {
   it('空身份：当前状态行显示「未填写」，完整度把当前状态计为缺口', () => {
     render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
     const 状态行 = screen.getByText('当前状态').closest('button');
@@ -773,59 +774,75 @@ describe('我的简历 · 空身份展示与姓名门（M）', () => {
     expect(result.待补全.some((项) => /当前状态/.test(项.文案))).toBe(true);
   });
 
-  it('空身份尝试改名：提示「请先选择求职状态」并跳带编辑标记的求职状态，零保存', async () => {
-    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
-    await userEvent.click(screen.getByRole('button', { name: /姓名（递交简历后披露）/ }));
-    const 输入 = screen.getByLabelText('姓名（递交简历后披露）');
-    await userEvent.clear(输入);
-    await userEvent.type(输入, '新名字');
-    await userEvent.tab(); // blur → 保存姓名
+  it('姓名行不再是行内输入：点它进基本信息（空身份由那边的同页收口处理）', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 真名: '张三', 身份: '' } });
+    expect(screen.queryByLabelText('姓名（递交简历后披露）')).toBeNull();
+    await userEvent.click(screen.getByText('姓名（递交简历后披露）'));
     expect(mock操作.保存简历).not.toHaveBeenCalled();
-    expect(mock跳转).toHaveBeenCalledWith(`${路径.求职状态}?from=resume`);
-  });
-
-  it('行内改名保存：保存简历 带 日常编辑 来源（本页是日常简历域，fix-r1）', async () => {
-    render我的简历({ mode: 'backend', 基本信息: { 真名: '张三', 身份: '在职' } });
-    await userEvent.click(screen.getByRole('button', { name: /姓名（递交简历后披露）/ }));
-    const 输入 = screen.getByLabelText('姓名（递交简历后披露）');
-    await userEvent.clear(输入);
-    await userEvent.type(输入, '新名字');
-    await userEvent.tab(); // blur → 保存姓名
-    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
-    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
-      基本信息: expect.objectContaining({ 真名: '新名字' }),
-    }), '日常编辑');
+    expect(mock跳转).toHaveBeenCalledWith(
+      `${路径.基本信息}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
   });
 });
 
 // ── 简历编辑显式来源（Task 1）：本页是三个资料编辑屏的唯一日常入口，全部带 from=resume
-//（保存后只回本页）；显式添加意向入口有自己的旅程，不带该参数。──
-describe('我的简历 · 编辑入口带 from=resume', () => {
-  it('基本信息/工作经历/求职状态行与完整度跳转全部带编辑标记', async () => {
+// 与来路证明（编辑页据此退一格回本页）；显式添加意向入口有自己的旅程，不带这两样。──
+describe('我的简历 · 编辑入口带来路证明（from=resume）', () => {
+  it('姓名/工作年限/简历区各行都带编辑标记与来路证明', async () => {
     render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+    await userEvent.click(screen.getByText('姓名（递交简历后披露）'));
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`, 创建候选编辑来路('resume'));
     await userEvent.click(screen.getByText('工作年限'));
-    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`);
-    await userEvent.click(screen.getByText('当前状态'));
-    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`);
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`, 创建候选编辑来路('resume'));
     await userEvent.click(screen.getByText('最高学历'));
-    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.工作经历}?from=resume`);
-    // 完整度检查行：展开后点「当前状态还没选择」→ 求职状态同样带标记
-    //（摘要与详情行同文案：第一处是 诊断条 摘要 span，最后一个是可点详情行）
-    await userEvent.click(screen.getByRole('button', { name: '去补全' }));
-    const 同文节点 = screen.getAllByText('待补全 · 当前状态还没选择');
-    await userEvent.click(同文节点[同文节点.length - 1]);
-    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.求职状态}?from=resume`);
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.工作经历}?from=resume`, 创建候选编辑来路('resume'));
+    await userEvent.click(screen.getByText('专业技能'));
+    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.工作经历}?from=resume`, 创建候选编辑来路('resume'));
   });
 
-  it('显式添加意向入口不带编辑标记', async () => {
+  it('当前状态行进同一份求职状态编辑（不再进基本信息）', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '在职' } });
+    await userEvent.click(screen.getByText('当前状态'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.求职状态}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('完整度检查行的求职状态去处也带来路证明', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+    await userEvent.click(screen.getByRole('button', { name: '去补全' }));
+    // 摘要与详情行同文案：第一处是 诊断条 摘要 span，最后一个是可点详情行
+    const 状态节点 = screen.getAllByText('待补全 · 当前状态还没选择');
+    await userEvent.click(状态节点[状态节点.length - 1]);
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.求职状态}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('完整度检查行的基本信息去处（姓名/开始工作年）同样带来路证明', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 真名: '', 开始工作年: '', 身份: '在职' } });
+    await userEvent.click(screen.getByRole('button', { name: '去补全' }));
+    const 姓名节点 = screen.getAllByText('待补全 · 姓名还没填写');
+    await userEvent.click(姓名节点[姓名节点.length - 1]);
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.基本信息}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('显式添加意向入口不带编辑标记与来路证明', async () => {
     render我的简历({ mode: 'backend' });
     await userEvent.click(screen.getByText('还可以再加一个求职意向'));
     expect(mock跳转).toHaveBeenLastCalledWith(路径.添加意向);
+    expect(mock跳转.mock.calls.at(-1)).toHaveLength(1);
   });
 });
 
 // ── 个人优势独立编辑入口（Task 4）：卡片是一枚可点、可键盘操作的编辑入口，
-//    去向固定为 /wizard?from=resume；有值回显多行原文并带可见编辑指示，
+//    去向固定为 /wizard?from=resume（带来路证明）；有值回显多行原文并带可见编辑指示，
 //    空值给「还没填写个人优势，去添加」。──
 describe('我的简历 · 个人优势独立编辑入口（Task 4）', () => {
   it('有值：行内回显多行原文并带编辑指示，点击进个人优势编辑', async () => {
@@ -835,7 +852,10 @@ describe('我的简历 · 个人优势独立编辑入口（Task 4）', () => {
     // 可见编辑指示与其他行同一枚尖括号
     expect(行!.textContent).toContain('›');
     await userEvent.click(行!);
-    expect(mock跳转).toHaveBeenCalledWith(`${路径.引导问答}?from=resume`);
+    expect(mock跳转).toHaveBeenCalledWith(
+      `${路径.引导问答}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
   });
 
   it('键盘可达：焦点在行上按 Enter 触发同一编辑入口', async () => {
@@ -843,13 +863,19 @@ describe('我的简历 · 个人优势独立编辑入口（Task 4）', () => {
     const 行 = screen.getByText('键盘也能编辑').closest('button') as HTMLButtonElement;
     行.focus();
     await userEvent.keyboard('{Enter}');
-    expect(mock跳转).toHaveBeenCalledWith(`${路径.引导问答}?from=resume`);
+    expect(mock跳转).toHaveBeenCalledWith(
+      `${路径.引导问答}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
   });
 
   it('空值：显示添加引导文案，点击进同一编辑入口', async () => {
     render我的简历({ mode: 'backend', 状态覆盖: { 个人优势: '' } });
     await userEvent.click(screen.getByText('还没填写个人优势，去添加'));
-    expect(mock跳转).toHaveBeenCalledWith(`${路径.引导问答}?from=resume`);
+    expect(mock跳转).toHaveBeenCalledWith(
+      `${路径.引导问答}?from=resume`,
+      创建候选编辑来路('resume'),
+    );
   });
 });
 

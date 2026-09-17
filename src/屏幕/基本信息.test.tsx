@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF简历预填建议 } from '../数据/BFF契约';
 import { 性别已填变体 } from '../数据/招聘数据源/简历预填.fixture';
 import { 路径 } from '../路由/路径表';
+import { 创建候选编辑来路 } from '../流程/候选日常编辑';
 import { 创建空候选预填状态, type 候选预填Eligibility, type 候选预填状态 } from '../状态/后端/类型';
 import type { 基本信息 as 基本信息类型 } from '../数据/类型';
 import type { 候选引导建档草稿 } from '../数据/资料缓存';
@@ -20,6 +21,7 @@ import 基本信息 from './基本信息';
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
+const mock替换跳转 = vi.fn();
 const mock轻提示 = vi.hoisted(() => vi.fn());
 const mock操作 = {
   保存简历: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +31,9 @@ const mock操作 = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
-vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
+vi.mock('../路由/导航钩子', () => ({
+  use导航: () => ({ 跳转: mock跳转, 返回: mock返回, 替换跳转: mock替换跳转 }),
+}));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
@@ -81,7 +85,10 @@ interface 建状态参数 {
  */
 let 触发重渲染: (() => void) | null = null;
 
-function 宿主({ 入口 }: { 入口?: string } = {}) {
+/** 位置既可以给裸字符串，也可以给带 state 的完整位置（日常编辑的来路证明走 state）*/
+type 入口形 = string | { pathname: string; search?: string; state?: unknown };
+
+function 宿主({ 入口 }: { 入口?: 入口形 } = {}) {
   const [, 设代] = useState(0);
   // 渲染期登记（早于子组件的 useLayoutEffect 种入派发）；设代 在同一挂载内稳定
   触发重渲染 = () => 设代((代) => 代 + 1);
@@ -121,10 +128,16 @@ function 建状态(选项: 建状态参数 = {}) {
   };
 }
 
-function render基本信息(选项: 建状态参数 & { 状态?: ReturnType<typeof 建状态>; 入口?: string } = {}) {
+function render基本信息(选项: 建状态参数 & { 状态?: ReturnType<typeof 建状态>; 入口?: 入口形 } = {}) {
   mock应用状态 = 选项.状态 ?? 建状态(选项);
   const 视图 = render(<宿主 入口={选项.入口} />);
-  return { 状态: mock应用状态, 派发: mock应用状态.派发 as ReturnType<typeof vi.fn>, 卸载: () => 视图.unmount() };
+  return {
+    状态: mock应用状态,
+    派发: mock应用状态.派发 as ReturnType<typeof vi.fn>,
+    卸载: () => 视图.unmount(),
+    /** 同一 Provider 状态换新对象后的整树重渲染（模拟权威快照水合落地）*/
+    重渲染: () => 视图.rerender(<宿主 入口={选项.入口} />),
+  };
 }
 
 /** 滚轮档位断言：指定列（如 出生年）的某档必须是高亮选中档 */
@@ -153,7 +166,9 @@ function 首个存简历(派发: ReturnType<typeof vi.fn>): { 型: string; 基�
 beforeEach(() => {
   mock跳转.mockClear();
   mock返回.mockClear();
+  mock替换跳转.mockClear();
   mock轻提示.mockClear();
+  window.history.replaceState(null, '');
 });
 
 describe('基本信息 预填种入', () => {
@@ -565,83 +580,140 @@ describe('基本信息 · 出生年月抽屉（picker 统一 Task 3）', () => {
   });
 });
 
-// ── 简历编辑显式来源（Task 1）：from=resume 是唯一日常编辑标记 ──
-// 我的简历 → 基本信息 的日常编辑：按钮为「保存」，成功只回我的简历；旅程判定为 false
-//（编辑标记赢过 引导预填）：零建档草稿、零分区确认；空身份保留延迟 profile 写入并去
-// 带标记的求职状态收口；必填不跳过；失败留页；刷新（同 URL 重挂载）保持编辑模式。
-describe('基本信息 · 简历编辑来源（from=resume）', () => {
+// ── 日常编辑（Task 1 / Spec §5）：from=resume 是 /basic 唯一合法的日常来源 ──
+// 标题「编辑基本信息」，输入只进局部草稿（零提前 dispatch），明确的「保存」才提交
+//（一次 保存简历 + 日常编辑），然后按来路退出；取消/返回退出整链不写；空身份保存
+// 在同页切到状态收口子视图（保留局部基本草稿，不 push、不写全局）；刷新丢草稿读权威。
+describe('基本信息 · 日常编辑（from=resume）', () => {
   beforeEach(() => {
     mock操作.保存简历.mockClear().mockResolvedValue(undefined);
     mock操作.确认候选Onboarding预填分区.mockClear();
     mock操作.更新候选建档草稿.mockClear();
   });
 
-  it('社招（在职）编辑：按钮为保存，成功只回我的简历，零分区确认零建档草稿', async () => {
-    // 建档在场：证明编辑标记赢过 引导预填 非空 —— 旅程判定必须为 false
+  it('标题为「编辑基本信息」、按钮为保存（不再叫创建在线简历/下一步）', () => {
+    // 建档在场：证明日常来源赢过 引导预填 非空 —— 旅程判定必须为 false
     render基本信息({
       基本信息: { 真名: '沈', 身份: '在职' },
       建档: { 资料: { 个人优势: '旧' } },
       入口: '/basic?from=resume',
     });
+    expect(screen.getByRole('heading', { name: '编辑基本信息' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '创建在线简历' })).toBeNull();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
+  });
+
+  it('输入只进局部草稿：改名/改性别/改开始工作年都不提前 dispatch 已保存态', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' }, 入口: '/basic?from=resume' });
     const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
+    await 用户.click(screen.getByRole('button', { name: '女' }));
+    await 用户.click(screen.getByRole('button', { name: /开始工作年份/ }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '开始工作年份' })).getByRole('option', { name: '2019' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    expect(姓名框().value).toBe('沈亦舟');
+    expect(screen.getByRole('button', { name: '女' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('2019 年')).toBeTruthy();
+    expect(派发).not.toHaveBeenCalled();
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+  });
+
+  it('保存：一次 保存简历 带本次输入与 日常编辑，然后退一格回我的简历', async () => {
+    window.history.replaceState({ idx: 4 }, '');
+    const 来路 = 创建候选编辑来路('resume');
+    window.history.replaceState({ idx: 5 }, ''); // 源列表点击 push 一格后的编辑页格号
+    const { 派发 } = render基本信息({
+      基本信息: { 真名: '沈', 身份: '在职' },
+      入口: { pathname: '/basic', search: '?from=resume', state: 来路 },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
     expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
-      基本信息: expect.objectContaining({ 真名: '沈' }),
+      基本信息: expect.objectContaining({ 真名: '沈亦舟', 身份: '在职' }),
     }), '日常编辑'); // fix-r1：日常编辑保存显式绕过 onboarding 跟踪
+    expect(派发).not.toHaveBeenCalled();
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
     expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
-    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
-    expect(mock跳转).not.toHaveBeenCalledWith(路径.求职状态);
-    expect(mock跳转).not.toHaveBeenCalledWith(路径.最高学历);
+    expect(mock返回).toHaveBeenCalledTimes(1);
+    expect(mock替换跳转).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 
-  it('学生（在校）编辑：成功同样只回我的简历，不进最高学历', async () => {
+  it('取消（顶部返回）退出整链不写：零派发、零保存调用', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(派发).not.toHaveBeenCalled();
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    // 无来路证明（测试位置没有 state）→ 安全替换回我的简历，不盲退
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock返回).not.toHaveBeenCalled();
+  });
+
+  it('学生（在校）日常保存：同样一次 保存简历，不进最高学历', async () => {
     render基本信息({ 基本信息: { 真名: '沈', 身份: '在校' }, 入口: '/basic?from=resume' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
-    expect(mock跳转).toHaveBeenCalledWith(路径.我的简历);
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 身份: '在校' }),
+    }), '日常编辑');
     expect(mock跳转).not.toHaveBeenCalledWith(路径.最高学历);
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
   });
 
-  it('保存失败：轻提示并留在本页，不确认分区不跳转', async () => {
+  it('保存失败：轻提示并留在本页，不退出不确认分区', async () => {
     mock操作.保存简历.mockRejectedValueOnce(new Error('offline'));
     render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' }, 入口: '/basic?from=resume' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
-    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
   });
 
-  it('空身份编辑保留延迟 profile 写入：只存页面草稿并去带标记的求职状态收口', async () => {
-    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=resume' });
-    const 用户 = userEvent.setup();
-    await 用户.click(screen.getByRole('button', { name: '保存' }));
-    expect(派发).toHaveBeenCalledWith(expect.objectContaining({
-      型: '存简历',
-      基本信息: expect.objectContaining({ 真名: '沈', 身份: '' }),
-    }));
-    expect(mock操作.保存简历).not.toHaveBeenCalled();
-    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
-    expect(mock跳转).toHaveBeenCalledWith(`${路径.求职状态}?from=resume`);
-  });
-
-  it('编辑模式必填不跳过：空真名点保存只提示，零派发零跳转', async () => {
+  it('必填不跳过：空真名点保存只提示，零派发零保存零退出', async () => {
     render基本信息({ 基本信息: { 真名: '', 身份: '在职' }, 入口: '/basic?from=resume' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     expect(mock轻提示).toHaveBeenCalledWith('填一下真名，递交简历（S1）原件时即向招聘方显示');
     expect(mock应用状态.派发).not.toHaveBeenCalled();
     expect(mock操作.保存简历).not.toHaveBeenCalled();
-    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
   });
 
-  it('刷新（同 URL 重挂载）保持编辑模式，ready 建议在场也零预填种入', async () => {
+  it('背景权威刷新不覆盖正在编辑的局部输入', async () => {
+    const 视图 = render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
+    // 背景权威快照换新（水合落地/他处写入）后整树重渲染
+    视图.状态.状态.基本信息 = { ...视图.状态.状态.基本信息, 真名: '权威新值', 性别: '女' };
+    视图.重渲染();
+    expect(姓名框().value).toBe('沈亦舟');
+    expect(screen.getByRole('button', { name: '女' }).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('保存 single-flight：在途期间重复点击只发一次', async () => {
+    let 放行!: () => void;
+    mock操作.保存简历.mockImplementationOnce(() => new Promise<void>((解决) => { 放行 = 解决; }));
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '在职' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock操作.保存简历).toHaveBeenCalledTimes(1);
+    放行();
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.我的简历));
+    expect(mock操作.保存简历).toHaveBeenCalledTimes(1);
+  });
+
+  it('刷新（同 URL 重挂载）丢未保存输入、读权威值，且零预填种入', async () => {
     const 第一次 = render基本信息({
       基本信息: { 真名: '沈', 身份: '在职' },
       候选预填: readyState(正向基本建议()),
@@ -649,13 +721,117 @@ describe('基本信息 · 简历编辑来源（from=resume）', () => {
     });
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
     expect(第一次.派发).not.toHaveBeenCalled();
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟'); // 未保存输入
+    expect(姓名框().value).toBe('沈亦舟');
     第一次.卸载();
+    // 重挂载 = 刷新：未保存输入不承诺持久化，读回权威值
     const 第二次 = render基本信息({
       基本信息: { 真名: '沈', 身份: '在职' },
       候选预填: readyState(正向基本建议()),
       入口: '/basic?from=resume',
     });
-    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    expect(姓名框().value).toBe('沈');
     expect(第二次.派发).not.toHaveBeenCalled();
+  });
+});
+
+// ── 空身份日常保存：同一挂载页切状态收口子视图（Task 1 Step 4）──
+// 不 push 新页、不写全局；选择合法状态后点保存用合并后的基本信息一次进入保存简历；
+// 成功退出原编辑链；返回/取消退出整链不写；失败保留草稿；刷新丢弃未保存输入。
+describe('基本信息 · 空身份同页收口（from=resume）', () => {
+  beforeEach(() => {
+    mock操作.保存简历.mockClear().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockClear();
+    mock操作.更新候选建档草稿.mockClear();
+  });
+
+  const 三态 = ['在校', '在职', '离职'] as const;
+
+  it('空身份点保存：同页切到三态收口子视图，保留基本草稿、零写零跳转', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    // 三态正文进场，空值不假选
+    for (const 档 of 三态) {
+      expect(screen.getByRole('button', { name: 档 }).getAttribute('aria-pressed')).toBe('false');
+    }
+    expect(screen.queryByText(/随时到岗|考虑机会|暂不考虑/)).toBeNull();
+    expect(派发).not.toHaveBeenCalled();
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+  });
+
+  it('子视图选合法状态后保存：合并后的基本信息一次进入 保存简历 并退出整链', async () => {
+    window.history.replaceState({ idx: 2 }, '');
+    const 来路 = 创建候选编辑来路('resume');
+    window.history.replaceState({ idx: 3 }, '');
+    const { 派发 } = render基本信息({
+      基本信息: { 真名: '沈', 身份: '', 出生年: '2000', 出生月: '9' },
+      入口: { pathname: '/basic', search: '?from=resume', state: 来路 },
+    });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.click(screen.getByRole('button', { name: '在职' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(1));
+    expect(mock操作.保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({
+        真名: '沈亦舟',
+        身份: '在职',
+        出生年: '2000',
+        出生月: '9',
+      }),
+    }), '日常编辑');
+    expect(派发).not.toHaveBeenCalled();
+    expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
+    expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
+    expect(mock返回).toHaveBeenCalledTimes(1);
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.求职状态);
+  });
+
+  it('子视图未选状态点保存：只提示，零保存零退出（空值不写非法状态）', async () => {
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请选择当前求职状态');
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+  });
+
+  it('子视图返回退出整链不写：零派发、零保存', async () => {
+    const { 派发 } = render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.type(姓名框(), '亦舟');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(派发).not.toHaveBeenCalled();
+    expect(mock操作.保存简历).not.toHaveBeenCalled();
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.我的简历);
+  });
+
+  it('子视图保存失败：保留草稿留页可重试，零退出', async () => {
+    mock操作.保存简历.mockRejectedValueOnce(new Error('offline'));
+    render基本信息({ 基本信息: { 真名: '沈', 身份: '' }, 入口: '/basic?from=resume' });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.click(screen.getByRole('button', { name: '在校' }));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
+    // 草稿仍在（选项保持选中），重试仍带同一个身份
+    expect(screen.getByRole('button', { name: '在校' }).getAttribute('aria-pressed')).toBe('true');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存简历).toHaveBeenCalledTimes(2));
+    expect(mock操作.保存简历).toHaveBeenLastCalledWith(expect.objectContaining({
+      基本信息: expect.objectContaining({ 真名: '沈', 身份: '在校' }),
+    }), '日常编辑');
   });
 });

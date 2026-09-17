@@ -10,45 +10,53 @@
 //
 // 删的只是「期望区间」之外那条更硬的底线字段：薪资区间的下限仍然承担底线作用，
 //   代理之间依旧只交换「有没有交集」、不交换数字，双盲机制没有因为这次删除而改变。
+//
+// 求职状态行（Task 1 / Spec §6）：状态是候选 profile 全账号一份的事实，不是本屏的
+//   本地展示态 —— 原来的 Mock 三档轮转假状态已删除。两模式读同一份 profile（Backend
+//   读已水合权威快照的 wire status、Mock 读同一份页面身份），点行进共用状态编辑
+//   （?from=intentions + 来路证明），保存后回本屏。
 
-import { useState } from 'react';
 import 样式 from './求职意向管理.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 滚动区, 设置行 } from '../组件/通用';
 import { use应用状态 } from '../状态/应用状态';
 import { use导航 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
+import { 创建候选编辑来路 } from '../流程/候选日常编辑';
 import type { BFF简历资料 } from '../数据/BFF契约';
+import type { 候选身份 } from '../数据/类型';
 
 /** 求职意向配额上限：产品规则限定一个账号最多 5 个意向 */
 const 意向配额上限 = 5;
 
-/** 可循环切换的求职状态。点「求职状态」行就在这几档里轮转，不另开选择页。 */
-const 求职状态档位 = ['在职 · 看好机会', '在职 · 随便看看', '离职 · 尽快到岗'];
+/** 日常状态的展示文案（Spec §6）：只显示真实三态，空值未填写。
+ *  不把 employed 翻译成「保密求职中」、不给在校/离职包装到岗节奏 —— 那些是 onboarding
+ *  到岗档位的语义，不是这份 profile 状态的持久化选项。 */
+const 状态文案: Record<候选身份, string> = {
+  '': '未填写',
+  在校: '在校',
+  在职: '在职',
+  离职: '离职',
+};
 
-/** Backend 权威身份 → 展示文案。空串由调用方先排除，这里只接已填写的 wire 值。 */
-export function 求职状态文案(status: Exclude<BFF简历资料['status'], ''>): string {
-  return {
-    student: '在校 · 看机会',
-    employed: '在职 · 保密求职中',
-    unemployed: '离职 · 随时到岗',
-  }[status];
-}
+/** Backend wire status → 页面身份：只做既有枚举映射，不新增语义（'' / 缺失 = 未选择）。 */
+const wire到身份: Record<BFF简历资料['status'], 候选身份> = {
+  '': '',
+  student: '在校',
+  employed: '在职',
+  unemployed: '离职',
+};
 
 export default function 求职意向管理() {
   const { 状态, 数据源模式, 后端状态 } = use应用状态();
   const { 跳转, 返回 } = use导航();
   const 是后端 = 数据源模式 === 'backend';
 
-  // 求职状态只是本屏的展示态，没有跨屏联动需求，用本地 state 即可（仅 Mock 使用）
-  const [求职状态下标, 设求职状态下标] = useState(0);
-  // Backend 只读权威简历快照的 wire 身份；快照缺失或未填写显示中性值，
-  // 不读取为注册流准备的页面态默认「在职」。
-  const wire状态 = 后端状态.简历快照?.profile.status ?? '';
-  const 状态值 = 是后端
-    ? wire状态 === ''
-      ? '—'
-      : 求职状态文案(wire状态)
-    : 求职状态档位[求职状态下标];
+  // Backend 读已水合权威快照的 wire 身份；Mock 读同一份页面 profile 身份 ——
+  // 两模式同一份事实、同一编辑入口，不再有本地轮转的假状态。
+  const 身份 = 是后端
+    ? wire到身份[后端状态.简历快照?.profile.status ?? '']
+    : 状态.基本信息.身份;
+  const 状态值 = 状态文案[身份];
   return (
     <次级页外壳>
       <返回栏 返回={返回} />
@@ -102,7 +110,10 @@ export default function 求职意向管理() {
             <设置行
               标题="求职状态"
               值={状态值}
-              按下={是后端 ? undefined : () => 设求职状态下标((旧) => (旧 + 1) % 求职状态档位.length)}
+              按下={() => 跳转(
+                `${路径.求职状态}?from=intentions`,
+                创建候选编辑来路('intentions'),
+              )}
               无分隔线
             />
           </div>

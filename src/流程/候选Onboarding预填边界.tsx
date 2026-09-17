@@ -25,6 +25,7 @@ import { 路由加载中 } from '../应用';
 import 确认层 from '../组件/确认层';
 import { use应用状态 } from '../状态/应用状态';
 import { 创建空候选预填状态, type 候选预填状态 } from '../状态/后端/类型';
+import { 读候选编辑来源 } from './候选日常编辑';
 import { Onboarding流程, 读向导段, 向导段参数名 } from './onboarding配置';
 
 /** 消费 suggestion 的资料页（设计 §9 的窄集合；向导只有偏好段的个人优势题消费）。 */
@@ -48,10 +49,17 @@ export function 带简历编辑标记(search: string): boolean {
   return new URLSearchParams(search).get('from') === 'resume';
 }
 
+/** 该 search 是否带合同 A 白名单里的任一日常来源（resume / intentions）。
+ *  日常编辑位置既不是预填消费位，也不是注册会话活跃位 —— 状态页的 from=intentions
+ *  与 from=resume 同样属简历域；白名单外的值不是合法日常来源，不改变原有判定。 */
+function 是日常编辑位置(search: string): boolean {
+  return 读候选编辑来源(search) !== null;
+}
+
 /** 该位置是否会消费 suggestion：路由身份必须含 search —— 向导段写在 query 上。
- *  带日常编辑标记的完整位置绝不消费（从我的简历进来的编辑刷新后也不恢复建议）。 */
+ *  带日常编辑来源的完整位置绝不消费（从我的简历进来的编辑刷新后也不恢复建议）。 */
 export function 是预填消费位置(pathname: string, search: string): boolean {
-  if (带简历编辑标记(search)) return false;
+  if (是日常编辑位置(search)) return false;
   if (消费预填路径.has(pathname)) return true;
   return pathname === 路径.引导问答 && 读向导段(new URLSearchParams(search).get(向导段参数名)) === '偏好段';
 }
@@ -76,13 +84,13 @@ const 活跃Onboarding路径 = new Set<string>(
 
 /**
  * 该位置是否仍在候选注册会话内。向导两段（含薪资段）都在合同里，活跃与否不看
- * query —— 唯一例外是日常编辑标记：带 from=resume 的完整位置（如 /basic?from=resume）
- * 属简历域，绝不是注册会话；否则已退出的引导状态会被资料编辑路径重新当作活跃。
- * 其余离开集合的位置由 应用.tsx 清理。
+ * query —— 唯一例外是日常编辑标记：带合法来源的完整位置（/basic?from=resume、
+ * /onboard/status?from=intentions）属简历域，绝不是注册会话；否则已退出的引导状态
+ * 会被资料编辑路径重新当作活跃。其余离开集合的位置由 应用.tsx 清理。
  */
 export function 是活跃Onboarding位置(路径串: string): boolean {
   const 位 = 路径串.indexOf('?');
-  if (位 !== -1 && 带简历编辑标记(路径串.slice(位))) return false;
+  if (位 !== -1 && 是日常编辑位置(路径串.slice(位))) return false;
   return 活跃Onboarding路径.has(剥问号(路径串));
 }
 
