@@ -377,3 +377,12 @@ R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude �
 - 现场差异（与 brief 假设的偏差，已由 review 裁定）：合同 A 未加 intentions 构造器导出（合同只冻结 4 个导出，字面量在 求职意向管理.tsx 一处）；姓名/状态空值展示「未填写」（brief Step 3 空值未填写的一贯化）；`带简历编辑标记` 保持 resume 单义、位置判定另走共享白名单解析（避免 工作经历/引导问答 被 intentions 误纳）。`docs/testing/cases.md` 过期待 Task 5 `test:list --write`；`.编辑条目*` 死样式待 Task 2（清单内）。
 - 递延 minor（登记供收尾/最终 review triage）：①`候选日常编辑.ts:79-81` 注释「回调跨渲染稳定」与 `useCallback` 依赖每渲染变的事实不符（行为影响零）；②日常保存缺 出生年/出生月 负向断言（`基本信息.test.tsx` 用 objectContaining 未钉住不写演示默认）；③三态展示文案两处并列（我的简历/求职意向管理）+ 保存载荷六字段重复切片三处；④我的.tsx Mock「在职 · 保密求职中」为既有原型兜底投影（Backend 已读权威身份），Spec §7 范围外不改。
 - 浏览器真实历史栈证据留 Task 5；`我的.tsx` 归属裁定为范围外。
+
+### Task 2 执行记录（2026-09-17）
+
+- 依赖基线：Task 1 收口后 `0d18e64f`（含 Task 1 执行记录提交）。实施 commit `9bb4c81c`（16 文件：新增 src/组件/个人优势编辑正文.tsx/.test.tsx、src/屏幕/工作经历.日常编辑.test.tsx + 13 修改；清单 17 项中 `工作经历.module.css` 经核验无需改动——所需样式均已存在）。
+- 定向 TDD 回执：RED 5 份日志（/tmp/task2-red/，条目直达/取消零写/屏蔽回归/优势正文等目标断言失败）；GREEN brief 定向命令 12 files / 528 passed；全仓 265 files / 6108 passed（Task 1 后基线 6059）；typecheck、oxlint、`git diff --check` 全清。数据源侧 `简历.test.ts` 新增 8 例以精确 HTTP 调用序列证明未改条目零写、明确删除恰一次 DELETE、遗留不完整行零写不误删。
+- 宿主内 review（两阶段，均 opus）：spec Approved（0 Critical/Important）+ quality Approved（0 Critical/Important），无需 fix loop。实施者自检曾修两个真缺陷（日常视图漏挂 derived 解除确认层、确认后丢成功落点），均已在结构上修复并有回归钉住。
+- 现场差异裁定（spec reviewer 复核后接受）：(a) 未引入日常局部列表草稿——条目保存即走完整保存链+权威回读，仅 skills 有分区级局部草稿；brief Step 3「局部列表草稿」在合同 B 权威回读语义下属第三份真相，实现改为「列表读权威切片 + 本次变更叠加 next」，可观测要求全满足，属 Plan 允许的内部等价组织。(b) `无 section` 的 `item` 参数在归一为 work 列表时被丢弃——合同只定义 item 与 section 同现，站内入口均同带 section，无可达路径。
+- Plan 缺口裁决：`e2e/suites/展示与交互.spec.ts` 的 catalog-fullscreen 候选侧三入口用例（2824/2885/2911 行断言 `#/experience\?from=resume$`）不在 Task 5 预期清单，但归一化会使其变红。裁定：Task 5 范围扩展并入该文件同一迁移动作（依据 Spec §5 归一合同），task intent 路径已同步 update。
+- 递延 minor（供收尾/最终 review triage）：工作经历.tsx 增至 2452 行（+581，分区清晰但为结构债，建议后续动本页时提取日常编辑子模块）；证书年份校验与映射层双份口径需同步；Backend 日常教育/证书保存守卫无页面测试；证书区数据来源约定不一致；删除路径无「目标已不在权威列表」守卫；技能用例 DOM 遍历定位；报告 RED/GREEN 计数不自洽（527/528）。Task 5 需补浏览器证据：条目保存后回原简历、两次连续编辑不回旧页（brief Step 2 已含）。
