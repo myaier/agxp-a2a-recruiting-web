@@ -139,6 +139,23 @@ describe('解职位资料', () => {
       publisher_profile: { public_name: '林澈', title: '招聘负责人', personal_verification_status: 'pending', avatar_url: null },
     })).toThrowError(expect.objectContaining(契约漂移));
   });
+
+  it('publisher_profile 的 avatar_url 缺席合法（冻结合同只要求三键），归一为 null', () => {
+    // 2026-09-17 STG 实测：无头像发布人的 SafeJobDetail.publisher_profile 只带
+    // public_name/title/personal_verification_status 三键（BFF 侧 *string omitempty），
+    // mobile-v1.yaml 的 PublicRecruiterProfile.required 也只列这三键；前端按四键必填
+    // 解码把合同内响应判成 invalid_response，Case 详情整页打不开。
+    const 解出 = 解职位资料({
+      ...BFF安全职位资料样本,
+      publisher_profile: { public_name: '周明远', title: '招聘负责人', personal_verification_status: 'unverified' },
+    });
+    expect(解出.publisher_profile).toEqual({
+      public_name: '周明远',
+      title: '招聘负责人',
+      personal_verification_status: 'unverified',
+      avatar_url: null,
+    });
+  });
 });
 
 describe('解候选在线简历', () => {

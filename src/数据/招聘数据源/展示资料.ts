@@ -37,12 +37,17 @@ function 是记录(值: unknown): 值 is Record<string, unknown> {
 }
 
 /** exact key set：缺必需键（含显式 undefined 值）或多出未知键都按契约漂移 fail closed。 */
-function 要求闭合对象(input: unknown, 必需键: readonly string[]): Record<string, unknown> {
+function 要求闭合对象(
+  input: unknown,
+  必需键: readonly string[],
+  可选键: readonly string[] = [],
+): Record<string, unknown> {
   if (!是记录(input)) throw 契约错误();
   for (const 键 of 必需键) {
     if (!(键 in input) || input[键] === undefined) throw 契约错误();
   }
-  for (const 键 of Object.keys(input)) if (!必需键.includes(键)) throw 契约错误();
+  const 允许键 = new Set([...必需键, ...可选键]);
+  for (const 键 of Object.keys(input)) if (!允许键.has(键)) throw 契约错误();
   return input;
 }
 
@@ -176,12 +181,14 @@ function 可空企业媒体(值: unknown): BFF企业媒体 | null {
 }
 
 function 解发布人档案(input: unknown): BFF公开发布人档案 {
-  const raw = 要求闭合对象(input, ['public_name', 'title', 'personal_verification_status', 'avatar_url']);
+  // 冻结合同 PublicRecruiterProfile.required 只有三键；avatar_url 可选（BFF 侧
+  // *string omitempty，无头像时整键缺席），缺席归一为 null，显式 null 同样合法。
+  const raw = 要求闭合对象(input, ['public_name', 'title', 'personal_verification_status'], ['avatar_url']);
   return {
     public_name: 要求字符串(raw.public_name),
     title: 要求字符串(raw.title),
     personal_verification_status: 要求枚举(raw.personal_verification_status, 验证状态全表),
-    avatar_url: 可空字符串(raw.avatar_url),
+    avatar_url: raw.avatar_url === undefined ? null : 可空字符串(raw.avatar_url),
   };
 }
 

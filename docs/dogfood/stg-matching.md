@@ -4,8 +4,13 @@ Suite `stg-matching` 在真实 STG 后端上验收**双向匹配**的 S0–S3 �
 （`stg-matching-recruiter` 招聘者发起 / `stg-matching-candidate` 求职者发起），
 每 Case 一轮一个全新 run（新账号、新组织、新岗位、新意向、新 PDF 版本），不能共用。
 
-- 状态：本文只固化材料、准入与运行骨架。**两个 Case 现阶段均为 `NOT_RUN`；S0–S3
-  的真实入口、人工待办分界与阶段细节尚待 Task 4 探索固化，本文不预填任何通过**。
+- 状态：2026-09-17 Task 4 探索完成（1 个 run，招聘者发起方向实测到 S1；候选者
+  发起方向与 S2–S3 未实测）。**两个 Case 现阶段均为 `NOT_RUN`（无 PASS）**；
+  当前 STG 部署存在决定性后端阻断（第 11 节 Hub enrollment 缺失：匹配 agent
+  任务全部 `hub_rejected`、受影响 run 的 cleanup 停 `CLEANUP_BLOCKED`），
+  解锁前不得重跑或写任何通过。已固化：双端真实入口文字（第 6/8 节）、
+  安全登录通道实测（第 5 节）、PDF 上传解析链、S0 人工继续与 S1 递交披露的
+  自动/人工分界、预算与失败恢复（第 3/10 节）。
 - 2026-09-17 两项 controller 裁定已应用于材料并经在线 validate 证实（见第 2、11 节）：
   经历行业重冻为活目录叶子 `开发者工具`；项目事实以文字并入经历 description。
 - 权威设计：`docs/superpowers/specs/2026-09-17-baseline-stg-matching-design.md`。
@@ -141,44 +146,71 @@ local 栈、route fixture 或仅见页面都不算 STG 证据。
   5. 无安全通道可用（工具不支持 stdin batch 等）即记 `BLOCKED`，不继续。
 - 报告不写手机号、验证码、Cookie、Authorization、proof 或完整认证状态；只引用
   receipt / login 路径与允许公开的安全实体 ID。
+- 2026-09-17 实测：本通道（受限 Python 驱动读 login.json + SSH fixture 通道取码
+  → subprocess stdin 喂 `agent-browser batch --bail`）双角色登录全程可用；登录页
+  定位键：区号按钮 aria-label「编辑区号，当前 +86」→ 弹层输入 aria-label「区号」
+  +「确认区号」；手机号输入 aria-label「手机号」；「获取验证码」；验证码输入
+  aria-label「短信验证码」（取码成功后才渲染）；协议行「已阅读并同意」；进入键
+  「进入」。合成号码为 `+999`+12 位，区号需先改为 +999。
 
 ## 6. Case stg-matching-recruiter（招聘者发起）
 
-**流程细节待 Task 4 探索固化**，当前仅锁定骨架：
+2026-09-17 探索 run `front-match-recruiter-20260916T235043` 实测固化（到 S1 终结，
+见第 11 节后端阻塞；已观测节点均有截图证据）：
 
-1. 新 run（第 3 节）+ 招聘者会话 UI 登录（第 5 节）。
-2. 在本轮岗位的真实候选推荐入口找到本轮候选（允许刷新推荐；找不到则在预算内
-   观察并调查，不委托其他 STG 用户）。
-3. 按当前界面发起委托；不能复制候选端的 PDF 确认步骤假装两端相同。
-4. 候选端会话完成附件确认/递交等待办（按本人真实待办）。
-5. 跟踪同一真实委托/Case 的安全 ID 与角色归属；S0–S3 各节点证据与共同断言见
-   第 8 节；刷新后不重复发起。
+1. 新 run（第 3 节）+ 招聘者会话 UI 登录（第 5 节）。登录落点 `#/hr`，顶栏岗位
+   选择器直接显示本轮岗位标题即正确归属的第一核对点。
+2. 推荐入口：顶栏「在谈｜推荐」双子视图切「推荐」。全新 run 初始为
+   「0 个推荐候选」空态 + 「让代理再找一批」按钮（允许刷新推荐，本 run 自己的
+   推荐批次在 purge 时删除）。点击后约 3 秒出现推荐卡（卡面：年限｜学历｜状态｜
+   职位｜学校·专业，如「6 年｜本科｜在职看机会｜测试工程师｜清华大学 · 计算机
+   科学与技术」）。
+3. 确认本轮候选：点「查看候选匿名简历」进入匿名简历页（URL 形如
+   `#/hr/jobs/<job_id>/recommendations/<rec_id>`）。「个人优势」逐字等于本轮
+   fixture summary 即本轮候选的确证（合成 summary 全 run 唯一）。
+4. 发起委托：匿名简历页（或推荐卡上）点「让AI代理去谈」。**招聘端委托没有
+   确认层、原地提交**（与候选端 PDF 披露确认不同，不得在两方向间复制步骤）。
+   受理后该候选从推荐流移出、出现在「在谈」列表卡（「适配 N 分 … 匿名初筛
+   代理处理中 待处理」）；点卡进入在谈详情 `#/hr/candidate/<case_id>`。
+   不要碰「收藏」（第 9 节阻断清单）。
+5. 候选端会话按本人真实待办推进（第 8 节）；两端共用同一 case_id。
 
 ## 7. Case stg-matching-candidate（求职者发起）
 
-**流程细节待 Task 4 探索固化**，当前仅锁定骨架：
+**本方向浏览器流程未实测**（第 11 节后端阻塞使后续 run 无法创建），保留骨架 +
+已知事实；真实入口待后端解锁后补固化：
 
 1. 新 run（第 3 节，不复用上一 Case 的 run）+ 候选会话 UI 登录（第 5 节）。
-2. 从真实职位入口找到本轮岗位 `测试工程师（接口自动化）`。
-3. 选择本轮 `stg-matching-resume.pdf` 的**准确版本**并确认披露；不得以最新附件
-   替代 Case 原版本。
+2. 从真实职位入口（主壳「市场」/搜索）找到本轮岗位 `测试工程师（接口自动化）`；
+   源码定位：职位详情页（`#/job/:id`）底部主键「让AI代理去谈」（已委托后变
+   「AI代理已接手」并禁用）。
+3. 委托前的附件确认层（源码 P5 行为，待实测固化）：零份附件先去上传；一份附件
+   由确认层点名该文件后才递交。选择本轮 `stg-matching-resume.pdf` 的**准确
+   版本**并确认披露；不得以最新附件替代 Case 原版本。
 4. 发起委托；观察受理、连续记录与真实开案（不得将有回执等同 Case 已创建）。
 5. S0–S3 各节点证据与共同断言见第 8 节。
 
-## 8. S0–S3 共同观察点（待 Task 4 以真实运行固化断言粒度）
+## 8. S0–S3 共同观察点（2026-09-17 实测到 S1；S2/S3 待解锁后固化）
 
-| 节点 | 必需证据（方向无关） |
-| --- | --- |
-| 数据与附件就绪 | 双方建档落正确角色；JD/意向/简历符合第 2 节矩阵；PDF 真实上传解析且准确版本可选择 |
-| 发起与开案 | 真实写入、持久委托回执、真实 Case；刷新/导航恢复同一记录、无重复委托 |
-| S0 匿名初筛 | 双端阶段状态、允许展示的 Agent 问答/总结、真实通过事实；不人工补写答案 |
-| S1 递交简历 | 准确绑定本轮 PDF 版本的披露与查看；自动推进则观察，需本人操作则执行 |
-| S2 需要协调 | 仅用固定材料事实作答；无差异自动完成则以阶段历史证明经过；材料未覆盖的新问题如实记录，不临场编造 |
-| S3 意向确认 | 双方各自阅读当前总结并明确确认；一方确认不冒称双方完成；版本变化重新阅读 |
-| 完成与会话 | 双端刷新仍显示同一 Case 完成、本人待办消失；移交就绪后打开正确真人会话，双方可达，**不发送任何消息** |
+**候选端 PDF 上传（两方向共用，S1 前置）**：我 tab → 「我的简历」（`#/resume`）
+→ 「添加附件简历」（触发隐藏 file input，accept `.pdf,application/pdf`）→
+上传 `stg-matching-resume.pdf` → 同意层「允许 AI 识别这份简历？」→「同意并
+继续」→ 卡面「正在识别」→「识别完成」（本轮实测约 20 秒）。解析成功后只读
+`GET /api/v1/me/resume-files` 记录 file_id/version_id/parse_id 与 sha256（本轮
+上传 sha256 与 fixture 逐字节一致）；解析失败不得手填替代。
 
-业务断言只针对事实、阶段归属、版本、持久性、权限与操作效果；不断言模型完整文本、
-固定问答轮数、匹配分或固定秒数。
+| 节点 | 实测 UI 事实（候选视角 / 招聘视角） | 断言 |
+| --- | --- | --- |
+| 数据与附件就绪 | 候选「我」页姓名/状态、我的简历页六区结构化资料逐项=fixture；招聘 `#/hr` 顶栏=本轮岗位 | 事实一致；PDF 真实解析成功（succeeded + parse_id） |
+| 发起与开案 | 招聘：委托后候选移出推荐、进「在谈」，卡「适配 91 分…匿名初筛 代理处理中」；Case URL `#/deal/<mc_…>`（候选）/`#/hr/candidate/<mc_…>`（招聘） | 真实 Case id（`mc_` 前缀）；两端同 id；刷新恢复同记录、无重复委托 |
+| S0 匿名初筛 | agent 任务自动评估；失败时落到人工卡「是否继续这一单」（继续/结束匹配 + 选填「给我的 AI 一句说明」，3 天截止，逾期自动结束）；完成后时间线「双方选择继续这一单」、小结「本阶段已完成 ✓ 匿名初筛已通过」 | 不人工补写答案；人工卡只按固定材料事实决定 |
+| S1 递交简历 | 候选：「等待候选人回应简历邀请」→「接受简历邀请/接受邀请」→ 确认层「确认递交这份简历？」**点名具体文件名**与一次性披露授权 →「确认递交」→ 清单 ✓简历已绑定 ✓简历已解析 ✓简历已披露；招聘：递交简历区 + 「PDF stg-matching-resume.pdf 查看 ›」 | 准确绑定本轮 PDF 版本（file/version id 与上传回执一致）；披露确认点名文件；不重放旧版本 |
+| S2 需要协调 | 未到达（本轮于 S1 被 Hub 拒绝终结） | 仅固定材料事实作答；自动完成读阶段历史 |
+| S3 意向确认 | 未到达 | 双方各自读最新总结分别确认 |
+| 完成与会话 | 未到达 | 双端刷新同 Case 完成、本人待办消失；打开正确真人会话，不发送消息 |
+
+业务断言只针对事实、阶段归属、版本、持久性、权限与操作效果；不断言模型完整
+文本、固定问答轮数、匹配分或固定秒数。
 
 ## 9. 只走主路径（cleanup 阻断清单）
 
@@ -193,6 +225,11 @@ README「双向匹配 dogfood」节）：discovery 卡片的不感兴趣/收藏/
   耗尽 `CLEANUP_BLOCKED`，用**同一 run 同一条** cleanup 命令重试；绝不 reset、
   强制解锁或手工 SQL。
 - 已知阻断边界：Hub 任务未知/404、foreign/共享引用、会话里已有消息。
+- 2026-09-17 实测补充：`hub_task/*/work_state_unknown` 在当前部署**确定性**出现
+  （第 11 节 enrollment 缺失 → 任务被 Hub 拒绝从未创建 → observe 404）；同 run
+  重试不收敛，占用保持使后继 run 全部 `occupied_by`。此时唯一合法路径是后端
+  owner 解锁部署后同 run 重试 cleanup；freeze 步骤仍会撤销会话（实测双角色
+  Cookie 重放 `GET /api/v1/me` 401），但 `CLEANED` 未达成前不得报告清理完成。
 - **本 Suite 成功只认**：rc0 + `CLEANED` + `residuals=[]` + 合法 `retained`（固定
   `{kind,count,reason}` 类别、三方 inspect 对账一致）+ 占用释放 + 原 Cookie 重放
   401 + 无未收敛工作。`CLEANED_WITH_RESIDUAL` 不算成功。
@@ -216,5 +253,23 @@ README「双向匹配 dogfood」节）：discovery 卡片的不感兴趣/收藏/
   报告，不在前端仓库修**。
 - 在线 validate 的能力前提是 fixture 管理面与部署健康；`preflight` 三项准入任一
   缺失即 BLOCKED，不引用旧 PASS。
+- **STG Hub enrollment 缺失（2026-09-17 实测，当前部署的决定性阻断）**：本 run
+  的 S0 `evaluate_job` 与 S1 `screen_resume_v2` agent 任务均在 ~3 秒内
+  `attention_required/hub_rejected`，Case 于 S1 终结
+  `agent_failed/screening_incomplete`（唯一残存动作=招聘端七天「重新考虑」，
+  语义为不重跑初筛，Happy 路径不可恢复）。证据链：Hub DB
+  `application_enrollments`/`tenants`/`agxp_identity_bindings` 全为 0 行；
+  `mtstore.AcceptApplicationTask` 对 recruitment.v1 capability 要求 active
+  enrollment 行，缺失→404→hubclient `ErrPermanentRejection`→dispatcher
+  `FailDispatch(hub_rejected)`；litellm 40 分钟内仅健康检查（模型从未被调用）；
+  本地栈 `dev-local.sh` bootstrap 显式 `PUT /internal/ops/v1/
+  application-enrollments/recruitment/<identity>` 而 STG `bootstrap-remote.sh`
+  无任何 enrollment 步骤。**同一缺口还阻断 cleanup**：被拒任务从未在 Hub 创建，
+  matching purge 的 observe 得 404 → `work_state_unknown` → `CLEANUP_BLOCKED`
+  且占用保持，后继 run 因 `occupied_by` 无法创建。解锁路径归后端 owner
+  （STG bootstrap/deployment 补 enrollment 能力，或后端修正被拒任务的 purge
+  语义），前端不得也不应修；解锁后先同 run 重试
+  `cleanup --run-id front-match-recruiter-20260916T235043` 释放占用，再新 run
+  重跑。
 - 正式 L3、B02 附件全分支、H01–H04 其余场景不在本 Suite 范围；本 Suite 两个 Case
   的浏览器 PASS 证据未产生前，不写任何已通过。
