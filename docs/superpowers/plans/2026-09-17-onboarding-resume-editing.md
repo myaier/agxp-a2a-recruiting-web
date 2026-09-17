@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-17-onboarding-resume-editing-design.md`，批准正文 revision `ad781149019d1197b0211d7fdebd9d329e2a417b`，blob `19f720e212db569eba5c354cecb67fb7b493a766`。用户在认可 v1.0 并指定先行分支后，于本会话明确要求继续 Plan、Claude review 与执行提示词，作为 v1.1（含 §11）的实施范围授权。不得用未来工作树同名文件替代批准版本。
 
-**版本与阶段:** Plan v1.0，文档 review 前候选。当前可完成规划和 review；**尚未满足产品实施依赖**。用户要求现在继续规划，故先冻结行为/接口和依赖核验规则；Spec §11.3 要求的最终已合入代码基线仍须在执行前取得。本文件不是对 `fix/chat-recommend-display` 当前进行中实现的验收。
+**版本与阶段:** Plan v1.1，已完成首轮文档 review 并修正文档，等待复核。当前可完成规划和 review；**尚未满足产品实施依赖**。用户要求现在继续规划，故先冻结行为/接口和依赖核验规则；Spec §11.3 要求的最终已合入代码基线仍须在执行前取得。本文件不是对 `fix/chat-recommend-display` 当前进行中实现的验收。
 
 **计划本身复杂度：高。** 涉及共享经历保存链、onboarding 分区确认与首次意向防重、浏览器历史栈及两数据源一致性。
 
@@ -46,6 +46,25 @@ git log -12 --oneline fix/chat-recommend-display
 取得对方最终合入记录（精确最终功能 SHA、目标合入 SHA及其实际 review/验收记录），在本 Plan 执行记录登记 `predecessor_final`、`dependency_target_commit`、`execution_base`。以 `git merge-base --is-ancestor` 证明先行版本已进入 target 和当前 `HEAD`；若使用 squash，必须核对最终合入 diff 和 §11 逐项合同，不能仅靠分支名/祖先检查。分支名在迁移机器不存在时，用携带的精确 Git 对象/合入记录核验，不猜另一个分支。
 
 **依赖未进入所选工作区：停止产品实施，报告 DEPENDENCY_BLOCKED。** 不合并工作中的对方分支、不偷跑独立 Task、不在 final gate 前同步 target。用户可在先行分支完成后手动选定已经包含依赖、并携带批准文档 Git 对象的工作区重新启动同一 prompt；执行者仍只复用 `.`。本次交付不把“规划完成”写成“实施已就绪”。如果实际先行最终行为与 §11 不同，列出具体差异并停止受影响实施，不自行扩大产品设计。
+
+### 依赖门的具体解锁步骤（不授权实施者提前合 target）
+
+上述门是外部依赖前置，不是让当前旧基线无限等待 final gate。先行分支完成合入后，用户在**启动本 prompt 之前**可选择已经包含该合入的工作区；若继续使用当前规划分支，则由用户在该工作区手动完成下面的普通基线更新。此手动准备属于用户对本工作区的直接操作，不在实施 prompt 授权中，实施 Agent 不代为执行或绕过 final gate：
+
+```bash
+git status --short
+git fetch origin
+git log -12 --oneline origin/main
+git merge --no-edit origin/main
+```
+
+运行 merge 的前提是已经从先行分支最终记录核对其确实合入 origin/main，且当前工作区无待保护的未提交内容；有冲突则人工处理并提交，不用 ours/theirs 整文件覆盖，不 stash/reset/clean。记录 merge 前后 SHA，再启动 prompt。执行者仍须核验批准 Spec/Plan 的精确 Git 对象、工作树正文及最终依赖合同。用户不做该准备时保持 DEPENDENCY_BLOCKED，不为解除前置去扩大执行授权。此处只具体化 Spec §11 的工作区前置，不改变实施 session 的 final gate 顺序。
+
+### 先行最终测试责任登记
+
+开工门通过时，从先行最终合入 diff 登记与 Spec §11.2 对应的**测试文件、完整 Case 名、project、保护行为**，写入本 Plan 实施记录，并与本文列出的已知消费者取并集。已知单元文件至少包含 `src/屏幕/工作经历.行业与企业.test.tsx`、`src/屏幕/工作经历.资料与预填.test.tsx`、`src/状态/后端/隐私操作.test.ts`、`src/数据/后端映射.test.ts`、`src/流程/候选Onboarding简历预填.test.ts`；浏览器是先行最终实际的经历屏蔽、partial failure、hidden 保留 Case，不能用规划时观察的标题猜测替代。
+
+先用 `npm run test:list` 取得实际完整清单，再对登记后的每条最终命令运行相同选择器的 `--list`；逐条对账每个登记 Case 被选择、没有重名歧义、没有0条。若 Case 已重命名，更新选择器和命令记录；若被删除，查明承接断言，不静默豁免。该登记是依赖交付核验，不为此新建报告/runner。
 
 ## Task index
 
@@ -101,7 +120,7 @@ export function use候选编辑退出(来源: 候选编辑来源): () => void;
 
 继续调用 `操作.保存简历(next: 页面简历写入, 来源?: 简历保存来源): Promise<void>`、`保存个人优势(text: string, 来源?: 简历保存来源): Promise<void>` 和 `保存首次意向(input: 首次意向输入): Promise<void>`（类型来自现有数据源/状态文件）。日常传 `'日常编辑'`，onboarding 缺省。无 API 新方法、无新 wire 字段。
 
-日常每个编辑实例初值取已水合快照，输入只进局部草稿；提交时用**本次 next 快照作为显式参数**进入完整保存链，不能 `setState(next)` 后立即调用仍闭包读取旧列表的保存函数。保存成功后操作层权威回读更新全局；Mock 只有保存成功路径 dispatch 已保存态。取消/失败不会 dispatch 未确认内容。背景权威刷新不覆盖正在编辑的局部输入。
+日常每个编辑实例初值取已水合快照，输入只进局部草稿；提交时用**本次 next 快照作为显式参数**进入完整保存链，不能 `setState(next)` 后立即调用仍闭包读取旧列表的保存函数。日常的逻辑提交范围是当前分区/条目：以当前已水合权威快照的 `从BFF简历` 页面形态为基底，只应用本次明确字段/条目变更（删除只移除明确目标），未编辑分区及其他条目原样带回、不可少传导致 DELETE。Mock 以已保存态同样合成。保存成功后操作层权威回读更新全局；Mock 只有保存成功路径 dispatch 已保存态。取消/失败不会 dispatch 未确认内容。背景权威刷新不覆盖正在编辑的局部输入。若本次目标已被后台删除，报已不可用，不将编辑变新增。真实 diff 操作仍由现有数据源生成、revision/幂等不变。
 
 Task 2 提取 `src/组件/个人优势编辑正文.tsx`，无业务副作用，props 冻结为 `{文本:string; 修改:(值:string)=>void; 说明?:string; 恢复:(()=>void)|null; 恢复文案:string}`。组件含 textarea（aria-label 个人优势、maxLength=500）和计数/真实恢复按钮，不包含保存/路由或长按删除说明，供 Task 2 日常与 Task 3 聚合页使用。
 
@@ -157,22 +176,22 @@ npm test -- src/流程/候选日常编辑.test.tsx src/流程/候选Onboarding�
 
 **预期编辑文件：**
 - 新增：`src/组件/个人优势编辑正文.tsx`、`src/组件/个人优势编辑正文.test.tsx`、`src/屏幕/工作经历.日常编辑.test.tsx`。
-- 修改：`src/屏幕/我的简历.tsx`、`src/屏幕/我的简历.test.tsx`、`src/屏幕/我的简历.module.css`、`src/屏幕/工作经历.tsx`、`src/屏幕/工作经历.module.css`、`src/屏幕/工作经历.测试辅助.tsx`、`src/屏幕/工作经历.行业与企业.test.tsx`、`src/屏幕/工作经历.资料与预填.test.tsx`、`src/屏幕/工作经历.教育目录.test.tsx`、`src/屏幕/工作经历.作品集与标签.test.tsx`、`src/屏幕/引导问答.tsx`、`src/屏幕/引导问答.test.tsx`、`src/屏幕/引导问答.module.css`。
+- 修改：`src/屏幕/我的简历.tsx`、`src/屏幕/我的简历.test.tsx`、`src/屏幕/我的简历.module.css`、`src/屏幕/工作经历.tsx`、`src/屏幕/工作经历.module.css`、`src/屏幕/工作经历.测试辅助.tsx`、`src/屏幕/工作经历.行业与企业.test.tsx`、`src/屏幕/工作经历.资料与预填.test.tsx`、`src/屏幕/工作经历.教育目录.test.tsx`、`src/屏幕/工作经历.作品集与标签.test.tsx`、`src/屏幕/引导问答.tsx`、`src/屏幕/引导问答.test.tsx`、`src/屏幕/引导问答.module.css`、`src/数据/招聘数据源/简历.test.ts`。
 - 删除：无；移除不再消费的旧姓名/加意向样式只限本 Task 已列文件。
 
 - [ ] Step 1: 在真实组件 harness 中补失败用例：已有条目 item 按编号直达；不存在 id 不落“新增”；skills 只显示技能；certificate 指定项可编辑；取消后全局与保存调用不变；直接保存只一次；两次连续编辑不回旧页（单测检查状态，Task 5 检查实际浏览器栈）。
-- [ ] Step 2: 加屏蔽回归：未点保存零隐私写、全量经历不完整则隐私零写；隐私成功/简历失败时留页且已成功事实保留，重试仅补简历；旧 hidden=true 不改、新段 false；更换组织不隐式解除旧组织。运行下方命令捕获目标失败。
+- [ ] Step 2: 加屏蔽回归：未点保存零隐私写、onboarding 全量经历不完整则隐私零写、日常当前条目无效则零写；两条以上旧不完整经历/教育并存，分别修复或删除一条时不会被其他未改条目拦住，未改条目零写且不删除；隐私成功/简历失败时留页且已成功事实保留，重试仅补简历；旧 hidden=true 不改、新段 false；更换组织不隐式解除旧组织。运行下方命令捕获目标失败。
 - [ ] Step 3: 日常进入工作经历页后按 section/item 初始化局部列表草稿和子编辑器。work 无 item 显示工作分区列表，education/certificates 无 item 显示其列表；skills 为受控标签编辑。基本信息卡最高学历进入 education，诊断缺项带相应 section。直接条目保存回原简历，列表内条目保存回本地分区列表；列表没有第二次“总保存”，返回原简历即可，已成功条目不回滚。
 - [ ] Step 4: 复用现有条目编辑器，仅日常把“完成”绑定完整异步保存并显示“保存”；删除沿现有允许删除条件执行明确提交。新增条目保存成功用权威 ID，不以临时编号生成新 API ID；取消只丢局部草稿。证书保留已有名称/年份字段，无需创建新证书 schema。
-- [ ] Step 5: 重排局部保存函数，先对将提交的完整快照做现有所有有效校验，再 derived 确认，再顺序隐私操作/权威重读，再保存简历。保存锁覆盖全过程、确认弹层不丢 next；失败保留明确 next 与未达成意图，不能再次从旧全局构造覆盖用户输入。不改先行操作的 If-Match/幂等。onboarding 条目“完成”仍仅回填建档草稿，聚合“保存”才走完整链。
+- [ ] Step 5: 重排局部保存函数：onboarding 保留先行全量经历/教育等校验；日常按合同 B 合成局部差异，只校验本次将新增/修改的条目或分区（当前已改行缺项则定位字段并拦下，删除目标不要求补齐被删除条目），再 derived 确认，再顺序隐私操作/权威重读，再保存简历。未改旧条目按权威对象原样带回，使现有数据源 diff 不生成 PATCH/DELETE；不是少传其他条目或放宽被修改条目的校验。若检测出当前分区之外的意外差异，先修正 next 构造，不能默许它写入。保存锁覆盖全过程、确认弹层不丢 next；失败保留明确 next 与未达成意图，不能再次从旧全局构造覆盖用户输入。不改先行操作的 If-Match/幂等。onboarding 条目“完成”仍仅回填建档草稿，聚合“保存”才走完整链。
 - [ ] Step 6: 提取个人优势受控正文给 `/wizard?from=resume`；标题“编辑个人优势”，初值仅权威现值，保存个人优势带日常编辑并用统一退出。删长按说明及简历添加意向行，保留字数和真实恢复语义（本模式恢复=null）。
 - [ ] Step 7: 回跑定向测试、自检 next 实参/取消/partial failure，提交明确文件并追加执行记录。
 
 ```bash
-npm test -- src/屏幕/工作经历. src/屏幕/我的简历.test.tsx src/屏幕/引导问答.test.tsx src/组件/个人优势编辑正文.test.tsx --maxWorkers=4 --retry=0
+npm test -- src/屏幕/工作经历. src/屏幕/我的简历.test.tsx src/屏幕/引导问答.test.tsx src/组件/个人优势编辑正文.test.tsx src/数据/招聘数据源/简历.test.ts src/状态/后端/隐私操作.test.ts src/数据/后端映射.test.ts src/流程/候选Onboarding简历预填.test.ts --maxWorkers=4 --retry=0
 ```
 
-**完成/停止：** 分区和条目入口都正确，完整保存链一次提交，onboarding 聚合编辑不退化。若现有数据源会将合法未改字段误清空，先定位并记录需要的精确文件/现有接口修复；不得自行引入后端 endpoint 或泛化事务。仅设置局部状态再调用旧保存、仅把完成改文案，均不合格。
+**完成/停止：** 分区和条目入口都正确，完整保存链一次提交，onboarding 聚合编辑不退化。旧缺项的多行修复由日常局部 diff 逐条完成，不新增日常聚合“总保存”或批量修复向导。数据源现有相等判定确实使未改条目零写须由上述数据源/页面测试共同证明；无法做到则停查 next 归一化，不能取消写前校验。若现有数据源会将合法未改字段误清空，先定位并记录需要的精确文件/现有接口修复；不得自行引入后端 endpoint 或泛化事务。仅设置局部状态再调用旧保存、仅把完成改文案，均不合格。
 
 ### Task 3: 候选 Onboarding 意向、资料、偏好归位
 
@@ -254,12 +273,13 @@ npm test -- src/组件/招聘名片/招聘名片展示.test.tsx src/屏幕/招�
 ```bash
 npm run test:e2e -- e2e/onboarding.spec.ts e2e/J-PILOT-02接线.spec.ts e2e/suites/候选建档.spec.ts e2e/suites/招聘建档与JD.spec.ts e2e/suites/简历与附件.spec.ts e2e/suites/求职意向.spec.ts e2e/suites/岗位编辑.spec.ts --list
 npm run test:e2e -- e2e/onboarding.spec.ts e2e/J-PILOT-02接线.spec.ts e2e/suites/候选建档.spec.ts e2e/suites/招聘建档与JD.spec.ts e2e/suites/简历与附件.spec.ts e2e/suites/求职意向.spec.ts e2e/suites/岗位编辑.spec.ts --workers=4 --retries=0
+npm run test:e2e -- e2e/suites/隐私与实名.spec.ts --grep '聊天推荐前端修复|Onboarding简历修正' --list
 npm run test:e2e -- e2e/suites/隐私与实名.spec.ts --grep '聊天推荐前端修复|Onboarding简历修正' --workers=4 --retries=0
 npm test -- e2e/视觉回归/场景.test.ts --maxWorkers=4 --retry=0
 UI_CAPTURE_DIR=test-results/onboarding-resume-visual npm run ui:capture -- --grep 'candidate-preferences|candidate-salary|candidate-resume|recruiter-card|onboarding-resume-|onboarding-recruiter-category'
 ```
 
-七个功能文件是本轮改动的完整旅程/日常消费者，文件级覆盖可防 helper 变更损坏已有断言；隐私只选经历相关前缀。共用 helper 若影响文件外调用者，用 `rg` 找消费者并追加实际受影响 Case，不自动选择整层。`--list` 不证明执行通过，所有运行 retries=0。
+七个功能文件是本轮改动的完整旅程/日常消费者，文件级覆盖可防 helper 变更损坏已有断言；隐私只选经历相关 Case。上列 grep 是当前已观察标题的初始选择器，执行时必须按开工门的最终 Case 登记更新为能覆盖每一项的精确并集，并对更新后的同一命令先 --list；不能“非零就算全覆盖”。共用 helper 若影响文件外调用者，用 `rg` 找消费者并追加实际受影响 Case，不自动选择整层。`--list` 不证明执行通过，所有运行 retries=0。
 
 - [ ] Step 7: 更新活动 `stg-onboarding` 指南为 §3 新流程（两 manual + 能力开放时 parsed），保留两角色不同 cleanup/retained 规则；更新基础试点第6.2首轮第3节点：候选依次改基本字段、工作/教育条目、技能、证书、优势、三态，再分别刷新回读，保留原意向 CRUD 和第二轮隔离责任。真实试点保持两轮完整范围，不把新增局部检查声明为另一个 Suite；不在试点中额外测试企业屏蔽/披露写操作（该部分用 fixture 回归，避免超出现有排除范围）。报告模板增加上述逐项结果与取消/返回记录，不预写 PASS。
 - [ ] Step 8: 测试总入口补本轮迁移对账/选集说明，更新手写 L3 节点说明而不改 runner 的案例身份定义；执行 `npm run test:list -- --write` 和 `npm run test:list -- --check`。新文件全在既有流程/屏幕/组件分类内，若清单校验报告实际映射缺口，先定位后按原入口扩展精确映射并更新 task intent，不能手工改自动区。
@@ -304,7 +324,15 @@ UI_CAPTURE_DIR=test-results/onboarding-resume-visual npm run ui:capture -- --gre
 
 ## 文档 review 与裁决记录
 
-本节在实际 Claude 文档 review 后记录固定候选 revision/blob、轮次、findings 及每条接受/拒绝/延后理由；当前未运行，不记 clean。review 仅冻结本 Spec/Plan，不审整个分支或运行产品测试。
+R1：Claude Opus / high，WORKFLOW_DOCUMENT_REVIEW。批准 Spec revision/blob 见文首，候选 HEAD `760c9b89`，Spec blob `19f720e212db569eba5c354cecb67fb7b493a766`，Plan blob `4532ee85`（缩写，完整指纹见本轮原始回执）。审查前后 status/HEAD/两文档指纹一致；reviewer 未运行测试、未修改文件。报告3条 Important/required，无 optional。
+
+|Finding|裁决与核实|修正与批准范围|
+|---|---|---|
+|R1-1 开工门无法更新旧工作区|接受“解锁操作需具体化”；不采纳让实施Agent在gate前自行merge target的建议，因为workflow明确禁止|增加用户在启动实施前的精确手动基线准备步骤；仍允许选已有合入版本的工作区，仍保留DEPENDENCY_BLOCKED。只是具体化外部前置，不改变产品/执行授权|
+|R1-2 单条保存被其他旧缺项永久阻断|接受；源码核对现有简历数据源只映射真正变化的经历/教育，未改项可原样跳过|日常以权威快照叠加本次条目/分区差异，只预检将写条目；onboarding保留全量预检。增加两条旧缺项修复/删除与零旁路写的回归，不新建批量修复流程；符合Spec §11.2.4“本次真正将提交范围”|
+|R1-3 先行用例选择靠临时标题|接受；先行已提交有隐私操作/映射测试，未提交e2e标题不能当最终依据|开工登记最终diff中的实际文件/完整Case/project及行为，选择器与清单逐条对账；补隐私 --list 和已知漏选单测，不只看非零|
+
+本轮3条均已在 Plan 修正，批准 Spec 未改；因保存预检细化涉及实际写入边界，交同一 Claude 会话 R2 复核，未提前标记最终 clean。修复只改文档，未运行产品测试。
 
 ## 实施记录
 
