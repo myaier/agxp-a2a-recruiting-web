@@ -252,3 +252,49 @@ git diff --check
 - 教育浏览器取舍：`e2e/suites/候选建档.spec.ts` 的完整建档保存链不在本轮变更内；四页 Vitest 覆盖保存／引用映射，所选展示与交互用例直接覆盖本次候选行的点击、重复点选和请求不变。学校 getByText、专业 exact 名称仍受所选用例覆盖，不为纯展示接入重跑整个建档旅程。final gate 若实际修改到保存或初始化合同，必须重算该消费者责任。
 
 实施记录由新实施 session 在本节追加 Task 完成、验证、review 裁决与 final gate 事实，保持规划与执行证据分开。
+
+### 实施记录（Claude Code session，2026-09-17）
+
+宿主与路由：Claude Code；Task count 4 > 3，实际调用 `superpowers:subagent-driven-development`。批准对象开工核对：Spec revision `7ec411fb`／blob `fcf2bb90`、Plan revision `82c4d3a1`／blob `ae2f4bf2` 均存在；工作树 Plan 文件的 `git hash-object` 与冻结 blob 一致。Spec 工作树文件晚于冻结 blob 仅差 2 行状态／批准记录散文，该段自述「本记录仅更新状态，不改变批准正文」，批准正文以冻结 blob 为准。
+
+开工核查：意图登记 8 路径 + 7 符号；`task_intents.py list` 28 条记录中 2 条命中本 Task 路径，其 head（`2312cba5`、`1f8c2237`）均为 HEAD 祖先（已合入）→ 陈旧记录，无活动冲突。Spec §5 两条在办分支按 Plan 要求现场重查（非文档快照）：`fix/chat-recommend-display@6ed6a984` 仅 3 个 md；`baseline-l3-s0-s3-matching@7220dafa` 为 docs + `docs/testing/README.md` + `docs/testing/cases.md` + `e2e/J-PILOT-02接线.spec.ts` → 与本次 8 个产品路径无重叠，仅 `cases.md` 为需协调的共享文件。
+
+视觉采集（R1 补充）改前基线：13 场景 / 21 张 PNG，source commit `63d2848c`，本机 Google Chrome `153.0.8010.48`；`capture.config.ts` sha256 `b88fd246…`、`capture.spec.ts` sha256 `af937135…`，改前改后同文件，全程未变。两处对 R1 补充的必要偏离：(1) `devices['iPhone 13']` 视口为 390×664，故显式设 390×844，首个 390×664 版本在任何产品编辑前已整体删除并重采，未违反「不得改后补造」；(2) 学校目录 `page.route` 的 pathname glob 因 Playwright 将 glob 锚定到完整 URL 而不匹配 `?q=…`，加尾缀 `*`，与「所有 query 均用 route.fulfill 应答」的本意一致。
+
+| Task | 提交 | 结果 |
+|---|---|---|
+| 1 公司档案清单共用 | `a627a0a9` | 抽 `公司清单页面`／`公司分区清单`；两连接层共用，门与只读说明留在 Backend，导航只经 `选分区`；单测 15/15 |
+| 2 基本信息／相册共用 | `6e568b37` | 抽 `名称输入行`／`基本信息正文`／`公司图片组`；冻结接口逐字一致；媒体生命周期、purpose 绑定、压图与保存时机留在连接层；单测 52/52 |
+| 3 分区外壳与正文编排 | `276419cf` + `b4a766d2` | 抽 `公司分区页面`／`公司分区正文`；父 wrapper 保持挂载、行业子页为根层兄弟；单测 69/69 |
+| 4 学校／专业接现成候选 | `f60a133c` | 两页改为复用既有 `教育目录候选列表`；Backend 严格按 id 取回、找不到不提交；Mock 保留自由文本；单测 5 文件 126 例 |
+
+每 Task 均经宿主内 spec + code-quality 双档 review（Task 2/3 契约审查用前沿档），全部 Approved，唯一 required 修复为 Task 3 的 `key={分区.键}`；随后按执行 skill 要求做宿主内全局 whole-branch review（前沿档）：**Ready to merge? Yes，0 Critical / 0 Important**。
+
+### 计划缺陷修复（本 session 裁定）
+
+1. **`vitest.config.ts` 增 `ui-regression-output/**` 排除（`73ec825c`，Plan 未列该文件）**：R1 补充强制把 Playwright 采集 spec 放在该 git-ignored 目录，vitest 的 `exclude` 只覆盖 `e2e/**/*.spec.ts`，导致 `npx vitest run` 出现 1 个 test file 收集失败（5853 例本身全过但整体非零），并使**本 Plan 自己的收尾命令 `npm run test:list -- --check`** 收集崩溃。裁定在 runner 侧按既有 `.claude/**` 先例补一行，而非改名或换目录——改名会破坏 Plan 冻结的两份 sha256 与「改前改后同一份文件」的可比性保证。修复后 `npx vitest run` 256/256 文件、5859 例全过。
+2. **Task 3 step 4「用既有测试验证行业开闭保留草稿／焦点」前提不成立**：实测全仓 `activeElement`/`toHaveFocus` 零命中，本文件并无该断言。行为本身经结构证据确认保留（DOM 形状一致、行业子页仍在同一条件槽位、根层 `use行业子视图` 未改），但该验证手段在仓库内不存在。已记为递延可选项交全局 review 与 final gate 定夺。
+3. **R1 补充的采集落位与 Plan 自身收尾命令自相矛盾**，R1／R2 两轮文档审查均未发现。修复方向见第 1 条；该矛盾的事实留档于此。
+
+### 异构 review（收尾第 1 步）
+
+`codex-review-loop`（reviewer codex-cli 0.153.4，`-m gpt-5.6-sol -c model_reasoning_effort=high`，`-s read-only`，prompt 走受控 stdin 文件；共用守约规则 `_shared/review-contract.md` 按 skill 真实目录解析并校验存在）。**Fork point 修正**：skill 自动探测因去重逻辑把陈旧本地 `main`（`e01291de`，落后 `origin/main` 102 个提交）当作父分支而给出 115 个提交的范围；按本 Plan 权威基线改为 `origin/main` = `bb6ff6e0`（Plan 的规划产品基线），范围 13 个分支提交（7 文档 + 6 产品），冻结不再重解。每轮先跑 post-round guard（工作树状态与 HEAD 一致）再读报告。**第 1 轮即精确 `NO FINDINGS`**：reviewer 确认共享层未读数据源模式／Context／BFF DTO／路由／存储／API，两模式字段规则、权限、校验、保存时机与媒体生命周期各归其位，**既有测试断言无删除或弱化**，且未运行任何测试。按共用守约规则 §5 该轮即结束，无修复轮、无第 2 轮。
+
+### 验证与收尾事实（confirm 前）
+
+- L0：`typecheck`／`lint`／`build`／`git diff --check` 全 exit 0。
+- L1：Plan 基线 5 文件 126 例通过；另跑全量 `npx vitest run` 256 文件 / 5859 例全过（无跨模块回归）。
+- L2：两条浏览器 grep 均先 `--list` 确认非零且与风险匹配（招聘组织 4 例 fixture；展示与交互 4 例，含学校／专业连点的 mock 与 fixture 两条），实跑 4/4 与 4/4 通过。
+- 清单：`test:list -- --check` 原为 exit 1（本分支新增 14 条用例导致自动区合法过期），按 Plan 授权 `--write` 后一致；提交 `9925f23f` 仅动自动区，计数 5845 → 5859，与并行分支无无关漂移。
+- 视觉：改后 21 张，20 张与改前基线**逐字节相同**；唯一差异 `backend-学校副标题分页-390x844.png` 经 PIL 实测 65/2,962,440 像素、单通道最大差 1（光栅化噪声，该屏代码本分支未改）。故本轮重构对渲染结果的影响为零差异，Plan §6 视觉验收以最强证据满足。
+- 本设计 L3 responsibility = none、selection = none → **记 N/A，不记 PASS**；未跑 STG、未部署。
+- 候选 SHA `9925f23f`；pre_gate_target_base = `origin/main` `bb6ff6e0`（开工与收尾各查一次，未推进）。confirm 前只做只读 fetch，未合 target、未 push。
+
+### 递延项（均为 optional，交 final gate／后续定夺）
+
+- Task 3 两个行为只有结构证据、无永久测试守卫：行业子页关闭后焦点回归触发行、以及本轮回滚恢复的「切分区重挂载」语义（后者曾在本分支真实漂红，守卫价值最高）。
+- Task 2 共有展示 banner 未界住自身区段；`一组(键)` 属性工厂隐藏传参；`改一组` 快照语义（既有行为）；Mock 三个隐藏 file input 因冻结接口获得 `aria-label`（`display:none`，无视觉与 nth 次序影响）。
+- Task 1 用例名略夸大跨模式等价性；特征字面量耦合静态档。
+- Task 3 调用点注释与 `公司分区页面` JSDoc 三处重复同一事实。
+- Task 4 `getByRole` 已抛错后的 `.toBeTruthy()` 冗余；点击适配的 O(n) `find`（brief 逐字要求，n ≤ 20）。
+- 全局 review 追加：`e2e/suites/展示与交互.spec.ts` 中「选中后候选行可访问名带 ✓ 尾缀」的注释因本轮共用组件固定 `aria-label={项.名称}` 而陈旧（正则仍通过）；`vitest.config.ts` 既有注释「只排除 Playwright spec（*.spec.ts）」与新整目录排除的口径不一致。两者均为注释层面，位于各 Task 授权文件之外，未改。
