@@ -1085,3 +1085,94 @@ test.describe('核心编辑 附件 @backend', () => {
     expect(删除请求.length).toBe(1);
   });
 });
+// ─────────────────────────────────────────────────────────────────────────────
+// 聊天推荐前端修复 @backend（Task 6 / 契约B hidden 语义浏览器接线）：新建经历默认
+// hidden=false、旧经历编辑序列化保留原值 true —— wire 字段继续存在，只是不再由
+// 企业屏蔽 UI 改写。fixture 只用既有 候选OnboardingFixture 写入契约。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('聊天推荐前端修复 经历 hidden 默认与保留 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 创建候选OnboardingFixture();
+    fixture.主体.last_used_role = 'candidate';
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+      experiences: [{
+        id: 'exp-fixture-legacy',
+        organization_id: 'org-fixture-p3-manual-a',
+        company: P3标记.手动组织甲,
+        industry: { id: 'ind-fixture-001', display_name: 'Fixture 行业' },
+        title: '旧职务',
+        start_month: '2019-01',
+        end_month: '2021-12',
+        description: '',
+        hidden: true,
+        internship: false,
+        revision: 1,
+        projects: null,
+      }],
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-cr-fix-hidden',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: 隐私,
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await hash直达(page, '/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // 旧经历：点行进编辑页，改职位制造差异 → 保存 → PATCH body 原样携带 hidden=true
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    await page.getByPlaceholder('必填').fill('旧职务·复核');
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 30_000 });
+    const 旧经历更新 = fixture.mutations.filter(
+      (条) => 条.method === 'PATCH' && 条.path === '/api/v1/me/resume/experiences/exp-fixture-legacy',
+    );
+    expect(旧经历更新.length).toBe(1);
+    expect(旧经历更新[0]!.body).toMatchObject({ hidden: true, title: '旧职务·复核' });
+
+    // 新建经历：走完整编辑（公司抽屉 + 内置行业目录 + 职位 + 入职年月）→ 保存
+    await hash直达(page, '/#/experience?from=resume');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '＋ 添加工作经历' }).click();
+    await expect(page.getByPlaceholder('必填')).toHaveCount(1);
+    await page.getByRole('button').filter({ hasText: '公司名称' }).click();
+    await 抽屉搜企业并选中(page, '云衢', P3标记.可屏蔽组织甲);
+    await expect(page.getByRole('button').filter({ hasText: '公司名称' })).toContainText(P3标记.可屏蔽组织甲);
+    await page.getByRole('button', { name: '所属行业' }).click();
+    await page.getByRole('button', { name: 'Fixture 行业', exact: true }).click();
+    await expect(page.getByPlaceholder('没有合适的？直接输入')).toHaveCount(0);
+    await page.getByPlaceholder('必填').fill('新职务');
+    await page.getByRole('button', { name: '入职年月' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: '确定' }).click();
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(page.getByText(P3标记.可屏蔽组织甲).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 30_000 });
+    const 新经历写入 = fixture.mutations.filter(
+      (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/experiences',
+    );
+    expect(新经历写入.length).toBe(1);
+    // 契约B：新段显式 hidden=false（不是缺省键的巧合）—— 序列化合同被钉住
+    expect(新经历写入[0]!.body).toMatchObject({
+      hidden: false,
+      organization_id: 'org-fixture-p3-block-a',
+      title: '新职务',
+    });
+  });
+});

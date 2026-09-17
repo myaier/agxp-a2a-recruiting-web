@@ -30,16 +30,15 @@ type 任务态 = 'pending' | '完成';
 /**
  * 轮内链路记录（引用同步突变，随轮键整体重置）：case 已发起集合防同轮/重放重复
  * 发起；在飞Case 是并发上限的发起侧真相（state 只是镜像 —— StrictMode 同一 commit
- * 内 effect 双执行时，第二遍看到的 任务表 仍是旧的，只有 ref 先于渲染更新）；
- * 岗位/企业 成败表只记「本轮真实读取」的结算，失败不消费旧缓存。
+ * 内 effect 双执行时，第二遍看到的 任务表 仍是旧的，只有 ref 先于渲染更新）。
+ * 岗位/企业 结算不在这里 —— 它们进 轮 state（见 轮状态）：浏览器里 store 更新是
+ * 不可变替换，await 结算早于渲染提交，ref 侧永远读到旧对象（Task 6 浏览器接线反例）。
  */
 interface 轮链 {
   键: string;
   已发起Case: Set<string>;
   在飞Case: Set<string>;
-  岗位: Map<string, 'ok' | '失败'>;
   已发起岗位: Set<string>;
-  企业: Map<string, 'ok' | '失败'>;
   已发起企业: Set<string>;
 }
 
@@ -48,11 +47,24 @@ function 新轮链(键: string): 轮链 {
     键,
     已发起Case: new Set(),
     在飞Case: new Set(),
-    岗位: new Map(),
     已发起岗位: new Set(),
-    企业: new Map(),
     已发起企业: new Set(),
   };
+}
+
+/** 岗位/企业结算与「等企业」任务：进 state 让企业发起与行资料按渲染期快照消费。
+ *  等企业[caseId] = jobRef：Case 已读、岗位已结算的候选任务在此等链路收口（同 jobRef
+ *  的多个 case 共享同一份岗位/企业结算），完成由企业 effect 落账。 */
+interface 轮状态 {
+  键: string;
+  任务: Record<string, 任务态>;
+  岗位: Record<string, 'ok' | '失败'>;
+  企业: Record<string, 'ok' | '失败'>;
+  等企业: Record<string, string>;
+}
+
+function 新轮状态(键: string): 轮状态 {
+  return { 键, 任务: {}, 岗位: {}, 企业: {}, 等企业: {} };
 }
 
 export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
@@ -66,14 +78,9 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
 
   // 任务表带轮键：换主体/换角色当帧弃旧轮（React 支持的渲染期状态调整），旧轮的
   // 迟到 写入 经轮键核对整包丢弃。
-  const [轮, 设轮] = useState<{ 键: string; 任务: Record<string, 任务态> }>(() => ({
-    键: 轮键, 任务: {},
-  }));
-  if (轮.键 !== 轮键) 设轮({ 键: 轮键, 任务: {} });
+  const [轮, 设轮] = useState<轮状态>(() => 新轮状态(轮键));
+  if (轮.键 !== 轮键) 设轮(新轮状态(轮键));
 
-  // 最新快照引用：任务链在 await 之后取「此刻」的岗位坐标/企业编号，不用渲染闭包旧值。
-  const 快照引用 = useRef({ 后端状态, 状态 });
-  快照引用.current = { 后端状态, 状态 };
   const 链引用 = useRef<轮链>(新轮链(轮键));
 
   const 改任务 = useCallback((键: string, caseId: string, 态: 任务态) => {
@@ -103,37 +110,83 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
       // 失败由快照反应式判读（unavailable + 定向重试），这里不吞重抛
     }
     if (链引用.current.键 !== 键) return; // 换轮：旧链不再继续
-    if (角色 === 'candidate' && 条.context?.jobRef != null) {
-      const jobRef = 条.context.jobRef;
-      if (!链引用.current.已发起岗位.has(jobRef)) {
-        链引用.current.已发起岗位.add(jobRef);
-        try {
-          await 操作.读取候选岗位详情(jobRef, true);
-          链引用.current.岗位.set(jobRef, 'ok');
-        } catch {
-          链引用.current.岗位.set(jobRef, '失败');
-        }
+    const jobRef = 条.context?.jobRef ?? null;
+    if (角色 !== 'candidate' || jobRef === null) {
+      // 链路到此为止：完成即释放在飞占位（换轮后的新记录不含本 case，绝不动新轮占位）
+      链引用.current.在飞Case.delete(caseId);
+      改任务(键, caseId, '完成');
+      return;
+    }
+    if (!链引用.current.已发起岗位.has(jobRef)) {
+      链引用.current.已发起岗位.add(jobRef);
+      let 结算: 'ok' | '失败' = '失败';
+      try {
+        await 操作.读取候选岗位详情(jobRef, true);
+        结算 = 'ok';
+      } catch {
+        // 结算进 state：企业发起按渲染期快照反应式续链
       }
       if (链引用.current.键 !== 键) return;
-      // 本轮岗位真实读取成功才按「此刻」坐标读发布方企业；岗位失败/仍在飞（他任务
-      // 发起）都不发起 —— 绝不按上一轮旧缓存坐标发企业读。
-      if (链引用.current.岗位.get(jobRef) === 'ok') {
-        const 编号 = 取发布方编号(快照引用.current.后端状态, jobRef);
-        if (编号 !== null && !链引用.current.已发起企业.has(编号)) {
-          链引用.current.已发起企业.add(编号);
-          try {
-            await 操作.读取公开企业(编号);
-            链引用.current.企业.set(编号, 'ok');
-          } catch {
-            链引用.current.企业.set(编号, '失败');
-          }
-        }
-      }
+      设轮((旧) => (旧.键 === 键 ? { ...旧, 岗位: { ...旧.岗位, [jobRef]: 结算 } } : 旧));
     }
-    // 完成即释放在飞占位（换轮后的新记录不含本 case，绝不动新轮的占位）
-    if (链引用.current.键 === 键) 链引用.current.在飞Case.delete(caseId);
-    改任务(键, caseId, '完成');
+    // 等企业链路：本任务交由企业 effect 按渲染期快照收口（完成/失败各一处落账），
+    // 不在 await 后读 ref 旧对象解析坐标 —— 那在浏览器不可变替换下永远是旧值。
+    设轮((旧) => (旧.键 === 键 && 旧.等企业[caseId] === undefined
+      ? { ...旧, 等企业: { ...旧.等企业, [caseId]: jobRef } }
+      : 旧));
   }, [角色, 操作, 改任务]);
+
+  // 企业轮（渲染期驱动）：等企业任务按「当前渲染快照」解析发布方编号并发起企业读；
+  // 岗位失败收口本任务，企业 ok 收口全部同链任务。编号尚未随快照换代时本轮不发起，
+  // effect 随 后端状态/轮 复跑 —— 绝不按 await 时刻的 ref 旧对象读坐标，也绝不按
+  // 上一轮旧缓存坐标发企业读。
+  useEffect(() => {
+    if (角色 !== 'candidate' || 轮.键 !== 轮键) return;
+    const 链 = 链引用.current;
+    const 收口集: string[] = [];
+    for (const [caseId, jobRef] of Object.entries(轮.等企业)) {
+      const 岗位结算 = 轮.岗位[jobRef];
+      if (岗位结算 === undefined) continue; // 同 jobRef 首任务仍在飞
+      if (岗位结算 === '失败') {
+        // 链路到此为止：任务收口（资料是否可用由快照判读），坐标留给 重试失败 定向摘除
+        收口集.push(caseId);
+        continue;
+      }
+      const 编号 = 取发布方编号(后端状态, jobRef);
+      if (编号 === null) {
+        // 岗位结算没带出可用坐标（读取未落账 / 404 不可用 / 无发布方）：链路终局，
+        // 企业留空 —— 结算与岗位 DTO 同批提交，这里不会再等来新坐标
+        收口集.push(caseId);
+        continue;
+      }
+      const 企业结算 = 轮.企业[编号];
+      if (企业结算 === 'ok' || 企业结算 === '失败') {
+        // ok = 链路收口；失败 = 链路终局（行按 Case 快照可用、企业留空 —— 与旧链
+        // 「失败即完成」同语义，不把行吊死在 loading）
+        收口集.push(caseId);
+        continue;
+      }
+      if (链.已发起企业.has(编号)) continue; // 在飞：等结算落地再收口
+      链.已发起企业.add(编号);
+      void 操作.读取公开企业(编号).then(
+        () => 设轮((旧) => (旧.键 === 轮键 ? { ...旧, 企业: { ...旧.企业, [编号]: 'ok' } } : 旧)),
+        () => 设轮((旧) => (旧.键 === 轮键 ? { ...旧, 企业: { ...旧.企业, [编号]: '失败' } } : 旧)),
+      );
+    }
+    if (收口集.length > 0) {
+      for (const caseId of 收口集) 链.在飞Case.delete(caseId);
+      设轮((旧) => {
+        if (旧.键 !== 轮键) return 旧;
+        const 任务 = { ...旧.任务 };
+        const 等企业 = { ...旧.等企业 };
+        for (const caseId of 收口集) {
+          任务[caseId] = '完成';
+          delete 等企业[caseId];
+        }
+        return { ...旧, 任务, 等企业 };
+      });
+    }
+  }, [角色, 轮, 轮键, 后端状态, 操作]);
 
   // 调度：换轮先重置链记录；同轮补齐在飞槽位（≤ 4 个）。空位以 在飞Case（ref 侧
   // 真相）计数 —— StrictMode 同一 commit 内 effect 双执行时第二遍也看得到首批占位；
@@ -166,7 +219,7 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
       if (快照 !== undefined && 快照.阶段 === '成功' && !快照.刷新中 &&
         快照.error === null && 快照.detail !== null) {
         const 发布企业名 = 角色 === 'candidate'
-          ? 取发布企业名({ 后端状态, 状态 }, 条, 链引用.current)
+          ? 取发布企业名({ 后端状态, 状态 }, 条, 轮.岗位, 轮.企业)
           : null;
         表[条.caseId] = { 状态: 'available', 资料: 从P5详情取对方资料(快照.detail, 角色, 发布企业名) };
       } else {
@@ -195,25 +248,25 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
     if (失败集.size === 0 || 轮.键 !== 轮键) return;
     const 链 = 链引用.current;
     for (const caseId of 失败集) 链.已发起Case.delete(caseId);
-    for (const [jobRef, 结算] of 链.岗位) {
-      if (结算 === '失败') {
-        链.岗位.delete(jobRef);
-        链.已发起岗位.delete(jobRef);
-      }
-    }
-    for (const [编号, 结算] of 链.企业) {
-      if (结算 === '失败') {
-        链.企业.delete(编号);
-        链.已发起企业.delete(编号);
-      }
-    }
+    const 岗位摘除 = Object.entries(轮.岗位).filter(([, 结算]) => 结算 === '失败').map(([编号]) => 编号);
+    const 企业摘除 = Object.entries(轮.企业).filter(([, 结算]) => 结算 === '失败').map(([编号]) => 编号);
+    for (const jobRef of 岗位摘除) 链.已发起岗位.delete(jobRef);
+    for (const 编号 of 企业摘除) 链.已发起企业.delete(编号);
     设轮((旧) => {
       if (旧.键 !== 轮键) return 旧;
       const 任务 = { ...旧.任务 };
-      for (const caseId of 失败集) delete 任务[caseId];
-      return { ...旧, 任务 };
+      const 等企业 = { ...旧.等企业 };
+      const 岗位 = { ...旧.岗位 };
+      const 企业 = { ...旧.企业 };
+      for (const caseId of 失败集) {
+        delete 任务[caseId];
+        delete 等企业[caseId];
+      }
+      for (const jobRef of 岗位摘除) delete 岗位[jobRef];
+      for (const 编号 of 企业摘除) delete 企业[编号];
+      return { ...旧, 任务, 等企业, 岗位, 企业 };
     });
-  }, [失败集, 轮键, 轮.键]);
+  }, [失败集, 轮键, 轮]);
 
   return { 资料表, 有失败, 重试失败 };
 }
@@ -230,17 +283,17 @@ function 取发布方编号(快照: {
 /**
  * 候选端发布企业名（渲染期纯读）：本轮岗位真实读取成功才消费其坐标，本轮企业真实
  * 读取成功才消费公开企业 display_name —— 任一失败/在飞都给 null（副标题缺企业），
- * 绝不透出上一轮旧缓存坐标或旧企业名。
+ * 绝不透出上一轮旧缓存坐标或旧企业名。结算表来自 轮 state（渲染期新鲜，见 轮状态）。
  */
 function 取发布企业名(快照: {
   后端状态: { 候选岗位详情: Record<string, BFFCandidateJob>; 候选岗位不可用: string[] };
   状态: { 公开企业表: Record<string, BFF公开企业>; 不可用公开企业编号: string[] };
-}, 条: P7会话项, 链: 轮链): string | null {
+}, 条: P7会话项, 岗位结算: Record<string, 'ok' | '失败'>, 企业结算: Record<string, 'ok' | '失败'>): string | null {
   const jobRef = 条.context?.jobRef;
-  if (jobRef == null || 链.岗位.get(jobRef) !== 'ok') return null;
+  if (jobRef == null || 岗位结算[jobRef] !== 'ok') return null;
   const 编号 = 取发布方编号(快照.后端状态, jobRef);
   if (编号 === null) return null;
-  if (链.企业.get(编号) !== 'ok') return null;
+  if (企业结算[编号] !== 'ok') return null;
   if (快照.状态.不可用公开企业编号.includes(编号)) return null;
   return 非空(快照.状态.公开企业表[编号]?.display_name ?? null);
 }

@@ -243,6 +243,67 @@ describe('use会话列表资料 · 候选端链路（Case→岗位→企业，�
     expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledTimes(1);
   });
 
+  it('浏览器时序反例：store 不可变替换下岗位结算先于重渲染，仍按新快照坐标读企业', async () => {
+    // 真实浏览器里 store 更新是「替换整棵状态对象」：岗位读取的 promise 结算（微任务）
+    // 跑在 React 提交（渲染）之前，此时 hook 持有的还是旧状态对象 —— 链条若在 await
+    // 之后立刻从旧对象读发布方坐标，会永远拿到空并跳过企业读（副标题缺公司）。
+    const 岗位门 = 门<void>();
+    mock应用状态.操作.读取详情 = vi.fn((_角色: string, caseId: string) => {
+      mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', caseId)] = 快照({
+        ...候选资料详情(), state: 状态({ caseId }),
+      });
+      return Promise.resolve();
+    });
+    mock应用状态.操作.读取候选岗位详情 = vi.fn(() => 岗位门.promise);
+    mock应用状态.操作.读取公开企业 = vi.fn((编号: string) => {
+      mock应用状态.状态.公开企业表[编号] = 企业条目('星桥猎头');
+      return Promise.resolve();
+    });
+    const { result } = renderHook(({ items }) => use会话列表资料('candidate', items), {
+      initialProps: { items: [会话项()] },
+    });
+    await waitFor(() => expect(mock应用状态.操作.读取候选岗位详情).toHaveBeenCalledTimes(1));
+    // 不可变替换：新状态对象整棵换上（渲染未发生，hook 的 ref 还指着旧对象）
+    mock应用状态.后端状态 = {
+      ...mock应用状态.后端状态,
+      候选岗位详情: { job_1: 岗位条目('org_p') },
+    };
+    await act(async () => {
+      岗位门.解决();
+      // 排干微任务与一次渲染提交：链条的「结算后决策」窗口完整跑完
+      await new Promise((完成) => setTimeout(完成, 0));
+    });
+    await waitFor(() => expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledWith('org_p'));
+    await waitFor(() => expect(result.current.资料表['mc_1']).toEqual({
+      状态: 'available',
+      资料: { 姓名: '林澈', 头像URL: null, 企业: '星桥猎头', 职位: '招聘负责人' },
+    }));
+  });
+
+  it('企业读失败是链路终局：行仍可用（企业留空），不吊死在 loading，旧坐标不透出', async () => {
+    mock应用状态.操作.读取详情 = vi.fn((_角色: string, caseId: string) => {
+      mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', caseId)] = 快照({
+        ...候选资料详情(), state: 状态({ caseId }),
+      });
+      return Promise.resolve();
+    });
+    mock应用状态.操作.读取候选岗位详情 = vi.fn((jobId: string) => {
+      mock应用状态.后端状态.候选岗位详情[jobId] = 岗位条目('org_p');
+      return Promise.resolve();
+    });
+    mock应用状态.操作.读取公开企业 = vi.fn(() => Promise.reject(new Error('企业读失败')));
+    // 上一轮旧企业名预置在缓存：本轮失败不得透出
+    mock应用状态.状态.公开企业表.org_p = 企业条目('旧缓存公司');
+    const { result } = renderHook(({ items }) => use会话列表资料('candidate', items), {
+      initialProps: { items: [会话项()] },
+    });
+    await waitFor(() => expect(result.current.资料表['mc_1']).toEqual({
+      状态: 'available',
+      资料: { 姓名: '林澈', 头像URL: null, 企业: null, 职位: '招聘负责人' },
+    }));
+    expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledTimes(1); // 不自动重试
+  });
+
   it('本轮岗位/企业失败不消费旧缓存坐标：企业缺省但姓名仍出，失败不串联清其他行', async () => {
     mock应用状态.操作.读取详情 = vi.fn((_角色: string, caseId: string) => {
       mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', caseId)] = 快照({

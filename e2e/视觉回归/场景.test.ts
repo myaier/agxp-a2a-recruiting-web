@@ -23,13 +23,30 @@ const 预期ID = [
   'candidate-feedback',
   // 企业名片统一（Task 3）：企业公开页 Mock 场景（统一展示的对照入口）
   'enterprise-public',
+  // 聊天推荐前端修复（Task 6）：两端消息列表 / 真人聊天 / 招聘在线简历纸身
+  'chat-recommend-frontend-candidate-messages',
+  'chat-recommend-frontend-candidate-chat',
+  'chat-recommend-frontend-recruiter-messages',
+  'chat-recommend-frontend-recruiter-chat',
+  'chat-recommend-frontend-recruiter-resume-paper',
 ];
 
 describe('视觉场景清单', () => {
-  // 企业名片统一（2026-09-10）：新增 enterprise-public（企业公开页 Mock 静态档），17 → 18
-  it('包含 18 个稳定且唯一的场景 ID', () => {
+  // 聊天推荐前端修复（2026-09-17）：新增五个 chat-recommend-frontend 场景，18 → 23
+  it('包含 23 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
-    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(18);
+    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(23);
+  });
+
+  it('聊天推荐前端修复场景前缀一致且覆盖两端列表/聊天/招聘纸身', () => {
+    const 修复场景 = 视觉场景们.filter((场景) => 场景.id.startsWith('chat-recommend-frontend'));
+    expect(修复场景.map((场景) => 场景.id)).toEqual([
+      'chat-recommend-frontend-candidate-messages',
+      'chat-recommend-frontend-candidate-chat',
+      'chat-recommend-frontend-recruiter-messages',
+      'chat-recommend-frontend-recruiter-chat',
+      'chat-recommend-frontend-recruiter-resume-paper',
+    ]);
   });
 
   it('发布岗位第三步使用跨版本稳定的提交按钮作为关键元素', () => {

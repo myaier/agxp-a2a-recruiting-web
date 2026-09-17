@@ -4,10 +4,10 @@
 import { expect, test } from '../fixtures/test';
 import { 安装P7事件桩, P7带消息fixture, hash直达 } from '../fixtures/数据源交互';
 import { P4招聘岗位 } from '../fixtures/bff/发现推荐';
-import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系 } from '../fixtures/bff/招聘组织';
+import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系, 一像素PNG } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
 import { P5编号, P5标记, 创建P5MatchCasefixture, type P5MatchCasefixture形 } from '../fixtures/bff/MatchCase';
-import { P7会话编号, P7标记, P7资料标记, 创建P7fixture, type P7FixtureState } from '../fixtures/bff/真人消息';
+import { P7会话编号, P7标记, P7案例记录, P7资料标记, 创建P7fixture, type P7FixtureState } from '../fixtures/bff/真人消息';
 import { 安装BFF路由, type BFF路由选项 } from '../fixtures/bff/安装BFF路由';
 import { type Page } from '@playwright/test';
 import { type 拦截请求形 } from '../fixtures/bff/协议';
@@ -85,10 +85,12 @@ test.describe('P7 真人会话 fixture @backend', () => {
     await expect(page.locator('nav').getByText('1', { exact: true })).toBeVisible({ timeout: 15_000 });
 
     // 消息 Tab：行未读胶囊 + 点击只导航（绝不本地清零）。角标并入按钮无障碍名，用子串匹配。
+    // Task 2 三行版式：行标题是授权姓名（Case 发布人），职位名不再是行标题 ——
+    // 点行锚点随之换成姓名行（旧 getByText(职位名) 锚点已随版式退役）。
     await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
-    await expect(page.getByText(P7标记.职位名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P7资料标记.发布人姓名)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId(`unread-${P7会话编号.会话}`)).toHaveText('1');
-    await page.getByText(P7标记.职位名).click();
+    await page.getByRole('button').filter({ hasText: P7资料标记.发布人姓名 }).click();
     await expect(page).toHaveURL(new RegExp(`#/chat/human/${P7会话编号.会话}$`), { timeout: 10_000 });
     await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 10_000 });
 
@@ -229,32 +231,238 @@ test.describe('P7 真人会话 fixture @backend', () => {
     await expect(page.getByText(P7标记.招聘消息)).toBeVisible();
   });
 
-  test('招聘端页头候选真名与全屏 PDF 层：授权原件正文、关闭回聊天 @backend', async ({ page }, testInfo) => {
+  test('聊天推荐前端修复 招聘端页头候选真名与全屏在线简历纸身：授权正文、零 PDF、关闭回聊天 @backend', async ({ page }, testInfo) => {
     const fixture = 创建P7fixture();
     fixture.messages[P7会话编号.会话] = [{
       message_id: '4004', kind: 'user_text', sender_role: 'recruiter', content: P7标记.招聘消息, created_at: '2026-09-16T01:09:00Z',
     }];
-    await 装P7招聘(page, { fixture });
+    const 请求序: string[] = [];
+    await 装P7招聘(page, {
+      fixture,
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
 
     await hash直达(page, `/#/hr/chat/${P7会话编号.会话}`);
     await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
     // 页头 = Case candidateIdentity（disclosed 真名）+ Case 职位名
     await expect(page.getByText('P5 Fixture 候选真名')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(P7标记.职位名).first()).toBeVisible();
-    // 看简历开层才取件：PDF iframe 以对象租约地址呈现真实字节
-    await page.getByRole('button', { name: '看简历' }).click();
-    await expect(page.getByRole('dialog', { name: '看简历' })).toBeVisible();
-    const 框 = page.getByTitle('简历 PDF');
-    await expect(框).toBeVisible({ timeout: 10_000 });
-    expect((await 框.getAttribute('src')) ?? '').toMatch(/^blob:/);
-    // review-r1 F3：纸底在非 flex 正文区里显式全高 —— iframe 填满「继续沟通」以上区域
-    const 框盒 = await 框.boundingBox();
-    expect(框盒?.height ?? 0).toBeGreaterThan(400);
-    await page.screenshot({ path: testInfo.outputPath('p7-pdf-layer-390.png') });
+    // Task 4：看在线简历开层铺在线纸身（同 Case candidate_resume；candidate_resume 缺源
+    // = 各区段「暂未提供」，联系方式恒「—」），不再走 PDF 租约原件层 —— 层内零 PDF 请求
+    await page.getByRole('button', { name: '看在线简历' }).click();
+    await expect(page.getByRole('dialog', { name: '看在线简历' })).toBeVisible();
+    await expect(page.getByText('手机：—')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('邮箱：—')).toBeVisible();
+    await expect(page.getByText('暂未提供').first()).toBeVisible();
+    // 纸底在非 flex 正文区里显式全高（review-r1 F3 的纸身等价几何）：层铺满可用区
+    await expect(page.getByText('工作经历')).toBeVisible();
+    const 层盒 = await page.getByRole('dialog').boundingBox();
+    expect(层盒?.height ?? 0).toBeGreaterThan(500);
+    await page.screenshot({ path: testInfo.outputPath('p7-resume-paper-390.png') });
     await page.getByRole('button', { name: '继续沟通' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`#/hr/chat/${P7会话编号.会话}$`));
     await expect(page.getByText(P7标记.招聘消息)).toBeVisible();
+    // 零 PDF：纸身入口不取简历原件（content 字节流全程零请求），也无 PDF iframe 残留
+    expect(请求序.filter((项) => 项.includes('/resume-submission/content'))).toEqual([]);
+    await expect(page.getByTitle('简历 PDF')).toHaveCount(0);
+  });
+
+  // ── 聊天推荐前端修复（Task 6）：双端列表/页头/搜索、补读失败、32px 头像几何。
+  //    每个 Case 只钉一个独立失败面；补读链（Case→岗位→企业）按 C3 显式应答，
+  //    未声明的业务请求由离线边界兜底中止。──
+
+  test('聊天推荐前端修复 候选端列表三行资料与本地搜索：发布方公司·职务副标题、46px 列表头像不变 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    await 装P7候选(page, { fixture });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    // 三行版式（Task 2）：授权姓名 / 招聘者所属公司 · 职务（发布方链）/ 最后消息摘要
+    await expect(page.getByText(P7资料标记.发布人姓名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(`${P7资料标记.发布方名称} · ${P7资料标记.发布人职务}`)).toBeVisible();
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible();
+    // 列表头像容器 46px 不变（字标形态）
+    const 行 = page.getByRole('button').filter({ hasText: P7资料标记.发布人姓名 });
+    const 行头像盒 = await 行.locator('span[class*="头像"]').first().boundingBox();
+    expect(Math.round(行头像盒?.width ?? 0)).toBe(46);
+    expect(Math.round(行头像盒?.height ?? 0)).toBe(46);
+    // 用人企业不得顶替发布方公司
+    await expect(page.getByText(P7资料标记.用人企业名)).toHaveCount(0);
+
+    // 本地搜索：姓名命中；无关词给既有空态；清词恢复
+    await page.getByRole('textbox', { name: '搜索会话 / 公司 / 职位' }).fill('林澈');
+    await expect(行).toBeVisible();
+    await page.getByRole('textbox', { name: '搜索会话 / 公司 / 职位' }).fill('绝不匹配的词');
+    await expect(page.getByText('没有匹配的会话。')).toBeVisible();
+    await expect(行).toHaveCount(0);
+    await page.getByRole('textbox', { name: '搜索会话 / 公司 / 职位' }).fill('');
+    await expect(行).toBeVisible();
+  });
+
+  test('聊天推荐前端修复 招聘端列表与页头：候选真名 + 投递企业·投递岗位、本地搜索 @backend', async ({ page }) => {
+    const fixture = 创建P7fixture();
+    fixture.messages[P7会话编号.会话] = [{
+      message_id: '4004', kind: 'user_text', sender_role: 'recruiter', content: P7标记.招聘消息, created_at: '2026-09-16T01:09:00Z',
+    }];
+    // 投递企业（用人方）冻结在 Case jobDetail.organization：招聘端副标题 = 企业 · 岗位。
+    // 公司与岗位名刻意拉长：验证副标题单行截断不破版式（390 窄屏）
+    const 案例 = P7案例记录();
+    案例.职位名 = 'P7 Fixture 超长冻结岗位名称用来验证招聘端列表副标题单行收尾不把三行版式挤走';
+    案例.jobDetail = {
+      ...(案例.jobDetail as Record<string, unknown>),
+      organization: {
+        organization_id: P7资料标记.用人企业编号,
+        display_name: 'P7 Fixture 一家名称特别长的用人企业用来验证副标题截断',
+        industry: null, company_size: null, funding_stage: null, logo: null,
+      },
+    };
+    fixture.case们 = { [P7会话编号.案例]: 案例 };
+    await 装P7招聘(page, { fixture });
+
+    await hash直达(page, '/#/hr');
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    await expect(page.getByText('P5 Fixture 候选真名')).toBeVisible({ timeout: 15_000 });
+    const 长副标题 = `${'P7 Fixture 一家名称特别长的用人企业用来验证副标题截断'} · ${'P7 Fixture 超长冻结岗位名称用来验证招聘端列表副标题单行收尾不把三行版式挤走'}`;
+    await expect(page.getByText(长副标题)).toBeVisible();
+    // 单行截断几何：副标题元素高不超一行、不横向溢出
+    const 副标题盒 = await page.locator('[class*="会话副标题"]').first().boundingBox();
+    expect(副标题盒?.height ?? 0).toBeLessThanOrEqual(24);
+    const 溢出 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(溢出).toBe(0);
+    // 本地搜索：真名命中、无关词空态、清词恢复
+    const 行 = page.getByRole('button').filter({ hasText: 'P5 Fixture 候选真名' });
+    await page.getByRole('textbox', { name: '搜索会话 / 候选 / 岗位' }).fill('候选真名');
+    await expect(行).toBeVisible();
+    await page.getByRole('textbox', { name: '搜索会话 / 候选 / 岗位' }).fill('绝不匹配的词');
+    await expect(page.getByText('没有匹配的会话。')).toBeVisible();
+    await page.getByRole('textbox', { name: '搜索会话 / 候选 / 岗位' }).fill('');
+    await expect(行).toBeVisible();
+
+    // 页头与列表同源：进会话后页头副标题同为 投递企业 · 投递岗位
+    await 行.click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/chat/${P7会话编号.会话}$`), { timeout: 10_000 });
+    await expect(page.getByText('P5 Fixture 候选真名')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(长副标题).first()).toBeVisible();
+  });
+
+  test('聊天推荐前端修复 候选端补读失败：局部不可用提示与定向重试，恢复后不残留失败行 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    let 已失败 = false;
+    await 装P7候选(page, {
+      fixture,
+      覆盖: {
+        [`GET /api/v1/me/negotiations/${P7会话编号.案例}`]: () => {
+          if (!已失败) {
+            已失败 = true;
+            return { status: 503, 响应: { error: { type: 'source_unavailable', message: '服务暂不可用' } } };
+          }
+          return undefined; // 重试放行给 P7 fixture 的权威应答
+        },
+      },
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    // 首轮 Case 补读 503：资料停局部 unavailable —— 身份不上屏（viewer-safe 标签兜底），
+    // 独立失败行带定向重试，会话行仍可点
+    await expect(page.getByText('部分会话资料暂不可用')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P7资料标记.发布人姓名)).toHaveCount(0);
+    await page.getByRole('button', { name: '重试', exact: true }).click();
+    // 重试只补失败坐标：成功后资料上屏、失败行消失
+    await expect(page.getByText(P7资料标记.发布人姓名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(`${P7资料标记.发布方名称} · ${P7资料标记.发布人职务}`)).toBeVisible();
+    await expect(page.getByText('部分会话资料暂不可用')).toHaveCount(0);
+  });
+
+  test('聊天推荐前端修复 消息头像 32px 几何：授权图双方同尺寸、列表 46px 不变 @backend', async ({ page }) => {
+    const fixture = 创建P7fixture();
+    fixture.messages[P7会话编号.会话] = [
+      { message_id: '4001', kind: 'user_text', sender_role: 'candidate', content: P7标记.候选消息, created_at: '2026-09-16T09:07:00Z' },
+      { message_id: '4002', kind: 'user_text', sender_role: 'recruiter', content: P7标记.招聘消息, created_at: '2026-09-16T09:09:00Z' },
+    ];
+    // 头像成功样本：我方 = 招聘档案授权图；对方 = Case 身份授权图（disclosed）
+    const 组织 = 带企业关系(
+      { ...P1C招聘组织Fixture, profile: { ...P1C招聘组织Fixture.profile, avatar_url: 'https://cdn.fixture.example/p7-own-ok.png' } },
+      [P1C管理员关系],
+      { [P1C标记.组织甲编号]: P1C组织甲() },
+      [P4招聘岗位({ job_id: P5编号.job, title: P5标记.招聘岗标题 })],
+    );
+    await 安装P7事件桩(page);
+    // cdn.fixture.example 媒体由本用例自答：授权图回 1px PNG（不触真实网络）
+    await page.route('**/cdn.fixture.example/**', async (route) => {
+      await route.fulfill({ status: 200, body: 一像素PNG, headers: { 'Content-Type': 'image/png' } });
+    });
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p7-avatar-ok',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 组织,
+      主体初始角色: 'recruiter',
+      P7fixture: fixture,
+    });
+
+    await hash直达(page, `/#/hr/chat/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    const 对方 = page.locator('[data-侧="左"] span[class*="对方头像"]');
+    const 我方 = page.locator('[data-侧="右"] span[class*="我头像"]');
+    // 双方都是图形态（授权图在渲染，不是字标回退）
+    await expect(对方.locator('img')).toBeVisible({ timeout: 10_000 });
+    await expect(我方.locator('img')).toBeVisible();
+    // 32px 几何实测：双方容器同为 32×32（图铺满容器，objectFit cover）
+    const 对方盒 = await 对方.boundingBox();
+    const 我方盒 = await 我方.boundingBox();
+    expect(Math.round(对方盒?.width ?? 0)).toBe(32);
+    expect(Math.round(对方盒?.height ?? 0)).toBe(32);
+    expect(Math.round(我方盒?.width ?? 0)).toBe(32);
+    expect(Math.round(我方盒?.height ?? 0)).toBe(32);
+  });
+
+  test('聊天推荐前端修复 消息头像坏图回退：对方 404 回退真实姓名首字，字标与图同尺寸 @backend', async ({ page }) => {
+    const fixture = 创建P7fixture();
+    fixture.messages[P7会话编号.会话] = [
+      { message_id: '4001', kind: 'user_text', sender_role: 'candidate', content: P7标记.候选消息, created_at: '2026-09-16T09:07:00Z' },
+      { message_id: '4002', kind: 'user_text', sender_role: 'recruiter', content: P7标记.招聘消息, created_at: '2026-09-16T09:09:00Z' },
+    ];
+    const 组织 = 带企业关系(
+      { ...P1C招聘组织Fixture, profile: { ...P1C招聘组织Fixture.profile, avatar_url: 'https://cdn.fixture.example/p7-own-ok.png' } },
+      [P1C管理员关系],
+      { [P1C标记.组织甲编号]: P1C组织甲() },
+      [P4招聘岗位({ job_id: P5编号.job, title: P5标记.招聘岗标题 })],
+    );
+    await 安装P7事件桩(page);
+    // 头像失败样本：Case 身份图 404（wiring-avatar 红线位），我方图照常成功
+    await page.route('**/cdn.fixture.example/**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('wiring-avatar-')) {
+        await route.fulfill({ status: 404, body: 'not-found' });
+        return;
+      }
+      await route.fulfill({ status: 200, body: 一像素PNG, headers: { 'Content-Type': 'image/png' } });
+    });
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p7-avatar-broken',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 组织,
+      主体初始角色: 'recruiter',
+      P7fixture: fixture,
+    });
+
+    await hash直达(page, `/#/hr/chat/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    // 对方坏图 → 回退真实姓名首字（P5 Fixture 候选真名 → 「P」），不取回退标题/代号首字
+    const 对方 = page.locator('[data-侧="左"] span[class*="对方头像"]');
+    await expect(对方).toHaveText('P', { timeout: 10_000 });
+    // 我方图仍在；回退字标与图同尺寸（32×32）
+    const 我方 = page.locator('[data-侧="右"] span[class*="我头像"]');
+    await expect(我方.locator('img')).toBeVisible();
+    const 对方盒 = await 对方.boundingBox();
+    const 我方盒 = await 我方.boundingBox();
+    expect(Math.round(对方盒?.width ?? 0)).toBe(32);
+    expect(Math.round(对方盒?.height ?? 0)).toBe(32);
+    expect(Math.round(我方盒?.width ?? 0)).toBe(32);
+    expect(Math.round(我方盒?.height ?? 0)).toBe(32);
   });
 
   test('foreign/wrong-role 404 不保留上一会话残留 @backend', async ({ page }) => {

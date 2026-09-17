@@ -20,13 +20,9 @@ const 维度文案: Record<匹配依据行['维度'], string> = {
 
 export function 招聘匹配依据({ 行们 }: { 行们: readonly 匹配依据行[] }) {
   return (
-    <div data-testid="招聘匹配依据">
+    <div>
       {行们.map((行) => (
-        <div
-          key={行.维度}
-          className={行.状态 === 'positive' ? 样式.一致条 : 样式.期望副行}
-          data-match-dimension={行.维度}
-        >
+        <div key={行.维度} className={行.状态 === 'positive' ? 样式.一致条 : 样式.期望副行}>
           {行.状态 === 'positive' ? (
             <span className={样式.一致符} aria-hidden>✓</span>
           ) : null}

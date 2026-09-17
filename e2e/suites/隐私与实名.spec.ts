@@ -7,6 +7,9 @@ import { expect, test } from '../fixtures/test';
 import { 抽屉搜企业并选中, 走完后端发岗向导, hash直达 } from '../fixtures/数据源交互';
 import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系 } from '../fixtures/bff/招聘组织';
 import { P3标记, P3隐私fixture, P3默认组织库, 创建候选实名fixture, type 候选实名FixtureState } from '../fixtures/bff/隐私与实名';
+import { 创建候选OnboardingFixture } from '../fixtures/bff/候选建档';
+import { fixture简历, fixture意向列表 } from '../fixtures/bff/账号与目录';
+import { P4深克隆 } from '../fixtures/bff/发现推荐';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 import { type Page } from '@playwright/test';
 import { type 拦截请求形 } from '../fixtures/bff/协议';
@@ -166,6 +169,135 @@ test.describe('P3 Backend 隐私主链路 @backend', () => {
     const 手动解除 = 请求们.filter((项) => 项.path.startsWith('/api/v1/me/privacy/organization-blocks/') && 项.path.endsWith('/unblock'))[1];
     expect((手动解除.body as { risk_acknowledged?: boolean }).risk_acknowledged).toBe(false);
     expect(手动解除.headers['if-match']).toBe('"4"');
+  });
+
+  // ── 聊天推荐前端修复（Task 6 / 契约B 浏览器接线）：经历企业屏蔽开关跨页与部分保存
+  //    失败。共享装配：存量候选（一条完整经历，挂手动组织甲）+ 隐私组织池。──
+  const 组织甲编号 = 'org-fixture-p3-manual-a';
+  async function 装存量候选并进经历编辑(
+    page: Page,
+    选项: { 登录尝试id: string; 覆盖?: Record<string, (body: unknown) => { status: number; 响应: unknown } | undefined> },
+  ): Promise<{ fixture: ReturnType<typeof 创建候选OnboardingFixture>; 隐私: ReturnType<typeof P3隐私fixture> }> {
+    const fixture = 创建候选OnboardingFixture();
+    fixture.主体.last_used_role = 'candidate';
+    fixture.完成.candidate = '2026-08-25T10:00:00Z';
+    fixture.resume = {
+      ...P4深克隆(fixture简历),
+      profile: { ...fixture简历.profile, real_name: '存量候选' },
+      summary: '存量个人优势',
+      experiences: [{
+        id: 'exp-fixture-legacy',
+        organization_id: 组织甲编号,
+        company: P3标记.手动组织甲,
+        industry: { id: 'ind-fixture-001', display_name: 'Fixture 行业' },
+        title: '旧职务',
+        start_month: '2019-01',
+        end_month: '2021-12',
+        description: '',
+        hidden: true,
+        internship: false,
+        revision: 1,
+        projects: null,
+      }],
+    };
+    fixture.intentions = [P4深克隆(fixture意向列表.intentions[0])];
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    await 安装BFF路由(page, {
+      登录尝试id: 选项.登录尝试id,
+      记录目录请求: () => undefined,
+      候选OnboardingFixture: fixture,
+      隐私fixture: 隐私,
+      覆盖: 选项.覆盖,
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await hash直达(page, '/#/resume');
+    await expect(page.getByText('我的简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // Task 1 契约B：旧经历 hidden=true 但无有效企业屏蔽 → 折叠卡不出「已隐身」徽标
+    await expect(page.getByText('已对该公司隐身')).toHaveCount(0);
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/, { timeout: 15_000 });
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    // 在线简历编辑屏里再点经历行 → 单条经历编辑页（屏蔽开关所在）
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    return { fixture, 隐私 };
+  }
+
+  test('聊天推荐前端修复 经历企业屏蔽开关跨页：取消零写、保存写隐私 API、徽标与屏蔽名单同权威 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const { 隐私 } = await 装存量候选并进经历编辑(page, { 登录尝试id: 'att-cr-fix-block-cross' });
+
+    // 开关绑定有效企业屏蔽：先开 → 「待保存」注记（不用「已」字样冒充生效）
+    const 开关 = page.getByRole('switch', { name: '对这家公司隐藏我的信息' });
+    await expect(开关).toHaveAttribute('aria-checked', 'false', { timeout: 15_000 });
+    await 开关.click();
+    await expect(page.getByText('待保存')).toBeVisible();
+    // 取消（返回）：意图逐条还原 —— 零隐私写、零简历写
+    await page.getByRole('button', { name: '返回' }).click();
+    await expect(page).toHaveURL(/#\/experience\?from=resume$/);
+    expect(隐私.统计.屏蔽写入).toBe(0);
+    expect(隐私.统计.补丁).toBe(0);
+    await expect(page.getByText('待保存')).toHaveCount(0);
+
+    // 重开再开 → 完成：意图回上层保留，折叠卡单列「待保存」，不冒充已生效
+    await page.getByRole('button').filter({ hasText: P3标记.手动组织甲 }).click();
+    const 开关二 = page.getByRole('switch', { name: '对这家公司隐藏我的信息' });
+    await expect(开关二).toHaveAttribute('aria-checked', 'false', { timeout: 15_000 });
+    await 开关二.click();
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await expect(page.getByText('企业屏蔽待保存')).toBeVisible();
+    await expect(page.getByText('已对该公司隐身')).toHaveCount(0);
+
+    // 保存：按用户意图先写现有屏蔽 API（manual 来源 + 幂等键 + If-Match），零简历分区写
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 30_000 });
+    expect(隐私.统计.屏蔽写入).toBe(1);
+    // 折叠卡徽标按权威屏蔽派生（回到在线简历编辑屏核对）
+    await hash直达(page, '/#/experience?from=resume');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('已对该公司隐身')).toBeVisible({ timeout: 15_000 });
+    // 跨页一致：屏蔽名单页读同一份权威事实 —— 手动分组在该公司在场
+    await hash直达(page, '/#/blocklist');
+    await expect(page.getByText(P3标记.手动组织甲).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('你手动添加')).toBeVisible();
+  });
+
+  test('聊天推荐前端修复 屏蔽部分保存失败：失败保留意图与简历草稿、零简历写，重试补齐不重复 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    let 拦屏蔽 = true;
+    const { fixture, 隐私 } = await 装存量候选并进经历编辑(page, {
+      登录尝试id: 'att-cr-fix-block-partial',
+      覆盖: {
+        // 首把屏蔽 POST 被 500 挡下（覆盖在域 handler 之前，不落 屏蔽写入 统计）
+        'POST /api/v1/me/privacy/organization-blocks': () => {
+          if (!拦屏蔽) return undefined;
+          拦屏蔽 = false;
+          return { status: 500, 响应: { error: { type: 'internal_error', message: '服务开小差了' } } };
+        },
+      },
+    });
+
+    const 开关 = page.getByRole('switch', { name: '对这家公司隐藏我的信息' });
+    await expect(开关).toHaveAttribute('aria-checked', 'false', { timeout: 15_000 });
+    await 开关.click();
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    // 失败就地提示：意图与简历草稿保留、未成功不假报成功；简历分区零写
+    await expect(page.getByText(/企业屏蔽未保存/)).toBeVisible({ timeout: 15_000 });
+    await expect(page).not.toHaveURL(/#\/resume$/);
+    await expect(page.getByText('企业屏蔽待保存')).toBeVisible();
+    expect(隐私.统计.屏蔽写入).toBe(0);
+    expect(fixture.mutations).toEqual([]);
+
+    // 重试：核对权威后补齐唯一未达成项 → 成功回我的简历，徽标按权威派生
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 30_000 });
+    expect(隐私.统计.屏蔽写入).toBe(1);
+    await hash直达(page, '/#/experience?from=resume');
+    await expect(page.getByText('在线简历', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('已对该公司隐身')).toBeVisible({ timeout: 15_000 });
+    expect(fixture.mutations).toEqual([]); // 简历本身零差异：整链不写简历
   });
 
   test('P3 岗位硬性条件：切招聘方固定水合链，发布四员完整、编辑空稀疏补丁 @backend', async ({ page }) => {

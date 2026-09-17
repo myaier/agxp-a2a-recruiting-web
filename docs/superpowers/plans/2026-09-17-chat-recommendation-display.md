@@ -442,3 +442,19 @@ Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`
   - 清单内未改动 `src/数据/招聘候选摘要映射.ts(+test)`：Step 4 的 company·职位 拼接、null 只职位、亮点原样/合法空语义已由既有实现与测试覆盖，本轮仅复核无缺口。
 - **实现要点：** 契约C 映射纯函数（说明与 亮点文案/薪资关系文案 同源闭表）；在线简历正文 匹配依据行们 传入即唯一『匹配度分析』+六行+统一说明，未传保持对齐卡/缺失块（Case 与求职端零变化）；Backend 详情从同 scope 权威卡 wire 三键 useMemo 落六行，顶栏 匹配 N 仍是唯一总分；Mock 详情 档.推荐依据（11 档 wire 同形三键演示事实）经同一 映射招聘匹配依据 落六行，退役 JD 逐项对齐卡（薪资初筛结论/原始评分/推荐排名不动）。
 - **缺口备注：** e2e `发现推荐.spec.ts` 463-466/622-651（暂无逐条匹配证据/暂无推荐依据）与 `展示与交互.spec.ts` ~1443（Backend 推荐卡 亮点信息未知）断言被本任务按批准语义变更淘汰 —— 前者在 Task 6 编辑清单内随接线更新，后者不在任何 Task 清单，记录为 final gap；视觉场景 recruiter-home-candidate 的『匹配度分析』文本锚点仍唯一有效，像素基线变化归 Task 6 重采集。六行版式几何（一致条/期望副行 复用类）jsdom 不证明，归 Task 6。
+
+### Task 6 执行记录（2026-09-17）
+
+- **现场基线：** 分支 `fix/chat-recommend-display`，基于 ccaf7010（Task 5 收口后 HEAD）。基线先跑 `真人消息.spec.ts --project=fixture`：9 过 2 挂 —— `候选端收件箱未读`（Task 2 行标题换授权姓名后点行锚点 过期）与 `招聘端页头…全屏 PDF 层`（Task 4 纸身后 `看简历`/PDF iframe 已退役）。
+- **Commits：** 见本 Task 提交（浏览器接线 + 清单/视觉 + 阻塞性补读竞态修复）。
+- **定向结果：** `npm run test:e2e -- e2e/suites/真人消息.spec.ts e2e/suites/发现推荐.spec.ts e2e/suites/隐私与实名.spec.ts e2e/suites/简历与附件.spec.ts --project=fixture --grep 聊天推荐前端修复` → 10 passed；四文件全量 fixture → 55 passed；五文件 @mock → 22 passed；`展示与交互.spec.ts --project=fixture` → 25 passed；`npm test -- e2e/视觉回归/场景.test.ts` → 3 passed；`UI_CAPTURE_DIR=test-results/visual npm run ui:capture -- --grep chat-recommend-frontend` → 5 场景全 captured（390×664、零横向溢出；场景 JSON 记录 双端聊天头像槽 32×32、列表行头像 46×46、纸身六锚点）；`npm run test:list -- --write` + `--check` → 一致；`npm run build` / `npm run typecheck` 零错误。发现推荐全文件连跑 5 次全绿（见下 flake 修复）。
+- **TDD：** 产品修复先 RED —— 新反例「浏览器时序：store 不可变替换下岗位结算先于重渲染，仍按新快照坐标读企业」在旧实现下失败（企业读永不发起），修复后 GREEN；e2e 反例即基线两条过期断言（修前挂、修后过）。
+- **阻塞性产品缺陷（超清单修复，因果）：** `src/屏幕/P7/use会话列表资料.ts(+test)` —— 候选端列表发布企业链在 `await 岗位读` 之后从 hook 的快照 ref 取 `publisher_organization_ref`，而浏览器 store 是不可变替换（ref 停在旧对象）→ 企业读几乎恒不发起、副标题恒缺公司（traced：jobs GET 200 后零 organizations GET）。这是 Task 2 交付在真实浏览器的集成缺口（jsdom act 刷新掩盖），Task 6 双端列表验收被它阻塞。修复最小且对齐既有已评审的详情页 hook 模式（use真人会话资料 的相位 state 机）：岗位/企业结算进 轮 state、企业发起改渲染期 effect、失败重试仍只定向摘失败坐标；≤4 并发/轮键栅栏/翻页追加语义不变，既有 11 例 + 新反例全绿，消费者回归（Backend会话列表/use真人会话资料/消息列表展示）通过。
+- **现场差异（超「预期编辑文件」增补，含因果）：**
+  - `src/屏幕/P7/use会话列表资料.ts(+test)`：上述阻塞性修复。
+  - `src/组件/招聘匹配依据.tsx`：按裁定顺手删除无消费者的 `data-testid="招聘匹配依据"`/`data-match-dimension`（本 Task e2e 用文本锚点定位六行，组件 73 例零触碰该属性）。
+  - `e2e/suites/展示与交互.spec.ts`：裁定指派 —— 推荐卡变体用例两处『亮点信息未知』按 Task 5 批准语义改『暂无可展示亮点』（全空卡占位循环 + 零值卡断言；在谈卡默认文案断言不受影响）。
+  - `e2e/suites/真人消息.spec.ts` 两处过期断言属 Plan「替换旧断言的责任」（在编辑清单内）：read-through 用例点行锚点改授权姓名行（Task 2 版式）；`看简历` PDF 层用例整段改写为 `聊天推荐前端修复` 纸身用例（零 PDF content 请求 + 无 PDF iframe + 关闭回聊天）。
+  - `发现推荐.spec.ts` 首条 P4 列表/详情用例补 `GET /api/v1/organizations/org-fixture-p4` 坐标声明（同文件 DF-011 既有修法）：详情页公开企业补读在飞与否本就随并行负载漂移，本 Task 新增用例抬高并行度后间歇翻红（离线边界记 2 笔未声明请求）；只修测试定义，公司名断言吃 claim 文案不受影响，修复后全文件连跑 5 次全绿。
+- **fixture 纪律：** 无新 wire 字段/端点 —— 头像成功/失败样本用例内 cdn.fixture.example 自答路由（1px PNG / 404）+ 我方招聘档案 avatar_url 经既有 P1C profile 字段覆盖；补读失败经既有 覆盖 挂 503；hidden 断言经既有 候选OnboardingFixture 闭合契约（新建 POST 显式 hidden=false、旧经历 PATCH 保持 true）；屏蔽跨页/部分失败用既有 P3 隐私域统计与幂等键断言。
+- **缺口备注：** 本 Task 是实际浏览器接线交付，真实后端权限/生成器仍未验证（fixture 不能证明服务端行为）；视觉场景为候选采集（无基准像素对比，基线归 ui:check 流程）；L3 未执行，按 Plan 默认无正式 L3。
