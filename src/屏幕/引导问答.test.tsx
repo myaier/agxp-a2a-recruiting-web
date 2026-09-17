@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 引导问答 from './引导问答';
 import { 路径 } from '../路由/路径表';
+import { 创建候选编辑来路 } from '../流程/候选日常编辑';
 import type { 向导段 } from '../流程/onboarding配置';
 import { 构造映射变体基底 } from '../数据/招聘数据源/简历预填.fixture';
 import { 个人优势文本 } from '../数据/模拟数据';
@@ -21,6 +22,7 @@ import { BFF组织搜索项样本, BFF组织搜索页样本 } from '../测试/BF
 
 const mock跳转 = vi.fn();
 const mock返回 = vi.fn();
+const mock替换跳转 = vi.fn();
 const mock操作 = vi.hoisted(() => ({
   保存个人优势: vi.fn(async () => {}),
   保存首次意向: vi.fn(async () => {}),
@@ -30,7 +32,7 @@ const mock操作 = vi.hoisted(() => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
 
-vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
+vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回, 替换跳转: mock替换跳转 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 
 /** 在既有滚动容器上触发一次「已到底」滚动事件——不新增任何节点 */
@@ -786,12 +788,13 @@ describe('引导问答 个人优势预填（Spec §8 偏好段）', () => {
   });
 });
 
-// ── 个人优势独立编辑入口（Task 4）：/wizard?from=resume 在向导内唯一表示「只编辑
-//    个人优势」—— 题序直接为个人优势单题，初值是已水合 全局.个人优势（不消费候选
-//    预填建议、不显示“已根据你上传的简历预先提取”与恢复动作）；「保存」只调
-//    保存个人优势 后回我的简历，确认分区 / 首次意向 / 建档草稿一概不碰。──
+// ── 个人优势独立编辑入口（Task 4 / Task 2）：/wizard?from=resume 在向导内唯一表示
+//    「只编辑个人优势」—— 题序直接为个人优势单题，标题「编辑个人优势」，初值是已水合
+//    全局.个人优势（不消费候选预填建议、不显示“已根据你上传的简历预先提取”与恢复动作）；
+//    正文走共用 个人优势编辑正文（合同 B），「保存」只调 保存个人优势 后按统一退出
+//    回我的简历，确认分区 / 首次意向 / 建档草稿一概不碰。──
 
-function render个人优势编辑(选项: { 个人优势?: string; 预填?: 候选预填状态 } = {}) {
+function render个人优势编辑(选项: { 个人优势?: string; 预填?: 候选预填状态; 带来路?: boolean } = {}) {
   mock应用状态 = {
     数据源模式: 'backend',
     目录查询: {
@@ -812,30 +815,52 @@ function render个人优势编辑(选项: { 个人优势?: string; 预填?: 候�
     操作: mock操作,
   };
   render(
-    <MemoryRouter initialEntries={[`${路径.引导问答}?from=resume`]}>
+    <MemoryRouter initialEntries={[选项.带来路
+      ? {
+          pathname: 路径.引导问答,
+          search: '?from=resume',
+          state: 来路证明(),
+        }
+      : `${路径.引导问答}?from=resume`]}
+    >
       <引导问答 />
     </MemoryRouter>,
   );
+}
+
+/** 合同 A 的来路证明：来源格号 +1 即「本会话从我的简历 push 进编辑页」 */
+function 来路证明(): unknown {
+  window.history.replaceState({ idx: 4, key: 'k4', usr: null }, '');
+  const 来路 = 创建候选编辑来路('resume');
+  window.history.replaceState({ idx: 5, key: 'k5', usr: null }, '');
+  return 来路;
 }
 
 describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume）', () => {
   beforeEach(() => {
     mock跳转.mockClear();
     mock返回.mockClear();
+    mock替换跳转.mockClear();
+    window.history.replaceState(null, '');
     mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
     mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
     mock操作.确认候选Onboarding预填分区.mockReset();
     mock操作.更新候选建档草稿.mockReset();
   });
 
-  it('刷新直达编辑场景：题序只有个人优势一题，按钮为「保存」', () => {
+  it('刷新直达编辑场景：题序只有个人优势一题，标题为编辑个人优势，按钮为「保存」', () => {
     render个人优势编辑({ 个人优势: '存量优势' });
     expect(优势框().value).toBe('存量优势');
+    expect(screen.getByText('编辑个人优势')).toBeTruthy();
+    expect(screen.queryByText('分享一下自己的个人优势')).toBeNull();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '保存并继续' })).toBeNull();
     expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
     // 不问城市 / 薪资 / 排除题：排除网格不出现
     expect(screen.queryByRole('button', { name: '大小周' })).toBeNull();
+    // 已失效的「删除一行：长按段落」提示不再出现（字数与恢复语义保留）
+    expect(screen.queryByText(/长按/)).toBeNull();
+    expect(screen.getByText('4 / 500')).toBeTruthy();
   });
 
   it('初值是已水合现值：ready 预填建议不种入，提取说明与恢复动作不进场', () => {
@@ -845,7 +870,7 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     expect(screen.queryByRole('button', { name: /恢复简历识别建议|重新从简历提取/ })).toBeNull();
   });
 
-  it('保存只调 保存个人优势 并回我的简历：确认分区/首次意向/建档草稿全零', async () => {
+  it('保存只调 保存个人优势 并按统一退出回我的简历：确认分区/首次意向/建档草稿全零', async () => {
     render个人优势编辑({ 个人优势: '旧优势' });
     const 用户 = userEvent.setup();
     await 用户.clear(优势框());
@@ -855,7 +880,20 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     expect(mock操作.确认候选Onboarding预填分区).not.toHaveBeenCalled();
     expect(mock操作.保存首次意向).not.toHaveBeenCalled();
     expect(mock操作.更新候选建档草稿).not.toHaveBeenCalled();
-    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
+    // 无来路证明（刷新直达）：安全替换回我的简历，不盲退也不 push
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.我的简历));
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.引导问答);
+  });
+
+  it('带来路证明保存：退一格回我的简历（不 push 新页）', async () => {
+    render个人优势编辑({ 个人优势: '旧优势', 带来路: true });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mock返回).toHaveBeenCalledTimes(1));
+    expect(mock替换跳转).not.toHaveBeenCalled();
+    expect(mock跳转).not.toHaveBeenCalled();
   });
 
   it('多行文本逐字保存（保留换行）', async () => {
@@ -866,7 +904,7 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledWith('第一行\n第二行', '日常编辑'));
   });
 
-  it('保存失败留在编辑页：输入保留、不跳转', async () => {
+  it('保存失败留在编辑页：输入保留、不退出', async () => {
     mock操作.保存个人优势.mockRejectedValue(new Error('offline'));
     render个人优势编辑({ 个人优势: '还没保存的优势' });
     const 用户 = userEvent.setup();
@@ -874,7 +912,8 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(document.body.textContent).toContain('请求失败，请稍后再试'));
-    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    expect(mock替换跳转).not.toHaveBeenCalled();
     expect(优势框().value).toBe('还没保存的优势追加');
   });
 
@@ -887,11 +926,11 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     解决();
-    await waitFor(() => expect(mock跳转).toHaveBeenCalledWith(路径.我的简历));
+    await waitFor(() => expect(mock替换跳转).toHaveBeenCalledWith(路径.我的简历));
     expect(mock操作.保存个人优势).toHaveBeenCalledTimes(1);
   });
 
-  it('返回未保存不提交：零保存零跳转', async () => {
+  it('返回未保存不提交：零保存，只按统一出口退出', async () => {
     render个人优势编辑({ 个人优势: '原优势' });
     const 用户 = userEvent.setup();
     await 用户.type(优势框(), '改一半');
@@ -899,6 +938,8 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     expect(mock操作.保存个人优势).not.toHaveBeenCalled();
     expect(mock操作.保存首次意向).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
+    // 取消与保存共用合同 A 的出口：无来路证明时安全替换回我的简历
+    expect(mock替换跳转).toHaveBeenCalledWith(路径.我的简历);
   });
 });
 

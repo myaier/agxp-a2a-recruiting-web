@@ -204,23 +204,6 @@
   color: var(--墨);
 }
 
-/* ── 多意向引导行：一行轻提示，不做成卡片，别跟简历分节抢分量 ── */
-.加意向行 {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 4px 8px;
-  text-align: left;
-}
-
-.加意向文 {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--深绿);
-}
-
 /* ── 个人优势：数据里带 \n，靠 pre-line 还原换行 ──
    Task 4：整卡行改成编辑入口（进 /wizard?from=resume），行骨架同 标签行、
    行尾复用 尖括号；正文 span 要撑满剩余宽度，箭头才贴右 */
@@ -324,28 +307,6 @@
   color: var(--最弱);
   font-size: 16px;
   font-weight: 300;
-}
-
-/* 基本信息行内编辑态（标注意见 #6）：版式与 表单条目 对齐，切换不跳动 */
-.编辑条目 {
-  padding: 14px 0;
-  border-bottom: 1px solid var(--分隔线);
-}
-.编辑条目标签 {
-  font-size: 12px;
-  color: var(--次要浅);
-}
-.编辑条目输入 {
-  width: 100%;
-  margin-top: 6px;
-  border: none;
-  outline: none;
-  background: none;
-  font-size: 15.5px;
-  font-weight: 600;
-  color: var(--深绿);
-  border-bottom: 1px solid var(--淡绿描边);
-  padding-bottom: 2px;
 }
 
 /* 诊断项改成可点行（标注 21:22：这块就是告诉用户哪里要补，点了要能直接去补）*/

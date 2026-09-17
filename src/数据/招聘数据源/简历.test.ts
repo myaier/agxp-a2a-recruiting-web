@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BFF错误, type BFF请求选项, type BFF响应 } from '../HTTP客户端';
 import { BFF简历样本 } from '../../测试/BFF样本';
-import type { BFF简历, BFF教育, BFF经历 } from '../BFF契约';
+import type { BFF简历, BFF教育, BFF经历, BFF证书 } from '../BFF契约';
 import type { 简历经历段, 简历教育段 } from '../类型';
 import { 从BFF简历 } from '../后端映射';
 import { 创建简历数据源 } from './简历';
@@ -573,5 +573,151 @@ describe('简历数据源 · 经历真实组织 ID（合同 C）', () => {
     );
     const 调用 = 请求Mock.mock.calls.map((c) => c[0] as BFF请求选项);
     expect(调用.filter((o) => o.path.includes('/experiences'))).toHaveLength(0);
+  });
+});
+
+// ── Task 2（Spec §5.2 + §11.2.4）：日常局部保存的 next 合成 —— 本次改哪条就只写哪条 ──
+// 日常编辑以已水合权威页面形态为基底、只应用本次明确变更：未改条目与未改分区按权威对象
+// 原样带回，现有 diff（编号对齐 + JSON 比较）因此不生成 PATCH/DELETE；本地遗留的不完整
+// 行（服务端没有、字段不齐）仍按中间屏规则跳过 —— 既不拦住本次保存，也不被 DELETE。
+
+const 证书DTO = (id: string, revision: number): BFF证书 => ({
+  id,
+  name: 'CPA',
+  year: 2020,
+  revision,
+});
+
+describe('简历数据源 · 日常局部保存（未改条目零写）', () => {
+  it('只改一条经历：恰一次该条目 PATCH，其它经历/教育/证书零写入，无 DELETE', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      experiences: [经历DTO('exp_srv_1', 1), { ...经历DTO('exp_srv_2', 2), title: '设计师' }],
+      educations: [教育DTO('edu_srv_1', 1)],
+      certificates: [证书DTO('cert_srv_1', 1)],
+    };
+    const 基页 = 从BFF简历(previous);
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    await 创建简历数据源(请求).保存简历(
+      { ...基页, 经历: [{ ...基页.经历[0]!, 职位: '资深工程师' }, 基页.经历[1]!] },
+      previous,
+    );
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['PATCH', '/api/v1/me/resume/experiences/exp_srv_1'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+  });
+
+  it('本地遗留的不完整经历（服务端没有、字段不齐）不拦本次保存、零写、不被 DELETE', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, experiences: [经历DTO('exp_srv_1', 1)] };
+    const 基页 = 从BFF简历(previous);
+    const 遗留条: 简历经历段 = {
+      编号: 'prefill:exp:0', 组织编号: undefined, 公司: '乙公司', 行业: '',
+      行业引用: undefined, 职位: '工程师', 开始: '2020-01', 结束: null, 内容: '', 隐藏: false,
+    };
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    const 快照 = await 创建简历数据源(请求).保存简历(
+      { ...基页, 经历: [{ ...基页.经历[0]!, 职位: '资深工程师' }, 遗留条] },
+      previous,
+    );
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['PATCH', '/api/v1/me/resume/experiences/exp_srv_1'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+    // 跳过的本地行留在返回页面态里：不被服务端权威清掉，也不产生 DELETE
+    expect(快照.经历.some((段) => 段.编号 === 'prefill:exp:0')).toBe(true);
+  });
+
+  it('明确删除一条经历：恰一次该条目 DELETE，其余条目零写', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      experiences: [经历DTO('exp_srv_1', 1), { ...经历DTO('exp_srv_2', 2), title: '设计师' }],
+    };
+    const 基页 = 从BFF简历(previous);
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    await 创建简历数据源(请求).保存简历({ ...基页, 经历: [基页.经历[0]!] }, previous);
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['DELETE', '/api/v1/me/resume/experiences/exp_srv_2'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+  });
+
+  it('只改技能分区：恰一次 skills PATCH，经历/教育/证书零写', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      experiences: [经历DTO('exp_srv_1', 1)],
+      educations: [教育DTO('edu_srv_1', 1)],
+      certificates: [证书DTO('cert_srv_1', 1)],
+    };
+    const 基页 = 从BFF简历(previous);
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    await 创建简历数据源(请求).保存简历({ ...基页, 技能: [...基页.技能, 'Rust'] }, previous);
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['PATCH', '/api/v1/me/resume/skills'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+  });
+
+  it('只改一条证书：恰一次该证书 PATCH，另一条证书与其余分区零写', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      experiences: [经历DTO('exp_srv_1', 1)],
+      certificates: [证书DTO('cert_srv_1', 1), { ...证书DTO('cert_srv_2', 2), name: '雅思' }],
+    };
+    const 基页 = 从BFF简历(previous);
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    await 创建简历数据源(请求).保存简历(
+      { ...基页, 证书: [{ ...基页.证书[0]!, 年份: '2021' }, 基页.证书[1]!] },
+      previous,
+    );
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['PATCH', '/api/v1/me/resume/certificates/cert_srv_1'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+  });
+});
+
+describe('简历数据源 · 日常局部保存（教育分区）', () => {
+  it('只改一条教育：恰一次该条目 PATCH，另一条（含至今在读）零写、不被 DELETE', async () => {
+    const previous: BFF简历 = {
+      ...BFF简历样本,
+      educations: [教育DTO('edu_srv_1', 1), { ...教育DTO('edu_srv_2', 2), end_month: null }],
+    };
+    const 基页 = 从BFF简历(previous);
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    await 创建简历数据源(请求).保存简历(
+      { ...基页, 教育: [{ ...基页.教育[0]!, 学历: '硕士' }, 基页.教育[1]!] },
+      previous,
+    );
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['PATCH', '/api/v1/me/resume/educations/edu_srv_1'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+  });
+
+  it('本地遗留的不完整教育（服务端没有、字段不齐）不拦本次保存、零写、不被 DELETE', async () => {
+    const previous: BFF简历 = { ...BFF简历样本, educations: [教育DTO('edu_srv_1', 1)] };
+    const 基页 = 从BFF简历(previous);
+    const 遗留条: 简历教育段 = {
+      编号: 'prefill:edu:1', 学校: '', 学校引用: undefined, 学历: '本科',
+      专业: '', 专业引用: undefined, 开始: '', 结束: '',
+    };
+    const { 请求Mock, 请求 } = 请求桩(previous);
+    const 快照 = await 创建简历数据源(请求).保存简历(
+      { ...基页, 教育: [{ ...基页.教育[0]!, 学历: '硕士' }, 遗留条] },
+      previous,
+    );
+    const 调用 = 请求Mock.mock.calls.map((c) => [(c[0] as BFF请求选项).method ?? 'GET', (c[0] as BFF请求选项).path]);
+    expect(调用).toEqual([
+      ['PATCH', '/api/v1/me/resume/educations/edu_srv_1'],
+      ['GET', '/api/v1/me/resume'],
+    ]);
+    expect(快照.教育.some((段) => 段.编号 === 'prefill:edu:1')).toBe(true);
   });
 });

@@ -513,9 +513,13 @@
   flex-direction: row;
   align-items: center;
 }
-.优势提示 {
+/* 计数行左侧的说明位（原「删除一行：长按段落」提示已删，Spec §5.3）：资料页按实际
+   预填来源给一行说明，不给就不渲染 —— 与 优势计数 同一行、同一字号档 */
+.优势说明 {
+  flex: 1;
+  min-width: 0;
   font-size: 11.5px;
-  color: var(--意向);
+  color: var(--次要浅);
 }
 .优势计数 {
   margin-left: auto;

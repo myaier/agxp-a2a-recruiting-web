@@ -25,6 +25,9 @@ import { type 候选引导建档草稿 } from '../数据/资料缓存';
 
 export const mock跳转 = vi.fn();
 export const mock返回 = vi.fn();
+/** 合同 A 的退出出口之一：无来路证明（刷新/深链/越级）时安全替换到来源固定路径，
+ *  日常分区 URL 归一（旧 /experience?from=resume → work 分区）也走它 */
+export const mock替换跳转 = vi.fn();
 export const mock轻提示 = vi.fn();
 export const mock确认分区 = vi.fn();
 export const mock更新草稿 = vi.fn();
@@ -57,7 +60,10 @@ export function 登记工作经历(组件: typeof 工作经历组件) {
   已登记 = 组件;
 }
 
-export function 宿主({ 入口 }: { 入口?: string } = {}) {
+/** 入口形：字符串（只有 URL）或完整位置（带 state —— 日常编辑来路证明） */
+export type 入口形 = string | { pathname: string; search?: string; state?: unknown };
+
+export function 宿主({ 入口 }: { 入口?: 入口形 } = {}) {
   const [, 设代] = useState(0);
   // 渲染期登记（早于子组件的 useLayoutEffect 种入派发）；设代 在同一挂载内稳定
   触发重渲染 = () => 设代((代) => 代 + 1);
@@ -86,8 +92,9 @@ export function render工作经历(选项: {
   作品集链接?: string;
   /** J-PILOT-02 Task 4：会话恢复出的建档草稿（更新回写同一对象并重渲染，贴近 Provider）*/
   建档?: 候选引导建档草稿;
-  /** 简历编辑显式来源（Task 1）：带 from=resume 的入口（编辑模式用例） */
-  入口?: string;
+  /** 简历编辑显式来源（Task 1/2）：带 from=resume 的入口；日常分区用例传完整位置
+   *  （pathname + search + 来路 state）以便退出走「退一格」分支 */
+  入口?: 入口形;
   /** 契约B：隐私域页面状态（默认空名单 + 总开关关；Backend 水合语义由用例自行播种）*/
   屏蔽名单?: 屏蔽项[];
   /** 契约B：「对现雇主隐身」（employer_privacy_enabled）——derived 屏蔽的生效开关 */

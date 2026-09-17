@@ -4,17 +4,21 @@
 import {
   mock跳转,
   mock返回,
+  mock替换跳转,
   mock轻提示,
   mock更新草稿,
   mock应用状态,
   简历经历初始,
   render工作经历,
   登记工作经历,
+  type 入口形,
 } from './工作经历.测试辅助';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import 工作经历 from './工作经历';
+import { 创建候选编辑来路 } from '../流程/候选日常编辑';
+import { 路径 } from '../路由/路径表';
 import type { 屏蔽项, 简历经历段 } from '../数据/类型';
 import { BFF错误 } from '../数据/HTTP客户端';
 import { BFF隐私快照样本, BFF隐私组织屏蔽样本 } from '../测试/BFF样本';
@@ -27,7 +31,7 @@ if (!HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = () => {};
 }
 
-vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回 }) }));
+vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 跳转: mock跳转, 返回: mock返回, 替换跳转: mock替换跳转 }) }));
 vi.mock('../状态/应用状态', () => ({ use应用状态: () => mock应用状态 }));
 vi.mock('../组件/轻提示', () => ({ 轻提示: mock轻提示 }));
 
@@ -1170,6 +1174,8 @@ describe('工作经历 · 经历企业屏蔽（契约B）', () => {
     expect(解除组织屏蔽).toHaveBeenCalledTimes(1);
     expect(解除组织屏蔽).toHaveBeenCalledWith(expect.objectContaining({ 组织编号: 'org_a', 来源: '当前雇主' }));
     expect(mock轻提示).toHaveBeenCalledWith('简历已保存');
+    // 确认解除后仍走原来的成功落点（成功续随确认层一起带走，不因弹层而丢）
+    expect(mock跳转).toHaveBeenCalledWith(路径.引导问答);
   });
 
   it('必填不完整先阻止整份保存：有屏蔽意图也零隐私写请求', async () => {
@@ -1284,5 +1290,291 @@ describe('工作经历 · 经历企业屏蔽（契约B）', () => {
     视图.重渲染();
     await waitFor(() => expect(screen.getAllByText('已对该公司隐身')).toHaveLength(2));
     expect(screen.queryByText('企业屏蔽待保存')).toBeNull();
+  });
+});
+
+// ── Task 2（Spec §5.1/5.2 + §11.2）：日常分区/条目保存完整承接先行企业屏蔽保存链 ──
+// 日常条目编辑器的「保存」= 唯一一份保存责任：校验本次目标 → derived 确认 → 按序隐私写
+// + 每项权威回读 → 保存简历。取消零写；本次目标无效先拦下（隐私零写）；其它未改条目
+// 既不要求补齐也不被顺带写入/删除；隐私成功而简历失败时留页、已成功事实保留、重试只补简历。
+describe('工作经历 · 经历企业屏蔽（契约B）· 日常分区保存', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock替换跳转.mockClear();
+    mock轻提示.mockClear();
+    window.history.replaceState(null, '');
+  });
+
+  /** 手动屏蔽行（manual 一直有效） */
+  const 手动行 = (组织编号: string, 名称: string): 屏蔽项 => ({
+    编号: 组织编号, 名称, 首字: 名称.charAt(0), 理由: '你手动加入 · 双向不可见', 时间: '2026-09-17',
+    组织编号, 来源: '手动添加', 组织状态: '有效',
+  });
+  /** 完整经历（行业引用 + 真实企业 ID 齐备） */
+  const 完整经历 = (组织编号: string, 公司 = '示例公司'): 简历经历段 => ({
+    ...简历经历初始[0], 编号: `e_${组织编号}`, 公司, 组织编号,
+    行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+  });
+  const BFF块 = (组织编号: string, 名称: string) => ({
+    ...BFF隐私组织屏蔽样本, organization_id: 组织编号, organization_display_name: 名称, source: 'manual' as const,
+  });
+  const 开关键 = () => screen.getByRole('switch', { name: '对这家公司隐藏我的信息' });
+
+  /** 带合法来路证明的日常入口：来源格号 +1 = 本会话从我的简历 push 进来 */
+  function 日常入口(search: string): 入口形 {
+    window.history.replaceState({ idx: 4, key: 'k4', usr: null }, '');
+    const 来路 = 创建候选编辑来路('resume');
+    window.history.replaceState({ idx: 5, key: 'k5', usr: null }, '');
+    return { pathname: 路径.工作经历, search, state: 来路 };
+  }
+
+  it('日常 work 分区列表：徽标按权威名单派生；条目内取消后意图不残留', async () => {
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本,
+      屏蔽名单: [手动行('org_a', '示例公司')],
+      经历: [完整经历('org_a')],
+      入口: 日常入口('?from=resume&section=work'),
+    });
+    // 列表卡与聚合页同一条派生规则：有效 manual 屏蔽在分区列表上也显示
+    expect(screen.getByText('已对该公司隐身')).toBeTruthy();
+    // 进条目编辑器拨动开关再返回：取消只丢弃本次动过的意图（列表只剩权威徽标）
+    await 用户.click(screen.getByText('示例公司'));
+    await 用户.click(开关键());
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(screen.getByText('已对该公司隐身')).toBeTruthy();
+    expect(screen.queryByText('企业屏蔽待保存')).toBeNull();
+  });
+
+  it('未点保存：取消零隐私写，之后也不带任何屏蔽请求', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 添加组织屏蔽 = vi.fn(async () => {});
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 添加组织屏蔽, 保存简历,
+      经历: [完整经历('org_a')],
+      入口: 日常入口('?from=resume&section=work&item=e_org_a'),
+    });
+    await 用户.click(开关键());
+    expect(screen.getByText('待保存')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '返回' }));
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock应用状态.派发).not.toHaveBeenCalled();
+    expect(mock返回).toHaveBeenCalledTimes(1);
+  });
+
+  it('日常当前条目无效则零写：缺行业引用的遗留条目点保存被就地拦下，意图保留', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 添加组织屏蔽 = vi.fn(async () => {});
+    // 旧不完整条：选好了公司但没选行业（公司/职位/开始齐、行业引用缺）—— 既进得了编辑器，
+    // 又是数据源会跳过的那类本地遗留行
+    const 遗留条: 简历经历段 = { ...完整经历('org_a'), 行业: '', 行业引用: undefined };
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 添加组织屏蔽, 保存简历,
+      经历: [遗留条],
+      入口: 日常入口('?from=resume&section=work&item=e_org_a'),
+    });
+    await 用户.click(开关键());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock轻提示).toHaveBeenCalledWith('请从候选行业中选择');
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock轻提示).not.toHaveBeenCalledWith('简历已保存');
+    // 未达成意图保留，未退出编辑页
+    expect(screen.getByText('待保存')).toBeTruthy();
+    expect(mock返回).not.toHaveBeenCalled();
+  });
+
+  it('两条旧不完整经历并存：修好并保存其中一条不被另一条拦住，未改条目零写', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 旧不完整条: 简历经历段 = {
+      ...完整经历('org_b', '乙公司'), 编号: 'e_legacy', 行业: '', 行业引用: undefined,
+    };
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 保存简历,
+      经历: [完整经历('org_a', '甲公司'), 旧不完整条],
+      入口: 日常入口('?from=resume&section=work&item=e_org_a'),
+    });
+    await 用户.clear(screen.getByPlaceholderText('必填'));
+    await 用户.type(screen.getByPlaceholderText('必填'), '资深工程师');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    // 旧口径的全量写前预检不再适用于日常：另一条不完整不拦本次条目
+    expect(mock轻提示).not.toHaveBeenCalledWith('还有 1 段经历需要选择公司或补充必填项');
+    const next = (保存简历.mock.calls as unknown as [Record<string, unknown>, string?][])[0]![0] as unknown as { 经历: 简历经历段[] };
+    expect(next.经历[0]).toMatchObject({ 编号: 'e_org_a', 职位: '资深工程师' });
+    // 未改条目按权威对象原样带回（同一对象 → 数据源 diff 不生成 PATCH/DELETE）
+    expect(next.经历[1]).toBe(旧不完整条);
+    expect(next.经历[1]).toMatchObject({ 编号: 'e_legacy', 行业引用: undefined });
+  });
+
+  it('隐私成功、简历失败：留页且已成功事实保留，重试只补简历', async () => {
+    const 已落库 = new Set<string>();
+    const 添加组织屏蔽 = vi.fn(async (组织编号: string) => { 已落库.add(组织编号); });
+    let 重渲染: () => void = () => {};
+    const 重读隐私 = vi.fn(async () => {
+      const 快照 = 从BFF隐私({
+        ...BFF隐私快照样本,
+        organization_blocks: [...已落库].map((编号) => BFF块(编号, '示例公司')),
+        revision: 5 + 已落库.size,
+      });
+      mock应用状态.状态.屏蔽名单 = 快照.屏蔽名单;
+      重渲染();
+      return 快照;
+    });
+    const 保存简历 = vi.fn(async (): Promise<void> => { throw new BFF错误(503, 'storage_unavailable', 'boom'); });
+    const 视图 = render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 添加组织屏蔽, 重读隐私, 保存简历,
+      经历: [完整经历('org_a')],
+      入口: 日常入口('?from=resume&section=work&item=e_org_a'),
+    });
+    重渲染 = 视图.重渲染;
+    const 用户 = userEvent.setup();
+    await 用户.click(开关键());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    // 隐私已成功：开关按权威名单生效、待保存标记消失；留页，不发成功提示也不退出
+    expect(添加组织屏蔽).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(开关键().getAttribute('aria-checked')).toBe('true'));
+    expect(screen.queryByText('待保存')).toBeNull();
+    expect(mock轻提示).not.toHaveBeenCalledWith('简历已保存');
+    expect(mock返回).not.toHaveBeenCalled();
+    // 重试只补简历：隐私不重放，一次成功后才退出
+    保存简历.mockImplementation(async () => {});
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(2));
+    expect(添加组织屏蔽).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mock返回).toHaveBeenCalledTimes(1));
+  });
+
+  it('旧 hidden=true 原样透传：日常编辑旧条目不改该字段', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'mock', 保存简历,
+      经历: [{ ...简历经历初始[0], 隐藏: true }],
+      入口: 日常入口('?from=resume&section=work&item=e1'),
+    });
+    await 用户.clear(screen.getByPlaceholderText('必填'));
+    await 用户.type(screen.getByPlaceholderText('必填'), '新职位');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    const next = (保存简历.mock.calls as unknown as [Record<string, unknown>, string?][])[0]![0] as unknown as { 经历: { 隐藏?: boolean }[] };
+    expect(next.经历[0].隐藏).toBe(true);
+  });
+
+  it('新段 hidden=false：日常新增条目不改写该字段', async () => {
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{ organization_id: 'org_fresh', display_name: '新公司', legal_name: null, verification_status: 'unverified' as const }],
+      next_cursor: null,
+    }));
+    const 查询Taxonomy = vi.fn(async () => ({
+      items: [{ id: 'tax_i', display_name: '互联网', parent_id: null, selectable: true }],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const 保存简历 = vi.fn(async () => {});
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 保存简历, 搜索组织, 查询Taxonomy,
+      经历: [],
+      入口: 日常入口('?from=resume&section=work&item=new'),
+    });
+    await 用户.click(screen.getByText('公司名称'));
+    const 抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+    await 用户.type(within(抽屉).getByPlaceholderText('输入公司名称'), '新公司');
+    await 用户.click(await within(抽屉).findByText('新公司'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    await 用户.type(screen.getByPlaceholderText('必填'), '工程师');
+    await 用户.click(screen.getByRole('button', { name: '入职年月' }));
+    await 用户.click(within(await screen.findByRole('dialog', { name: '选择入职年月' })).getByRole('button', { name: '确定' }));
+    await 用户.click(screen.getByText('所属行业'));
+    await 用户.click(await screen.findByText('互联网'));
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    const next = (保存简历.mock.calls as unknown as [Record<string, unknown>, string?][])[0]![0] as unknown as { 经历: { 隐藏?: boolean; 组织编号?: string }[] };
+    expect(next.经历).toHaveLength(1);
+    expect(next.经历[0]).toMatchObject({ 组织编号: 'org_fresh', 隐藏: false });
+  });
+
+  it('日常解除 derived 屏蔽：先出风险确认，确认后才解除并退出（取消零写、意图保留）', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    let 已解除 = false;
+    const 解除组织屏蔽 = vi.fn(async () => { 已解除 = true; });
+    let 重渲染: () => void = () => {};
+    const 重读隐私 = vi.fn(async () => {
+      // 解除成功后的权威回读才是空名单：写后核对必须读权威，不看本地意图
+      const 快照 = 从BFF隐私({
+        ...BFF隐私快照样本,
+        organization_blocks: 已解除 ? [] : [{
+          ...BFF隐私组织屏蔽样本, organization_id: 'org_a',
+          organization_display_name: '示例公司', source: 'current_employer' as const,
+        }],
+        revision: 6,
+      });
+      mock应用状态.状态.屏蔽名单 = 快照.屏蔽名单;
+      重渲染();
+      return 快照;
+    });
+    const 衍生行 = (组织编号: string, 名称: string): 屏蔽项 => ({
+      编号: 组织编号, 名称, 首字: 名称.charAt(0), 理由: '当前雇主 · 建档时自动屏蔽', 时间: '2026-09-17',
+      组织编号, 来源: '当前雇主', 组织状态: '有效',
+    });
+    const 用户 = userEvent.setup();
+    const 视图 = render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 保存简历, 解除组织屏蔽, 重读隐私,
+      屏蔽名单: [衍生行('org_a', '示例公司')], 雇主隐身: true,
+      经历: [完整经历('org_a')],
+      入口: 日常入口('?from=resume&section=work&item=e_org_a'),
+    });
+    重渲染 = 视图.重渲染;
+    await 用户.click(开关键());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    const 确认 = await screen.findByRole('dialog', { name: '解除企业屏蔽' });
+    await 用户.click(within(确认).getByRole('button', { name: '不解除' }));
+    expect(解除组织屏蔽).not.toHaveBeenCalled();
+    expect(保存简历).not.toHaveBeenCalled();
+    expect(mock返回).not.toHaveBeenCalled();
+    // 再保存并确认：解除 → 保存简历 → 按成功续退出回原简历
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    const 确认2 = await screen.findByRole('dialog', { name: '解除企业屏蔽' });
+    await 用户.click(within(确认2).getByRole('button', { name: '确认解除' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(解除组织屏蔽).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mock返回).toHaveBeenCalledTimes(1));
+  });
+
+  it('更换所属公司不隐式解除旧组织屏蔽：旧 manual 屏蔽零解除调用', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    const 解除组织屏蔽 = vi.fn(async () => {});
+    const 添加组织屏蔽 = vi.fn(async () => {});
+    const 搜索组织 = vi.fn(async () => ({
+      items: [{ organization_id: 'org_b', display_name: '乙公司', legal_name: null, verification_status: 'unverified' as const }],
+      next_cursor: null,
+    }));
+    const 用户 = userEvent.setup();
+    render工作经历({
+      数据源: 'backend', 隐私快照: BFF隐私快照样本, 保存简历, 解除组织屏蔽, 添加组织屏蔽, 搜索组织,
+      屏蔽名单: [手动行('org_a', '甲公司')],
+      经历: [完整经历('org_a', '甲公司')],
+      入口: 日常入口('?from=resume&section=work&item=e_org_a'),
+    });
+    await 用户.click(screen.getByText('公司名称'));
+    const 抽屉 = await screen.findByRole('dialog', { name: '选择企业' });
+    await 用户.type(within(抽屉).getByPlaceholderText('输入公司名称'), '乙公司');
+    await 用户.click(await within(抽屉).findByText('乙公司'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择企业' })).toBeNull());
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(解除组织屏蔽).not.toHaveBeenCalled();
+    expect(添加组织屏蔽).not.toHaveBeenCalled();
+    const next = (保存简历.mock.calls as unknown as [Record<string, unknown>, string?][])[0]![0] as unknown as { 经历: { 组织编号?: string }[] };
+    expect(next.经历[0].组织编号).toBe('org_b');
+    // 旧的 manual 屏蔽仍在权威名单里：换公司不推导解除，也不改写来源
+    expect(mock应用状态.状态.屏蔽名单).toEqual([手动行('org_a', '甲公司')]);
   });
 });

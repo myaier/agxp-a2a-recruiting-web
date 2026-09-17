@@ -789,16 +789,83 @@ describe('我的简历 · 空身份展示（M）', () => {
 // ── 简历编辑显式来源（Task 1）：本页是三个资料编辑屏的唯一日常入口，全部带 from=resume
 // 与来路证明（编辑页据此退一格回本页）；显式添加意向入口有自己的旅程，不带这两样。──
 describe('我的简历 · 编辑入口带来路证明（from=resume）', () => {
-  it('姓名/工作年限/简历区各行都带编辑标记与来路证明', async () => {
-    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+  it('姓名/工作年限/分区行都带编辑标记与来路证明，分区按字段路由', async () => {
+    render我的简历({
+      mode: 'backend',
+      基本信息: { 身份: '' },
+      状态覆盖: { 简历教育: [教育样本], 简历技能: ['Go'] },
+    });
     await userEvent.click(screen.getByText('姓名（递交简历后披露）'));
     expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`, 创建候选编辑来路('resume'));
     await userEvent.click(screen.getByText('工作年限'));
     expect(mock跳转).toHaveBeenLastCalledWith(`${路径.基本信息}?from=resume`, 创建候选编辑来路('resume'));
+    // 最高学历与教育区进教育分区（不再进整份聚合页）
     await userEvent.click(screen.getByText('最高学历'));
-    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.工作经历}?from=resume`, 创建候选编辑来路('resume'));
-    await userEvent.click(screen.getByText('专业技能'));
-    expect(mock跳转).toHaveBeenLastCalledWith(`${路径.工作经历}?from=resume`, 创建候选编辑来路('resume'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=education`,
+      创建候选编辑来路('resume'),
+    );
+    // 技能卡的行按钮是标签墙本身（卡标题只是块名，不是入口）
+    await userEvent.click(screen.getByText('Go'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=skills`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('经历行按稳定条目编号直达该条编辑器；教育行同理进教育分区条目', async () => {
+    render我的简历({
+      mode: 'backend',
+      状态覆盖: { 简历经历: 造经历(1), 简历教育: [教育样本] },
+    });
+    await userEvent.click(screen.getByText('示例公司'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=work&item=exp_0`,
+      创建候选编辑来路('resume'),
+    );
+    await userEvent.click(screen.getByText('示例大学'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=education&item=edu_1`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('证书行与证书空态行进证书分区（指定条目 / 新增）', async () => {
+    render我的简历({
+      mode: 'backend',
+      状态覆盖: { 简历证书: 造证书(1) },
+    });
+    await userEvent.click(screen.getByText('示例证书'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=certificates&item=cert_0`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('证书空态行：没有证书时进证书分区的新增条目', async () => {
+    render我的简历({ mode: 'backend', 状态覆盖: { 简历证书: [] } });
+    await userEvent.click(screen.getByText('还没填证书，去添加'));
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=certificates&item=new`,
+      创建候选编辑来路('resume'),
+    );
+  });
+
+  it('诊断缺项按字段路由到对应分区，不再都指向整份聚合页', async () => {
+    render我的简历({ mode: 'backend', 基本信息: { 身份: '' } });
+    await userEvent.click(screen.getByRole('button', { name: '去补全' }));
+    const 教育节点 = screen.getAllByText('待补全 · 教育经历还没填写');
+    await userEvent.click(教育节点[教育节点.length - 1]);
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=education`,
+      创建候选编辑来路('resume'),
+    );
+    const 技能节点 = screen.getAllByText('待补全 · 专业技能还没填写');
+    await userEvent.click(技能节点[技能节点.length - 1]);
+    expect(mock跳转).toHaveBeenLastCalledWith(
+      `${路径.工作经历}?from=resume&section=skills`,
+      创建候选编辑来路('resume'),
+    );
   });
 
   it('当前状态行进同一份求职状态编辑（不再进基本信息）', async () => {
@@ -833,11 +900,10 @@ describe('我的简历 · 编辑入口带来路证明（from=resume）', () => {
     );
   });
 
-  it('显式添加意向入口不带编辑标记与来路证明', async () => {
+  it('简历底部不再有「还可以再加一个求职意向」入口（意向管理仍是多意向的家）', () => {
     render我的简历({ mode: 'backend' });
-    await userEvent.click(screen.getByText('还可以再加一个求职意向'));
-    expect(mock跳转).toHaveBeenLastCalledWith(路径.添加意向);
-    expect(mock跳转.mock.calls.at(-1)).toHaveLength(1);
+    expect(screen.queryByText('还可以再加一个求职意向')).toBeNull();
+    expect(mock跳转).not.toHaveBeenCalledWith(路径.添加意向);
   });
 });
 
