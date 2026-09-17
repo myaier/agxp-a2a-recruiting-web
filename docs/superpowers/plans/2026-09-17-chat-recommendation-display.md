@@ -395,6 +395,33 @@ Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`
 - **Review：** 宿主内 spec（opus）+ quality（sonnet）双档；Important#1（混合场景隐私写先于简历校验）经 fix round 1 修复并由 scoped re-review 核实 ADDRESSED。递延 minor 见会话 ledger（引导文案三处复制、Mock 双去重键等，均不阻塞）。
 - **环境备注：** worktree 无 node_modules，按本分支 lockfile `npm ci` 安装（lockfile/package.json 零改动）。
 
+## 实施后收尾记录（2026-09-17）
+
+### 异构 review（codex-review-loop，FEATURE_BRANCH_REVIEW，scope bb6ff6e0...候选）
+
+- **R1**（gpt-5.6-sol/high，thread 01a0adca）：1 条 Important/required —— `重读隐私` 无代际/主体栅栏，挂载读取 R0 迟到回包可把写后权威屏蔽视图与 revision 覆盖回旧值（界面复员未屏蔽、下一写 409）；迟到 401 还可能清新账号。核实成立，修复于 `1b68fb6e`：`创建隐私操作` 新增单调快照代际 + 主体/会话栅栏（`栅栏化读取`），`加锁执行` 写开始即作废更早在飞读取；未采用回执按 null 收口；新鲜 401 仅对仍有效会话清账号（`安全重读权威` 保持 null 让原始写错误顶替的既有合同不变）。TDD：两反例先 RED 后 GREEN。
+- **R2**（同 thread resume）：1 条 Important/required —— R1 修复的错误分支只查主体/会话未查快照代际，被写超越的 R0 迟到 401 仍清当前会话。核实成立，修复于 `ad71e133`：错误分支复用完整新鲜度条件（代际+主体+会话），被超越拒绝一律 null；RED→GREEN 反例钉住。
+- **R3**（同 thread resume）：**NO FINDINGS**。三轮后按 skill 终止，全部轮次 guard（树/HEAD 未变）通过。
+
+### 受影响 L0–L2 核对（PRE_GATE，候选 `fc6c67bc`）
+
+| 责任 | 命令 | 结果 |
+|---|---|---|
+| 六 Task 定向 Vitest 去重集合（28 文件，含场景.test.ts） | `npm test -- <28 文件>` | 28 文件 / **1020 passed** |
+| 静态 | `npm run typecheck` | 零错误 |
+| 构建 | `npm run build` | ✓ built |
+| 清单 | `npm run test:list -- --write` 后 `--check` | 一致（第一层 5978 项 / 第二层 356 项；+3 为 review 轮反例，manifest 提交 `fc6c67bc`） |
+| 新增 e2e 用例 | `npm run test:e2e -- 真人消息/发现推荐/隐私与实名/简历与附件 --project=fixture --grep 聊天推荐前端修复` | **10 passed** |
+| 受 review 修复影响的 e2e 域 | `npm run test:e2e -- 隐私与实名.spec.ts --project=fixture`（全量） | **13 passed** |
+| 复用（仍有效，来源 6ba3df17） | mock 五套件 22 例；`ui:capture` chat-recommend-frontend 5 场景；四套件 fixture 其余 45 例 | 复用依据：其后仅 隐私操作.ts(+test) 与 docs 变更，其余三套件不触隐私操作；隐私域已由上行的全量 13 例重跑覆盖 |
+
+### Final gate 记录（pre-gate）
+
+- 候选 commit：`fc6c67bc`（工作树干净）；pre-gate target 观察 SHA：origin/main = `acfdab7e`（2026-09-17 只读 fetch）。
+- L3 selection=conditional，条件（用户另行指定已部署环境并授权）未命中 → **NOT_SELECTED**；真实后端权限/STG 行为未验证为已知缺口。
+- 产品裁夺点（有意保留）：在谈卡/推荐卡亮点空文案分叉；disjoint→not_provided+「薪资带无交集」；岗位/企业链失败无行级重试入口。
+- target 已推进 30 提交（并行会话）：确认后流程为 fetch → 记录 final_target_base → `git merge --no-edit origin/main`（仅机械冲突）→ 按 final_target_base..merged HEAD 重算受影响责任并只补缺口 → 二次 fetch 核对未推进 → 普通 fast-forward push。
+
 ### Task 2 执行记录（2026-09-17）
 
 - **现场基线：** 分支 `fix/chat-recommend-display`，基于 cb0e6f34（Task 1 收口后 HEAD）。
