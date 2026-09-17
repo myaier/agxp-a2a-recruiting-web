@@ -367,3 +367,13 @@ R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude �
 | e2e/suites/简历与附件.spec.ts:1096 › 聊天推荐前端修复 经历 hidden 默认与保留 @backend › 新建经历保存 hidden=false；旧 hidden=true 经历编辑后 PATCH 仍带原值 @backend | §11.2.1 hidden 新 false/旧 true 序列化 | `--grep '聊天推荐前端修复 经历 hidden'` → 1 test in 1 file |
 
 登记来源为先行最终合入树（HEAD `f6892635`）实际代码与 `npm run test:list` 生成的 manifest，非标题猜测。上述 e2e 的「点两次经历 → 完成 → 外层保存」入口路径按 §11.2.6 在 Task 5 迁移到日常新入口，保护断言保留。本轮实施中不重跑上述先行 Case 作为「产品验证」；其作为依赖交付核验的运行责任在 Task 2/5 定向命令与收尾 affected 选集中体现。
+
+### Task 1 执行记录（2026-09-17）
+
+- 依赖基线：开工门后 `cadb0464`（含用户授权的 origin/main merge `f6892635` 与门记录）。实施 commit `5a3f9628`（14 文件：新增 src/流程/候选日常编辑.ts/.test.tsx、src/组件/求职状态编辑正文.tsx/.test.tsx + 10 个修改，全在 Task 1 清单内）。
+- 定向 TDD 回执：RED `npm test -- src/流程/候选日常编辑.test.tsx … --maxWorkers=4 --retry=0` 64 failed/142 passed（目标断言失败）；GREEN 同命令 7 files / 209 passed；全仓 263 files / 6055 tests passed（exit 0）；typecheck、oxlint、`git diff --check` 全清。
+- 宿主内 review（两阶段）：spec reviewer Approved（1 Important required）+ quality reviewer Approved（0 Critical/Important、5 Minor 递延）。Important：`是日常编辑位置(search)` 只看来源白名单不看路径，`/basic?from=intentions` 在边界层（视作离开活跃 onboarding）与页面层（注册旅程渲染 + 空身份 `派发 存简历` 裸跳状态页）语义矛盾，违反冻结合同「intentions 仅允许状态页使用」。
+- fix round 1 commit `ff358f82`（4 文件 +86/−20）：`是日常编辑位置` 改为 `(pathname, search)` 并按路径限定（resume 简历域各屏、intentions 仅 `路径.求职状态`）；`基本信息.tsx` 页面判定收口为「`/basic` 只认 from=resume」，错配来源在两层均等同无来源；新增 4 例（边界对拍 + 页面错配用例）。定向回执 7 files / 213 passed；全仓 6059 passed；typecheck/lint 清。scoped re-review 判定 ADDRESSED、无新破坏，五条合法链路（`/basic?from=resume`、`/onboard/status?from=resume|intentions`、`/experience?from=resume`、`/basic?from=evil`）语义逐一核对未变。
+- 现场差异（与 brief 假设的偏差，已由 review 裁定）：合同 A 未加 intentions 构造器导出（合同只冻结 4 个导出，字面量在 求职意向管理.tsx 一处）；姓名/状态空值展示「未填写」（brief Step 3 空值未填写的一贯化）；`带简历编辑标记` 保持 resume 单义、位置判定另走共享白名单解析（避免 工作经历/引导问答 被 intentions 误纳）。`docs/testing/cases.md` 过期待 Task 5 `test:list --write`；`.编辑条目*` 死样式待 Task 2（清单内）。
+- 递延 minor（登记供收尾/最终 review triage）：①`候选日常编辑.ts:79-81` 注释「回调跨渲染稳定」与 `useCallback` 依赖每渲染变的事实不符（行为影响零）；②日常保存缺 出生年/出生月 负向断言（`基本信息.test.tsx` 用 objectContaining 未钉住不写演示默认）；③三态展示文案两处并列（我的简历/求职意向管理）+ 保存载荷六字段重复切片三处；④我的.tsx Mock「在职 · 保密求职中」为既有原型兜底投影（Backend 已读权威身份），Spec §7 范围外不改。
+- 浏览器真实历史栈证据留 Task 5；`我的.tsx` 归属裁定为范围外。
