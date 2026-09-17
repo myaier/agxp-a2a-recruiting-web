@@ -232,6 +232,9 @@ Fix round 1（spec review 后）：恢复 JD 拆分初版丢失的三条断言�
   取消清理与在途草稿写的竞态（旧稿即红，曾在取消前等 400ms 收尾）；review r1 核实
   当前 Backend 选中只落本页 React state（无网络草稿写），取消前以「2/9 计数可见 +
   保存键可见」为收尾可观察条件，固定 sleep 已删，疑似产品侧竞态仍在此记录（不改产品）。
+  （2026-09-17 baseline-stg-matching Task 2：两处「疑似产品侧竞态」均已用受控时序
+  核实 —— 导航主序排除 + 残留 commit-effect 间隙保留记录、城市取消完全排除，判定与
+  证据见「已知事项」对应两条。）
 
 ### Task 3 验证（workers=4 / retries=0 固定口径）
 
@@ -444,15 +447,59 @@ vitest 4 对象 `it.each` 不做 `$var` 标题插值、部分表驱动用例参�
 
 ### L3 未承接清单
 
-活动 L3 现只有 STG 两范围（见 [`cases.md`](cases.md) 手写区）；上表「未承接」列即
+活动 L3 现有 STG 三范围（见 [`cases.md`](cases.md) 手写区；`stg-matching` 于
+2026-09-17 注册，见文末「baseline-stg-matching 对账」）；上表「未承接」列即
 L3 未承接项。本轮 L3 selection 为 `none`：无产品/后端/真实 STG 操作语义变化，
 不执行真实登录/上传，不记 L3 PASS。
 
 ## 已知事项
 
-- `J-PILOT-02接线.spec.ts` 四条手填旅程在基线 HEAD 6b8a71fa（旧入口）即失败
-  （期望职位 Backend 双栏 fixture 单 selectable 根与现行产品双栏行为不符），Task 1
-  仅保留证据不修产品、不删断言；详见 Task 1 报告「产品缺陷 / 既有失败证据」。
+- `J-PILOT-02接线.spec.ts` 四条手填旅程的历史失败（曾记录于基线 HEAD 6b8a71fa，
+  旧入口）已于 2026-09-17 定位修复，产品零修改。实际根因：该 spec 自带的
+  job-categories fixture 对任何 query 都应答同一个 selectable 根，而现行
+  期望职位选择正文（B 契约双栏）把二级节点渲染为右栏 heading、只有三级
+  selectable 叶子才是职位按钮 —— 单根 fixture 因此没有可点叶子，
+  `进完善资料` 的 count=2 选择助手必然失败（`getByRole('button', …) 收到 1`）。
+  修复只改测试定义：fixture 按 `parent_id` 应答真三级（根 → 组 → 统一
+  selectable 叶 `job-fixture-001`，口径对齐 `e2e/fixtures/数据源交互.ts` 的
+  装三级职位目录桩），选择动作点真实叶按钮，并断言左根是 button、右组标题是
+  heading 绝不是 button；另按离线边界「缺应答只修测试定义」补声明旅程修好后
+  才触达的 `GET /me/negotiations`（新账号权威空页 `items:[]`/`next_cursor:null`）
+  与 `GET /me/avatar/content`（1×1 PNG）。目录选择真实 ID 等风险断言不减；
+  五条用例 workers=4 / retries=0 两轮全绿。raw 证据（初始 306 passed/5 failed、
+  修复后 310 passed/1 failed 的 JSON 回执与逐命令日志）：
+  `test-results/baseline-stg-matching/`（git-ignored，Playwright 复跑会清空
+  `test-results/`，落盘件以此为准）。
+- 「hash 直达被在飞水合导航吞掉」（曾按 ~13 例 e2e 偶发翻红记录的疑似竞态，见
+  下方 Task 3 对账）已于 2026-09-17 用受控时序核实：主序「开始水合（初始化=
+  进行中）→ 用户导航深链 → 水合返回（已登录 + 分流落定）」与反向对照序
+  「先 resolve 落点落定 → 再导航」均保留用户目的地（`src/应用.test.tsx`
+  「应用路由：水合在飞期的用户导航保留（疑点①受控时序）」两条用例：深页挂载、
+  主壳零挂载、路径记录从未被改写回落点）。因果链：会话代际栅栏（会话操作.ts
+  是当前水合）使过时轮水合整包丢弃、根本写不了 已登录/主体，能落地的只有当前轮；
+  登录落点 effect 只在「本次渲染的 pathname 仍是登录」时 replace —— 用户已导航
+  则该条件不成立。残留理论窗口：导航若恰好落在「水合 commit 已发生、落点 effect
+  尚未执行」的间隙，effect 闭包里的位置仍是登录、replace 会吞掉它；该间隙在
+  单测 harness 中被 act 语义原子化、无法确定性复现（写不出能击中原故障的回归），
+  按 Spec §9 不加猜测性防护，维持已知事项记录。e2e 侧 `hash直达` 的可观察
+  预等待（hash 离开登录路由后才单次 goto）正是把测试导航放在该窗口之外。
+- 「核心编辑 城市 取消不写草稿」疑似竞态（同见 Task 3 对账）已于 2026-09-17
+  用受控时序排除：「进入选择（草稿带原选中）→ 局部再选城市 → 取消（✕ 关闭 +
+  卸载）→ 在飞目录页迟到返回」全程零草稿写（`src/屏幕/选择城市.test.tsx`
+  「局部选城市→取消→迟到目录返回：零草稿写」：派发从未发生）；消费侧链路
+  「取消会话后保存原草稿 → 请求体城市 ID 不变」由
+  `src/状态/领域/候选意向编辑.test.ts`「取消的选城会话不落草稿」钉住（对照臂
+  证明若取消会话写了草稿，`alternate_location_ids` 必然变化 —— 断言可检出泄漏，
+  非恒真）。旧稿「取消清理与在途草稿写的竞态」判定不成立：Backend 选择只落本页
+  React state，目录读迟到经页面级代际守卫丢弃，草稿唯一写入口是 保存 的同步
+  `改意向草稿` 派发，意向草稿也不进任何持久层。e2e 回归
+  `e2e/suites/求职意向.spec.ts` 6/6 passed（workers=4 / retries=0，含取消与
+  保存回读保持真实 ID）。
+- `e2e/suites/助手会话.spec.ts` 的「卡片点原生详情并返回 @backend」随 2026-09-16
+  30a0d3b2 合入进入仓库即红（该合并收尾口径 306 passed / 5 failed 之一，与上面
+  四条同批），在 2026-09-17 基线修复前后复跑均为同一失败：`getByText('结论：fit')`
+  在在谈详情页 15s 不可见。属该合并自带、非 J-PILOT-02 四条范围，本 Task 仅归因
+  记录不修，待定夺；证据同上目录。
 - **抽取前基线（4825e759）即红的 6 例**（Task 2 全量冒烟发现、经基线 worktree
   复跑证实，非 Task 2 回归）：`P4 详情直取` / `不感兴趣：PUT` / `P8 职位举报
   （详情直取）` / `J-PILOT-01 场景一` / `场景二`（离线边界报
@@ -502,3 +549,31 @@ FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前�
   行会清空 `test-results/`，先落 `/tmp/tl/` 再复制归档）。
 - 正式 L3 selection：`none`——本轮仅整理测试代码/目录/文档，无产品、后端或真实
   STG 操作语义变化；不执行真实登录/上传，不记 L3 PASS。
+
+## baseline-stg-matching 对账（stg-matching Suite 注册与已修本地问题，2026-09-17）
+
+- **新 L3 Suite**：`stg-matching`（真实 STG 双向匹配 S0–S3）注册为第三个活动 STG
+  范围：两个独立可单选 Case `stg-matching-recruiter`（招聘者发起）/
+  `stg-matching-candidate`（求职者发起），每 Case 一轮全新 run。登记位置：
+  [`cases.md`](cases.md) 手写 L3 区（恰好两条，不进 runner 自动区）、
+  [`../dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md) 第 11 节入口、
+  专门指南 [`../dogfood/stg-matching.md`](../dogfood/stg-matching.md)（材料、生命周期、
+  S0–S3 观察点、cleanup 判定与能力缺口）。本 Suite 不增加自动 runner；不改变旧
+  B02/Onboarding/试点任何既有结论。
+- **当前状态（诚实记录）**：两个 Case 均无 PASS，按验收状态语义分列：
+  `stg-matching-recruiter` 业务 `BLOCKED`——2026-09-17 探索 run
+  `front-match-recruiter-20260916T235043` 招聘者方向实测到 S1 即被当前 STG 部署的
+  Hub enrollment 缺失决定性阻断（S0/S1 agent 任务全部 `hub_rejected`），该 run
+  cleanup 停 `CLEANUP_BLOCKED` 且占用保持、隔离 `NOT_RUN`（无后继 run）；
+  `stg-matching-candidate` 业务 `NOT_RUN`（本轮未执行；STG 占用未释放使新 run
+  无法创建）。解锁
+  路径归后端 owner，解锁前不得重跑或写任何通过（指南第 11 节）。
+- **已修本地问题（合同内缺陷，TDD 最小修复，Task 4 扩大范围）**：
+  `src/数据/招聘数据源/展示资料.ts` 的 `解发布人档案` 把 PublicRecruiterProfile 的
+  `avatar_url` 当必填键，而冻结 openapi 合同 required 仅
+  `[public_name,title,personal_verification_status]`（avatar_url 可选），BFF Go 侧
+  `*string omitempty` 无头像时整键缺席 → Case 详情整页 invalid_response（STG 实测
+  复现）。修复：avatar_url 移入可选键、缺席归一 `null`（契约侧「BFF公开发布人档案」
+  形状不变），commit 8b34f899；新增失败先行测试 1 条，展示资料.test 40/40，全套
+  `npm test` 全绿、tsc 干净。证据：task-4-report §5 与
+  `dogfood-output/front-match-recruiter-20260916T235043/`（均 git-ignored）。

@@ -17,9 +17,9 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 5978 例 · 261 文件
+## 第一层 · 单元/组件（Vitest） · 5997 例 · 261 文件
 
-### 数据契约/映射 · 1607 例 · 54 文件
+### 数据契约/映射 · 1608 例 · 54 文件
 
 <details>
 <summary>展开明细</summary>
@@ -1136,6 +1136,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 解职位资料 > benefit_codes 非数组按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?benefit_codes 非数组按契约漂移拒绝' | 未知 |
 | 解职位资料 > experience_requirement / education_requirement 是开放 string：表外码原样保留 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?experience_requirement / education_requirement 是开放 string：表外码原样保留' | 未知 |
 | 解职位资料 > keywords 含非串按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?keywords 含非串按契约漂移拒绝' | 未知 |
+| 解职位资料 > publisher_profile 的 avatar_url 缺席合法（冻结合同只要求三键），归一为 null |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?publisher_profile 的 avatar_url 缺席合法（冻结合同只要求三键），归一为 null' | 未知 |
 | 解职位资料 > salary_lower 小数按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?salary_lower 小数按契约漂移拒绝' | 未知 |
 | 解职位资料 > salary_upper 非数字按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?salary_upper 非数字按契约漂移拒绝' | 未知 |
 | 解职位资料 > structured_requirements_confirmed 字符串按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?structured_requirements_confirmed 字符串按契约漂移拒绝' | 未知 |
@@ -1826,7 +1827,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 状态 · 1283 例 · 32 文件
+### 状态 · 1284 例 · 32 文件
 
 <details>
 <summary>展开明细</summary>
@@ -3100,6 +3101,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 归约Agent规则：P6 Backend 水合与清空 > backend hydration replaces Mock arrays and clear empties only P6 rows |  | [src/状态/领域/Agent规则.test.ts](../../src/状态/领域/Agent规则.test.ts) | npm test -- src/状态/领域/Agent规则.test.ts -t '归约Agent规则：P6 Backend 水合与清空 (> )?backend hydration replaces Mock arrays and clear empties only P6 rows' | 未知 |
 | 归约Agent规则：P6 Backend 水合与清空 > 水合是整体替换且不动其他域，清空只清三组规则数组 |  | [src/状态/领域/Agent规则.test.ts](../../src/状态/领域/Agent规则.test.ts) | npm test -- src/状态/领域/Agent规则.test.ts -t '归约Agent规则：P6 Backend 水合与清空 (> )?水合是整体替换且不动其他域，清空只清三组规则数组' | 未知 |
 | 归约Agent规则：P6 Backend 水合与清空 > 清空后再走 Mock 新增，编号按剩余数组重新起算 |  | [src/状态/领域/Agent规则.test.ts](../../src/状态/领域/Agent规则.test.ts) | npm test -- src/状态/领域/Agent规则.test.ts -t '归约Agent规则：P6 Backend 水合与清空 (> )?清空后再走 Mock 新增，编号按剩余数组重新起算' | 未知 |
+| 取消的选城会话不落草稿（疑点②受控时序） > 取消后保存原草稿：请求体城市 ID 不变；对照臂可检出泄漏 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '取消的选城会话不落草稿（疑点②受控时序） (> )?取消后保存原草稿：请求体城市 ID 不变；对照臂可检出泄漏' | 未知 |
 | 已有意向隐藏条件无损保存 > campus 未改类型保留全部历史条件，修改城市也不清空 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '已有意向隐藏条件无损保存 (> )?campus 未改类型保留全部历史条件，修改城市也不清空' | 未知 |
 | 已有意向隐藏条件无损保存 > internship 未改类型保留全部历史条件，修改城市也不清空 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '已有意向隐藏条件无损保存 (> )?internship 未改类型保留全部历史条件，修改城市也不清空' | 未知 |
 | 已有意向隐藏条件无损保存 > part_time 未改类型保留全部历史条件，修改城市也不清空 |  | [src/状态/领域/候选意向编辑.test.ts](../../src/状态/领域/候选意向编辑.test.ts) | npm test -- src/状态/领域/候选意向编辑.test.ts -t '已有意向隐藏条件无损保存 (> )?part_time 未改类型保留全部历史条件，修改城市也不清空' | 未知 |
@@ -3718,7 +3720,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2329 例 · 103 文件
+### 页面/接线 · 2346 例 · 103 文件
 
 <details>
 <summary>展开明细</summary>
@@ -4293,6 +4295,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 候选详情 · 顶栏去名（第二批 验收7/9） > 验收9 · 终止弹层与终止决定文案里的代号仍在：不接受 → 「终止「陈屿」？」→ 终止 → 弹层复述「陈屿…你选择不放宽」 |  | [src/屏幕/候选详情.test.tsx](../../src/屏幕/候选详情.test.tsx) | npm test -- src/屏幕/候选详情.test.tsx -t '候选详情 · 顶栏去名（第二批 验收7/9） (> )?验收9 · 终止弹层与终止决定文案里的代号仍在：不接受 → 「终止「陈屿」？」→ 终止 → 弹层复述「陈屿…你选择不放宽」' | 未知 |
 | 候选详情 · 顶栏去名（第二批 验收7/9） > 验收9 · 递交简历段的附件文件名仍用代号（A-02 顾晚舟_简历.pdf）；顶栏同样不出真名 |  | [src/屏幕/候选详情.test.tsx](../../src/屏幕/候选详情.test.tsx) | npm test -- src/屏幕/候选详情.test.tsx -t '候选详情 · 顶栏去名（第二批 验收7/9） (> )?验收9 · 递交简历段的附件文件名仍用代号（A-02 顾晚舟_简历\.pdf）；顶栏同样不出真名' | 未知 |
 | 公司档案分区编辑 · Backend 媒体两步协议（页面侧） > 上传在飞时卸载只回收 object URL，不把卸载当服务器删除 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 媒体两步协议（页面侧） (> )?上传在飞时卸载只回收 object URL，不把卸载当服务器删除' | 未知 |
+| 公司档案分区编辑 · Backend 媒体两步协议（页面侧） > 上传在飞：本组显示上传预览并抑制添加入口，另一组不受影响，成功后收口 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 媒体两步协议（页面侧） (> )?上传在飞：本组显示上传预览并抑制添加入口，另一组不受影响，成功后收口' | 未知 |
 | 公司档案分区编辑 · Backend 媒体两步协议（页面侧） > 上传失败提示错误并回收预览，不出现放弃键 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 媒体两步协议（页面侧） (> )?上传失败提示错误并回收预览，不出现放弃键' | 未知 |
 | 公司档案分区编辑 · Backend 媒体两步协议（页面侧） > 发布失败的脱离收据给「放弃未发布的照片」：点击后 best-effort 移除 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 媒体两步协议（页面侧） (> )?发布失败的脱离收据给「放弃未发布的照片」：点击后 best-effort 移除' | 未知 |
 | 公司档案分区编辑 · Backend 媒体两步协议（页面侧） > 放弃清理失败也静默收口（best-effort，不阻塞页面） |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 媒体两步协议（页面侧） (> )?放弃清理失败也静默收口（best-effort，不阻塞页面）' | 未知 |
@@ -4317,11 +4320,14 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 公司档案分区编辑 · Backend 完整 replacement > 常用名显式清空按常用名校验拒绝且不发请求，输入保留 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?常用名显式清空按常用名校验拒绝且不发请求，输入保留' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 常用名超 80 个码点按冻结上限拒绝 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?常用名超 80 个码点按冻结上限拒绝' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 搜索迟到响应不覆盖新词结果：先发的旧词响应后到被作废 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?搜索迟到响应不覆盖新词结果：先发的旧词响应后到被作废' | 未知 |
+| 公司档案分区编辑 · Backend 完整 replacement > 改品牌名称保存：不串写企业常用名，两名各自独立落草稿 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?改品牌名称保存：不串写企业常用名，两名各自独立落草稿' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 改常用名后保存：草稿带新 企业常用名，品牌名保持原值 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?改常用名后保存：草稿带新 企业常用名，品牌名保持原值' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 无可用 affiliation 深链显示两个现有动作，不挂草稿表单 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?无可用 affiliation 深链显示两个现有动作，不挂草稿表单' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 水合成功但快照缺失时深链给重试，不挂空草稿也不合成组织 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?水合成功但快照缺失时深链给重试，不挂空草稿也不合成组织' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 深链重试被拒绝也不清当前档案、不回落 Mock |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?深链重试被拒绝也不清当前档案、不回落 Mock' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 相册上传校验 PNG/JPEG 与 10 MiB，合法文件按 purpose 调 上传并发布企业媒体 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?相册上传校验 PNG/JPEG 与 10 MiB，合法文件按 purpose 调 上传并发布企业媒体' | 未知 |
+| 公司档案分区编辑 · Backend 完整 replacement > 相册删除按下标取本组媒体：两组互不串，删第 2 张不是第 1 张 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?相册删除按下标取本组媒体：两组互不串，删第 2 张不是第 1 张' | 未知 |
+| 公司档案分区编辑 · Backend 完整 replacement > 相册只读（member）：没有添加/删除入口，照片仍照常展示 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?相册只读（member）：没有添加/删除入口，照片仍照常展示' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 相册每组最多 3 张：满组不给添加键，删除走 移除企业媒体(purpose, media_id) |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?相册每组最多 3 张：满组不给添加键，删除走 移除企业媒体\(purpose, media_id\)' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 行业取消（Escape）不改名称/ref，重开重新读根项 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?行业取消（Escape）不改名称/ref，重开重新读根项' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 行业搜索中：浏览结果被清掉显示加载中，成功后结果替换加载态 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?行业搜索中：浏览结果被清掉显示加载中，成功后结果替换加载态' | 未知 |
@@ -4336,7 +4342,11 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 公司档案分区编辑 · Backend 完整 replacement > 行业根分页：roots 带游标时给「加载更多」，追加第二页合并去重 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?行业根分页：roots 带游标时给「加载更多」，追加第二页合并去重' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 行业：字段行打开全屏正文并隐藏父表单，展开读子项，selectable 叶子原子写显示名+引用 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?行业：字段行打开全屏正文并隐藏父表单，展开读子项，selectable 叶子原子写显示名\+引用' | 未知 |
 | 公司档案分区编辑 · Backend 完整 replacement > 迟到响应保护：展开在飞时关闭，返回的结果被丢弃，重开不残留旧子项 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Backend 完整 replacement (> )?迟到响应保护：展开在飞时关闭，返回的结果被丢弃，重开不残留旧子项' | 未知 |
+| 公司档案分区编辑 · Mock 原型保持不变 > Mock LOGO 仍是即时本地更新：压成 128 方图后派发 存公司LOGO，不经保存 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Mock 原型保持不变 (> )?Mock LOGO 仍是即时本地更新：压成 128 方图后派发 存公司LOGO，不经保存' | 未知 |
+| 公司档案分区编辑 · Mock 原型保持不变 > Mock 相册删除只改草稿：删第 2 张留第 1 张，未点保存不派发 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Mock 原型保持不变 (> )?Mock 相册删除只改草稿：删第 2 张留第 1 张，未点保存不派发' | 未知 |
+| 公司档案分区编辑 · Mock 原型保持不变 > Mock 相册选文件只进本页草稿：不即时写全局相册，点保存才派发 存公司自述 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Mock 原型保持不变 (> )?Mock 相册选文件只进本页草稿：不即时写全局相册，点保存才派发 存公司自述' | 未知 |
 | 公司档案分区编辑 · Mock 原型保持不变 > Mock 行业取消不改行业；搜索只在本地池内过滤 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Mock 原型保持不变 (> )?Mock 行业取消不改行业；搜索只在本地池内过滤' | 未知 |
+| 公司档案分区编辑 · Mock 原型保持不变 > Mock 返回不保存：文本草稿不落全局，重进分区回到静态档原值 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Mock 原型保持不变 (> )?Mock 返回不保存：文本草稿不落全局，重进分区回到静态档原值' | 未知 |
 | 公司档案分区编辑 · Mock 原型保持不变 > 基本信息仍是「公司全称」就地编辑；行业走同一字段行 + 本地 行业池 全屏正文，保存派发 存公司自述 |  | [src/屏幕/公司档案分区编辑.test.tsx](../../src/屏幕/公司档案分区编辑.test.tsx) | npm test -- src/屏幕/公司档案分区编辑.test.tsx -t '公司档案分区编辑 · Mock 原型保持不变 (> )?基本信息仍是「公司全称」就地编辑；行业走同一字段行 \+ 本地 行业池 全屏正文，保存派发 存公司自述' | 未知 |
 | 公司档案编辑 · Backend 权威快照清单 > member 权限不足：只读清单，无保存入口，行仍可进只读页 |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Backend 权威快照清单 (> )?member 权限不足：只读清单，无保存入口，行仍可进只读页' | 未知 |
 | 公司档案编辑 · Backend 权威快照清单 > pending 尚未核验：没有可用关系，落申请空态而不是假清单 |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Backend 权威快照清单 (> )?pending 尚未核验：没有可用关系，落申请空态而不是假清单' | 未知 |
@@ -4351,6 +4361,8 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 公司档案编辑 · Backend 权威快照清单 > 计数来自 企业档案快照，不读静态公司档案 |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Backend 权威快照清单 (> )?计数来自 企业档案快照，不读静态公司档案' | 未知 |
 | 公司档案编辑 · Backend 权威快照清单 > 重试被拒绝也不清当前档案、不回落 Mock |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Backend 权威快照清单 (> )?重试被拒绝也不清当前档案、不回落 Mock' | 未知 |
 | 公司档案编辑 · Mock 原型保持不变 > 清单仍读静态公司档案（本公司键） |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Mock 原型保持不变 (> )?清单仍读静态公司档案（本公司键）' | 未知 |
+| 公司档案编辑 · Mock 原型保持不变 > 点分区行跳对应分区页，与 Backend 是同一路径 |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Mock 原型保持不变 (> )?点分区行跳对应分区页，与 Backend 是同一路径' | 未知 |
+| 公司档案编辑 · Mock 原型保持不变 > 行右列仍由静态档算出：计数来自档案、摘要取原文、空分区给去添加 |  | [src/屏幕/公司档案编辑.test.tsx](../../src/屏幕/公司档案编辑.test.tsx) | npm test -- src/屏幕/公司档案编辑.test.tsx -t '公司档案编辑 · Mock 原型保持不变 (> )?行右列仍由静态档算出：计数来自档案、摘要取原文、空分区给去添加' | 未知 |
 | 初筛对话 · Backend 退场 > Backend 初筛对话 S-01 不读取 fixture |  | [src/屏幕/初筛对话.test.tsx](../../src/屏幕/初筛对话.test.tsx) | npm test -- src/屏幕/初筛对话.test.tsx -t '初筛对话 · Backend 退场 (> )?Backend 初筛对话 S-01 不读取 fixture' | 未知 |
 | 初筛对话 · Backend 退场 > Backend 初筛对话 not-found 不读取 fixture |  | [src/屏幕/初筛对话.test.tsx](../../src/屏幕/初筛对话.test.tsx) | npm test -- src/屏幕/初筛对话.test.tsx -t '初筛对话 · Backend 退场 (> )?Backend 初筛对话 not-found 不读取 fixture' | 未知 |
 | 初筛对话 · Mock 原型行为保持 > 合法 ID 显示既有代号、结论与对话 |  | [src/屏幕/初筛对话.test.tsx](../../src/屏幕/初筛对话.test.tsx) | npm test -- src/屏幕/初筛对话.test.tsx -t '初筛对话 · Mock 原型行为保持 (> )?合法 ID 显示既有代号、结论与对话' | 未知 |
@@ -5157,6 +5169,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | use期望职位目录 自动分组 > 点击另一根：旧根响应不回写，新根的组与叶子出现，根高亮迁移 |  | [src/屏幕/期望职位目录钩子.test.tsx](../../src/屏幕/期望职位目录钩子.test.tsx) | npm test -- src/屏幕/期望职位目录钩子.test.tsx -t 'use期望职位目录 自动分组 (> )?点击另一根：旧根响应不回写，新根的组与叶子出现，根高亮迁移' | 未知 |
 | use期望职位目录 自动分组 > 追加页换版本：放弃旧游标与缓存，强制刷新从首屏重开，不混版本 |  | [src/屏幕/期望职位目录钩子.test.tsx](../../src/屏幕/期望职位目录钩子.test.tsx) | npm test -- src/屏幕/期望职位目录钩子.test.tsx -t 'use期望职位目录 自动分组 (> )?追加页换版本：放弃旧游标与缓存，强制刷新从首屏重开，不混版本' | 未知 |
 | 毕业院校 Backend > 同名不同 ID 只有点中的项打勾，选中按引用 ID 判断 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?同名不同 ID 只有点中的项打勾，选中按引用 ID 判断' | 未知 |
+| 毕业院校 Backend > 同名不同 ID 时保存的是点中那行的目录 ID |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?同名不同 ID 时保存的是点中那行的目录 ID' | 未知 |
 | 毕业院校 Backend > 学校候选显示城市和国家，选择后只保存学校引用 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?学校候选显示城市和国家，选择后只保存学校引用' | 未知 |
 | 毕业院校 Backend > 换候选时引用更新为最后点选的项 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?换候选时引用更新为最后点选的项' | 未知 |
 | 毕业院校 Backend > 搜索返回 nextCursor 时滚到底加载第二页并去重（P2-1） |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?搜索返回 nextCursor 时滚到底加载第二页并去重（P2-1）' | 未知 |
@@ -5168,6 +5181,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 毕业院校 Backend > 空结果显示 没有匹配结果，试试缩短关键词 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?空结果显示 没有匹配结果，试试缩短关键词' | 未知 |
 | 毕业院校 Backend > 请求失败显示 加载失败，请重试 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?请求失败显示 加载失败，请重试' | 未知 |
 | 毕业院校 Backend > 选中候选后加载更多仍用首屏搜索词（不是回填的完整名称） |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Backend (> )?选中候选后加载更多仍用首屏搜索词（不是回填的完整名称）' | 未知 |
+| 毕业院校 Mock > Mock 手输名录外的学校也能继续（自由文本，无目录必选） |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Mock (> )?Mock 手输名录外的学校也能继续（自由文本，无目录必选）' | 未知 |
 | 毕业院校 Mock > Mock 点选后兄弟候选仍在且重复点选稳定（按查询词过滤） |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Mock (> )?Mock 点选后兄弟候选仍在且重复点选稳定（按查询词过滤）' | 未知 |
 | 毕业院校 Mock > 本地高校名录过滤，无引用，保存直接进行 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 Mock (> )?本地高校名录过滤，无引用，保存直接进行' | 未知 |
 | 毕业院校 · 建档草稿接线（Task 4） > 刷新后 Context 空：草稿里的学校与引用回到输入框，下一步直接可继续 |  | [src/屏幕/毕业院校.test.tsx](../../src/屏幕/毕业院校.test.tsx) | npm test -- src/屏幕/毕业院校.test.tsx -t '毕业院校 · 建档草稿接线（Task 4） (> )?刷新后 Context 空：草稿里的学校与引用回到输入框，下一步直接可继续' | 未知 |
@@ -5799,6 +5813,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 账号安全 · 格式化账户时间 > 按指定时区输出 YYYY-MM-DD HH:mm：UTC+8 跨日与美东夏令时 |  | [src/屏幕/账号安全.test.tsx](../../src/屏幕/账号安全.test.tsx) | npm test -- src/屏幕/账号安全.test.tsx -t '账号安全 · 格式化账户时间 (> )?按指定时区输出 YYYY-MM-DD HH:mm：UTC\+8 跨日与美东夏令时' | 未知 |
 | 账号安全 · 格式化账户时间 > 非法时间返回中性占位 — |  | [src/屏幕/账号安全.test.tsx](../../src/屏幕/账号安全.test.tsx) | npm test -- src/屏幕/账号安全.test.tsx -t '账号安全 · 格式化账户时间 (> )?非法时间返回中性占位 —' | 未知 |
 | 选专业 Backend > 同名不同 ID 只有点中的项打勾，选中按引用 ID 判断 |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?同名不同 ID 只有点中的项打勾，选中按引用 ID 判断' | 未知 |
+| 选专业 Backend > 同名不同 ID 时保存的是点中那行的目录 ID |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?同名不同 ID 时保存的是点中那行的目录 ID' | 未知 |
 | 选专业 Backend > 换候选时引用更新为最后点选的项 |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?换候选时引用更新为最后点选的项' | 未知 |
 | 选专业 Backend > 搜索返回 nextCursor 时可加载更多（R2-M-1） |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?搜索返回 nextCursor 时可加载更多（R2-M-1）' | 未知 |
 | 选专业 Backend > 搜索进行中显示 加载中… |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?搜索进行中显示 加载中…' | 未知 |
@@ -5811,6 +5826,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 选专业 Backend > 空结果显示 没有匹配结果，试试缩短关键词 |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?空结果显示 没有匹配结果，试试缩短关键词' | 未知 |
 | 选专业 Backend > 请求失败显示 加载失败，请重试 |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?请求失败显示 加载失败，请重试' | 未知 |
 | 选专业 Backend > 选中候选后加载更多仍用首屏搜索词（不是回填的完整名称） |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Backend (> )?选中候选后加载更多仍用首屏搜索词（不是回填的完整名称）' | 未知 |
+| 选专业 Mock > Mock 手输名录外的专业也能继续（自由文本，无目录必选） |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Mock (> )?Mock 手输名录外的专业也能继续（自由文本，无目录必选）' | 未知 |
 | 选专业 Mock > Mock 点选候选后列表保持且标记选中，不再隐藏全部候选 |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Mock (> )?Mock 点选候选后列表保持且标记选中，不再隐藏全部候选' | 未知 |
 | 选专业 Mock > Mock 点选后兄弟候选仍在且重复点选稳定（按查询词过滤） |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Mock (> )?Mock 点选后兄弟候选仍在且重复点选稳定（按查询词过滤）' | 未知 |
 | 选专业 Mock > Mock 输入完整名称时同名候选仍出现（不再排除精确匹配） |  | [src/屏幕/选专业.test.tsx](../../src/屏幕/选专业.test.tsx) | npm test -- src/屏幕/选专业.test.tsx -t '选专业 Mock (> )?Mock 输入完整名称时同名候选仍出现（不再排除精确匹配）' | 未知 |
@@ -5851,6 +5867,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 选择城市 Backend（引用身份与分页边界） > 取消（✕）不派发：只返回，草稿保持 untouched |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?取消（✕）不派发：只返回，草稿保持 untouched' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 同名不同 ID 两城独立选中；搜索/翻页已选不丢；重复 ID 不重复计数 |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?同名不同 ID 两城独立选中；搜索/翻页已选不丢；重复 ID 不重复计数' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 四支默认目录按 admin1 分组、两精选区上屏、排除主城市；无行政区城市只进热门且仍可搜索 |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?四支默认目录按 admin1 分组、两精选区上屏、排除主城市；无行政区城市只进热门且仍可搜索' | 未知 |
+| 选择城市 Backend（引用身份与分页边界） > 局部选城市→取消→迟到目录返回：零草稿写（派发从未发生） |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?局部选城市→取消→迟到目录返回：零草稿写（派发从未发生）' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 旧搜索晚到不覆盖新搜索（页面级代际守卫，翻页在飞行中换词） |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?旧搜索晚到不覆盖新搜索（页面级代际守卫，翻页在飞行中换词）' | 未知 |
 | 选择城市 Backend（引用身份与分页边界） > 海外精选按 canonical ID 保存（选择列表/精选区同一 ID 共享选中） |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Backend（引用身份与分页边界） (> )?海外精选按 canonical ID 保存（选择列表/精选区同一 ID 共享选中）' | 未知 |
 | 选择城市 Mock（行政分组共用正文） > Mock 局部分页：加载更多把更多行政分组切进来，翻完见港澳台三组 |  | [src/屏幕/选择城市.test.tsx](../../src/屏幕/选择城市.test.tsx) | npm test -- src/屏幕/选择城市.test.tsx -t '选择城市 Mock（行政分组共用正文） (> )?Mock 局部分页：加载更多把更多行政分组切进来，翻完见港澳台三组' | 未知 |
@@ -6036,6 +6053,8 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 应用路由：招聘方水合阶段决定落点 > 缺失 profile 时放行恢复与退出路径 /hr/verify |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：招聘方水合阶段决定落点 (> )?缺失 profile 时放行恢复与退出路径 /hr/verify' | 未知 |
 | 应用路由：招聘方水合阶段决定落点 > 缺失 profile 时放行恢复与退出路径 /identity |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：招聘方水合阶段决定落点 (> )?缺失 profile 时放行恢复与退出路径 /identity' | 未知 |
 | 应用路由：招聘方水合阶段决定落点 > 重试后不出现不可达的「重试中…」文案 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：招聘方水合阶段决定落点 (> )?重试后不出现不可达的「重试中…」文案' | 未知 |
+| 应用路由：水合在飞期的用户导航保留（疑点①受控时序） > 对照（先 resolve 再导航）：落点 replace 落定后再导航，目的地同样保留 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：水合在飞期的用户导航保留（疑点①受控时序） (> )?对照（先 resolve 再导航）：落点 replace 落定后再导航，目的地同样保留' | 未知 |
+| 应用路由：水合在飞期的用户导航保留（疑点①受控时序） > 开始水合→用户导航→水合返回：最终路由保留用户目的地，登录落点不吞深链 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：水合在飞期的用户导航保留（疑点①受控时序） (> )?开始水合→用户导航→水合返回：最终路由保留用户目的地，登录落点不吞深链' | 未知 |
 | 应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 > Backend 已登录但主体快照缺失时不挂载角色业务屏 |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 (> )?Backend 已登录但主体快照缺失时不挂载角色业务屏' | 未知 |
 | 应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 > Mock 不应用主体角色守卫：/hr/jobs |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 (> )?Mock 不应用主体角色守卫：/hr/jobs' | 未知 |
 | 应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 > Mock 不应用主体角色守卫：/resume |  | [src/应用.test.tsx](../../src/应用.test.tsx) | npm test -- src/应用.test.tsx -t '应用路由：角色边界下的组织恢复、未知路由与 Mock 回归 (> )?Mock 不应用主体角色守卫：/resume' | 未知 |
@@ -6566,11 +6585,11 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| J-PILOT-02 候选 onboarding Backend fixture @backend > education POST 后读取失败：刷新回原题、重走不重复 POST @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:772](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend education POST 后读取失败：刷新回原题、重走不重复 POST @backend' | 未知 |
-| J-PILOT-02 候选 onboarding Backend fixture @backend > 同数据 Mock/Backend 共用布局：共享屏布局骨架一致 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:866](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 同数据 Mock/Backend 共用布局：共享屏布局骨架一致 @backend' | 未知 |
-| J-PILOT-02 候选 onboarding Backend fixture @backend > 头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:810](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend' | 未知 |
-| J-PILOT-02 候选 onboarding Backend fixture @backend > 学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:720](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend' | 未知 |
-| J-PILOT-02 候选 onboarding Backend fixture @backend > 社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:647](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend' | 未知 |
+| J-PILOT-02 候选 onboarding Backend fixture @backend > education POST 后读取失败：刷新回原题、重走不重复 POST @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:819](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend education POST 后读取失败：刷新回原题、重走不重复 POST @backend' | 未知 |
+| J-PILOT-02 候选 onboarding Backend fixture @backend > 同数据 Mock/Backend 共用布局：共享屏布局骨架一致 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:909](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 同数据 Mock/Backend 共用布局：共享屏布局骨架一致 @backend' | 未知 |
+| J-PILOT-02 候选 onboarding Backend fixture @backend > 头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:857](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 头像 unknown 不能完成：不伪成功、同 key/ifMatch 重放、成功后才完成 @backend' | 未知 |
+| J-PILOT-02 候选 onboarding Backend fixture @backend > 学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:767](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 学生手填全旅程：实习生档、零工作经历、URL 未改不携带、恰一首次意向 @backend' | 未知 |
+| J-PILOT-02 候选 onboarding Backend fixture @backend > 社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend | fixture | [e2e/J-PILOT-02接线.spec.ts:694](../../e2e/J-PILOT-02接线.spec.ts) | npm run test:e2e -- e2e/J-PILOT-02接线.spec.ts --project=fixture --grep 'J-PILOT-02 候选 onboarding Backend fixture @backend 社招手填全旅程：零工作经历、URL 设置后清空、恰一首次意向 @backend' | 未知 |
 | DF-008 dogfood 回归 @backend > DF-008 候选：跨生产 5 秒节拍移除终局卡，首次进入历史回看 ended 记录 @backend @dogfood-frontend | fixture | [e2e/suites/连续委托.spec.ts:495](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'DF-008 dogfood 回归 @backend DF-008 候选：跨生产 5 秒节拍移除终局卡，首次进入历史回看 ended 记录 @backend @dogfood-frontend' | 未知 |
 | DF-008 dogfood 回归 @backend > DF-008 招聘：预先访问历史后跨生产节拍移除终局卡，历史快照遵循现有合同零轮询 @backend @dogfood-frontend | fixture | [e2e/suites/连续委托.spec.ts:527](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'DF-008 dogfood 回归 @backend DF-008 招聘：预先访问历史后跨生产节拍移除终局卡，历史快照遵循现有合同零轮询 @backend @dogfood-frontend' | 未知 |
 | J-PILOT-01 连续委托接线 @backend > pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display | fixture | [e2e/suites/连续委托.spec.ts:415](../../e2e/suites/连续委托.spec.ts) | npm run test:e2e -- e2e/suites/连续委托.spec.ts --project=fixture --grep 'J-PILOT-01 连续委托接线 @backend pre-Case：四段未开始但 S0 可展开初评过程、失败后合法 retry 可达，Mock 零请求同版式 @backend @s0-s3-display' | 未知 |
@@ -6609,15 +6628,24 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 ## L3 手写索引（非生成区）
 
-现有可执行 L3 只有 STG onboarding 四个组合与 STG 基础试点，沿用现有名称，不在静态清单
-登记永久 PASS；执行结果按 run 保存在既有证据位置：
+现有可执行 L3 有 STG onboarding 四个组合、STG 基础试点与 STG 匹配两个 Case，沿用现有
+名称，不在静态清单登记永久 PASS；执行结果按 run 保存在既有证据位置：
 
 - `stg-onboarding-candidate`（manual / parsed 两个执行组合）
 - `stg-onboarding-recruiter`（manual / parsed 两个执行组合）
 - STG 基础试点（两轮，含反证轮）
+- `stg-matching-recruiter`（招聘者发起；单 Case 可独立选择，每 Case 一轮全新 run）
+- `stg-matching-candidate`（求职者发起；单 Case 可独立选择，不与上一 Case 共用 run）
 
-进入方式与操作/凭据/清理合同见 [`docs/dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md)
-与 [`docs/dogfood/stg-onboarding.md`](../dogfood/stg-onboarding.md)。
+`stg-matching` 两 Case 当前均无 PASS：`stg-matching-recruiter` 业务 `BLOCKED`
+（探索已执行，实测到 S1，被 STG 部署的 Hub enrollment 缺失决定性阻断，cleanup
+`CLEANUP_BLOCKED` 且占用保持）；`stg-matching-candidate` 业务 `NOT_RUN`（本轮
+未执行，STG 占用未释放使新 run 无法创建）。见专门指南第 11 节；此处只登记可执行
+身份，不登记任何 PASS。
+
+进入方式与操作/凭据/清理合同见 [`docs/dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md)、
+[`docs/dogfood/stg-onboarding.md`](../dogfood/stg-onboarding.md) 与
+[`docs/dogfood/stg-matching.md`](../dogfood/stg-matching.md)。
 
 旧 local L3（基础 B01–B05、Hosted H01–H04 与 backend-local-onboarding 六个 Case）已于
 2026-09-16 退出活动执行入口并归档：行为与报告段在 [`docs/dogfood/archive/`](../dogfood/archive/local-behavior.md)，

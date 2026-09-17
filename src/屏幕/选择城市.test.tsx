@@ -4,7 +4,7 @@
 // 目录、两精选区（无港澳台精选）、三个中文组标题与英文条目、排除主城市、同名不同 ID 独立
 // 选中、搜索/翻页已选不丢、保存才提交备选引用。
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -108,12 +108,14 @@ function render城市页(选项: {
     },
     派发,
   };
-  render(
+  const render结果 = render(
     <MemoryRouter>
       <选择城市 />
     </MemoryRouter>,
   );
-  return { 派发 };
+  // 疑点②（baseline-stg-matching Task 2）：真实 取消（返回）会卸载本页，harness 里
+  // 返回 是 mock —— 暴露 unmount 让用例补齐这一步，迟到响应可落在已卸载页上。
+  return { 派发, 卸载: render结果.unmount };
 }
 
 beforeEach(() => {
@@ -452,6 +454,47 @@ describe('选择城市 Backend（引用身份与分页边界）', () => {
     await screen.findAllByText('杭州市');
     await 用户.click(screen.getByRole('button', { name: '关闭' }));
     expect(mock返回).toHaveBeenCalledTimes(1);
+    expect(派发).not.toHaveBeenCalled();
+  });
+
+  // ── 疑点②（baseline-stg-matching Task 2）：取消清理与在途目录读的受控时序 ──
+  // README「已知事项」曾记录「取消不写草稿段存在取消清理与在途草稿写的竞态（旧稿即红，
+  // 曾在取消前等 400ms 收尾）」。受控事件序：进入选择（草稿带原选中）→ 局部再选城市 →
+  // 取消（✕ 关闭 + 卸载）→ 在飞目录页迟到返回 —— 断言全程零草稿写：本页对草稿的唯一
+  // 写入口是 保存 的 改意向草稿，局部选择与迟到响应都只落本页局部 state。
+  it('局部选城市→取消→迟到目录返回：零草稿写（派发从未发生）', async () => {
+    const CN首页 = deferredPromise<{ items: ReturnType<typeof 城>[]; nextCursor: string | null; catalogVersion: string }>();
+    const 查询Location = vi.fn(async (query: { q?: string; countryCode?: string; cursor?: string; limit?: number }) => {
+      if (query.q !== undefined) return { items: [], nextCursor: null, catalogVersion: 'v2' };
+      if ((query.countryCode ?? 'CN') === 'CN') return CN首页.promise;
+      return { items: [], nextCursor: null, catalogVersion: 'v2' };
+    });
+    const { 派发, 卸载 } = render城市页({
+      数据源: 'backend',
+      查询Location,
+      已选引用们: [{ id: 'loc_orig', display_name: '原城市' }],
+    });
+    const 用户 = userEvent.setup();
+    // 进入选择：回读草稿原选中 1/9；CN 默认页仍在飞（精选区静态可点，不依赖它）
+    expect(screen.getByText('1/9')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '移除 原城市' })).toBeTruthy();
+
+    // 局部选城市（精选区）：只落本页局部 state，计数 2/9
+    await 用户.click(screen.getByRole('button', { name: 'Singapore' }));
+    expect(screen.getByText('2/9')).toBeTruthy();
+
+    // 取消：✕ 关闭（只返回）+ 卸载 —— 此刻 CN 默认页仍在飞
+    await 用户.click(screen.getByRole('button', { name: '关闭' }));
+    expect(mock返回).toHaveBeenCalledTimes(1);
+    卸载();
+
+    // 在飞目录页迟到返回：卸载后代际守卫丢弃（即便落局部 state 也不触草稿），零草稿写
+    CN首页.resolve({
+      items: [城({ id: 'loc_late', display_name: '迟到市', admin1_name: '浙江省' })],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    });
+    await act(async () => {});
     expect(派发).not.toHaveBeenCalled();
   });
 });

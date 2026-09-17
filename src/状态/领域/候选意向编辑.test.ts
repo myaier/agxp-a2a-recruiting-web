@@ -91,3 +91,47 @@ describe('已有意向隐藏条件无损保存', () => {
     expect(转意向写入({ ...草稿, 求职类型: '全职', 求职类型已改: true }, { 原始 })).toMatchObject({ graduation_month: null, internship_months: null, onsite_days_per_week: null });
   });
 });
+
+// ── 疑点②（baseline-stg-matching Task 2）：取消的选城会话不改变保存请求体 ──
+// 选择城市页对草稿的唯一写入口是 保存 的 改意向草稿（组件级用例已钉「局部选城市→
+// 取消→迟到目录返回」全程零派发）。这里钉消费侧链路：取消会话（零草稿写）后保存，
+// 转意向写入 的 alternate_location_ids 仍是原城市 ID；对照臂证明「若取消会话把局部
+// 选中写进草稿」请求体必然变化 —— 原 ID 断言能检出泄漏，不是恒真。
+describe('取消的选城会话不落草稿（疑点②受控时序）', () => {
+  it('取消后保存原草稿：请求体城市 ID 不变；对照臂可检出泄漏', () => {
+    const 原始 = {
+      ...BFF意向样本,
+      recruitment_type: 'social_full_time' as const,
+      salary_period: 'month' as const,
+      internship_months: null,
+      onsite_days_per_week: null,
+      compensation: { mode: 'range' as const, lower: 20, upper: 25, annual_salary_months: 13 },
+      alternate_locations: [{ id: 'loc_orig', display_name: '原城市' }],
+    };
+    let 状态 = 归约候选资料(
+      { ...初始状态, 求职意向表: [] },
+      { 型: '新增意向', 标题: '[原城市] 产品经理', 说明: '20-25K', 草稿: 从BFF意向草稿(原始) },
+    );
+    const 编号 = 状态.求职意向表[0].编号;
+    状态 = 归约候选资料(状态, { 型: '开意向草稿', 编号 });
+
+    // 取消的选城会话：进页后局部选中「Singapore」又取消 —— 全程零 改意向草稿 派发
+    // （组件级用例钉住），草稿保持进页时的原城市引用；随后保存走原草稿
+    const 保存写入 = 转意向写入(状态.意向草稿!, { 原始 });
+    expect(保存写入.alternate_location_ids).toEqual(['loc_orig']);
+
+    // 对照臂：同一草稿若被取消会话写入局部选中（改意向草稿 补丁落了新引用），
+    // 保存请求体就带上新 ID —— 证明上面的原 ID 断言有牙，不是对纯函数的恒真复述
+    const 泄漏状态 = 归约候选资料(状态, {
+      型: '改意向草稿',
+      补丁: {
+        感兴趣城市们: ['原城市', 'Singapore'],
+        感兴趣城市引用们: [
+          { id: 'loc_orig', display_name: '原城市' },
+          { id: 'loc_sgp', display_name: 'Singapore' },
+        ],
+      },
+    });
+    expect(转意向写入(泄漏状态.意向草稿!, { 原始 }).alternate_location_ids).toEqual(['loc_orig', 'loc_sgp']);
+  });
+});

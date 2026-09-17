@@ -39,6 +39,8 @@ const 标记 = {
   学校: ' Fixture 大学',
   专业: 'Fixture 专业',
   职位: ' Fixture 工程师',
+  职位根: 'Fixture 技术大类',
+  职位组: 'Fixture 工程分组',
   行业: 'Fixture 行业',
   主体: 'subj-fixture-jp02-001',
   意向编号: 'int_00112233445566778899aabbccddeef0',
@@ -49,6 +51,12 @@ const 标记 = {
 function 信封<T>(result: T): { result: T; meta: { request_id: string; api_version: 'v1' } } {
   return { result, meta: { request_id: 'fixture-jp02', api_version: 'v1' } };
 }
+
+/** 头像内容图（上传成功后 <img> 按 ?v=revision 回读）：1×1 PNG，与头像用例上传字节同源 */
+const 头像PNG字节 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 /** BFF 目录页 */
 function 目录页<T extends { id: string }>(items: T[]): {
@@ -405,6 +413,11 @@ async function 安装BFF路由(page: Page, fixture: 建档fixture形): Promise<v
       await route.fulfill({ status: 200, json: 信封({ avatar_url: fixture.头像.avatar_url, revision: fixture.头像.revision, updated_at: '2026-09-11T00:00:00Z' }) });
       return;
     }
+    if (path === '/api/v1/me/avatar/content' && method === 'GET') {
+      // 头像上传成功后的 <img> 回读（URL 带 ?v=revision）：答同一张 1×1 PNG
+      await route.fulfill({ status: 200, contentType: 'image/png', body: 头像PNG字节 });
+      return;
+    }
     // ── Agent 规则域（交互式切身份的水合域之一）：空清单即合法权威态 ──
     if (path === '/api/v1/me/agent-rules' && method === 'GET') {
       await route.fulfill({ status: 200, json: 信封({ rules: [] }) });
@@ -443,10 +456,34 @@ async function 安装BFF路由(page: Page, fixture: 建档fixture形): Promise<v
       return;
     }
     if (path.startsWith('/api/v1/catalog/job-categories') && method === 'GET') {
-      await route.fulfill({
-        status: 200,
-        json: 信封(目录页([{ id: 'job-fixture-001', display_name: 标记.职位, parent_id: null, selectable: true, has_children: false }])),
-      });
+      // 双栏 B 契约要求真三级目录（口径对齐 e2e/fixtures/数据源交互.ts 的 装三级职位目录桩）：
+      // 根（不可选）→ 二级组（不可选，右栏以 heading 呈现）→ 统一 selectable 叶子 job-fixture-001。
+      // 旧 fixture 对任何 query 都答同一个 selectable 根，双栏正文只能把它渲染成右栏二级
+      // 标题（没有可点叶子），四条手填旅程全卡在选择这一步。
+      const parentId = url.searchParams.get('parent_id');
+      if (parentId === 'job-fixture-group') {
+        await route.fulfill({
+          status: 200,
+          json: 信封(目录页([{ id: 'job-fixture-001', display_name: 标记.职位, parent_id: parentId, selectable: true, has_children: false }])),
+        });
+        return;
+      }
+      if (parentId === 'job-fixture-root') {
+        await route.fulfill({
+          status: 200,
+          json: 信封(目录页([{ id: 'job-fixture-group', display_name: 标记.职位组, parent_id: parentId, selectable: false, has_children: true }])),
+        });
+        return;
+      }
+      if (parentId === null) {
+        await route.fulfill({
+          status: 200,
+          json: 信封(目录页([{ id: 'job-fixture-root', display_name: 标记.职位根, parent_id: null, selectable: false, has_children: true }])),
+        });
+        return;
+      }
+      // 未知父节点：忠实空页（本文件旅程不触发；触发即说明产品查错了父层级）
+      await route.fulfill({ status: 200, json: 信封(目录页([])) });
       return;
     }
     if (path.startsWith('/api/v1/catalog/industries') && method === 'GET') {
@@ -468,6 +505,13 @@ async function 安装BFF路由(page: Page, fixture: 建档fixture形): Promise<v
     //    显式化，strict decode 拒绝 → 页面如实给空收件箱（Mock 内容不顶替 HTTP）。──
     if (path === '/api/v1/me/conversations' && method === 'GET') {
       await route.fulfill({ status: 200, json: 信封(null) });
+      return;
+    }
+
+    // ── 连续代谈（主壳水合，shelf=active）：新账号权威空页（闭合键集 items/next_cursor）。
+    //    四条手填旅程此前从未走到主壳，本坐标是双栏修复后才触达的声明。──
+    if (path === '/api/v1/me/negotiations' && method === 'GET') {
+      await route.fulfill({ status: 200, json: 信封({ items: [], next_cursor: null }) });
       return;
     }
 
@@ -515,11 +559,14 @@ async function 进完善资料(page: Page, 在校: boolean): Promise<void> {
 
   await page.getByRole('button', { name: '选择期望职位' }).click();
   await expect(page).toHaveURL(/#\/onboard\/job$/);
-  // Backend 双栏：fixture 目录只有一项，左右两栏同名，点右栏那枚
+  // Backend 双栏（B 契约）：挂载自动选首根；左根是 button，右组标题是 heading（绝不是
+  // button），唯一 selectable 叶子才是职位按钮 —— 点真实叶 ID job-fixture-001
+  await expect(page.getByRole('button', { name: 标记.职位根, exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('heading', { name: 标记.职位组 })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('button', { name: 标记.职位组, exact: true })).toHaveCount(0);
   const 职位键 = page.getByRole('button', { name: 标记.职位, exact: true });
-  await expect(职位键.first()).toBeVisible({ timeout: 10_000 });
-  await expect(职位键).toHaveCount(2, { timeout: 10_000 });
-  await 职位键.last().click();
+  await expect(职位键).toBeVisible({ timeout: 10_000 });
+  await 职位键.click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page).toHaveURL(/#\/student$/);
 }
@@ -831,18 +878,14 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
 
     // ── 选同一张图：第一次（含受控重试）全部未知 → 不出现「头像已更新」假成功，
     //    用现有轻提示说明恢复操作 ──
-    const 头像PNG = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-      'base64',
-    );
-    await 选头像文件(page, 头像PNG, 1_760_000_000_000);
+    await 选头像文件(page, 头像PNG字节, 1_760_000_000_000);
     await expect(page.getByText('头像上传结果未确认')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('头像已更新')).toHaveCount(0);
     await expect(page).toHaveURL(/#\/onboard\/avatar$/);
     expect(fixture.头像.请求们).toHaveLength(2);
 
     // ── 重选同一张图：原命令重放 —— 同 Idempotency-Key、同 If-Match，不换新 revision ──
-    await 选头像文件(page, 头像PNG, 1_760_000_000_000);
+    await 选头像文件(page, 头像PNG字节, 1_760_000_000_000);
     await expect(page.getByText('头像已更新')).toBeVisible({ timeout: 15_000 });
     expect(fixture.头像.请求们).toHaveLength(3);
     const [首键, 次键, 三键] = fixture.头像.请求们;

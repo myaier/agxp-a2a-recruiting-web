@@ -12,7 +12,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 公司档案分区编辑 from './公司档案分区编辑';
 import {
   BFF企业关系样本,
@@ -116,9 +116,9 @@ function 置Backend应用状态(覆盖: Record<string, unknown> = {}) {
   };
 }
 
-function 置Mock应用状态() {
+function 置Mock应用状态(状态覆盖: Record<string, unknown> = {}) {
   mock应用状态 = {
-    状态: { 公司自述: null, 公司LOGO: null },
+    状态: { 公司自述: null, 公司LOGO: null, ...状态覆盖 },
     派发: mock派发,
   };
 }
@@ -146,6 +146,43 @@ function deferred<T>() {
 function 清空轻提示() {
   Array.from(document.body.children).forEach((节点) => 节点.replaceChildren());
 }
+
+/** jsdom 不解码图片：按 头像处理.test.ts 的同款桩把 FileReader / Image / canvas 喂成同步
+ *  成功，让 Mock 的 压成LOGO / 压成相册图 在 jsdom 里跑完；返回假画布以便断言压缩尺寸。
+ *  只替测试环境的浏览器能力，不改产品代码。 */
+function 桩住压图(输出: string) {
+  const 画布 = {
+    width: 0,
+    height: 0,
+    getContext: () => ({ drawImage: vi.fn() }),
+    toDataURL: () => 输出,
+  };
+  const 原创建元素 = document.createElement.bind(document);
+  vi.spyOn(document, 'createElement').mockImplementation((标签: string) =>
+    (标签 === 'canvas' ? 画布 as unknown as HTMLCanvasElement : 原创建元素(标签)),
+  );
+  class 假文件读取器 {
+    result: string | null = 'data:image/png;base64,原图';
+    onload: null | (() => void) = null;
+    onerror: null | (() => void) = null;
+    readAsDataURL() { this.onload?.(); }
+  }
+  class 假图片 {
+    width = 800;
+    height = 400;
+    onload: null | (() => void) = null;
+    onerror: null | (() => void) = null;
+    set src(_值: string) { this.onload?.(); }
+  }
+  vi.stubGlobal('FileReader', 假文件读取器);
+  vi.stubGlobal('Image', 假图片);
+  return 画布;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
   清空轻提示();
@@ -217,6 +254,22 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
       企业常用名: '新常用名',
       公司全称: '云衢品牌',
+    }));
+  });
+
+  // 反方向（Task 3 补）：改「品牌名称」槽位不得顺手改写 display_name —— 只改显示名的
+  // 一条用例看不见这条串写，两个名字刻意不同才能钉住槽位 ↔ 字段的绑定。
+  it('改品牌名称保存：不串写企业常用名，两名各自独立落草稿', async () => {
+    置Backend应用状态({ 企业档案快照: 三名快照() });
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.clear(screen.getByLabelText('品牌名称'));
+    await 用户.type(screen.getByLabelText('品牌名称'), '新品牌名');
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    expect(mock保存企业档案).toHaveBeenCalledTimes(1);
+    expect(mock保存企业档案).toHaveBeenCalledWith(expect.objectContaining({
+      公司全称: '新品牌名',
+      企业常用名: '云衢常用名',
     }));
   });
 
@@ -981,6 +1034,46 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
     expect(mock移除媒体).toHaveBeenCalledWith('office_photo', 'media_1');
   });
 
+  it('相册删除按下标取本组媒体：两组互不串，删第 2 张不是第 1 张', async () => {
+    // Task 2：展示与删除回调拆开后，「下标」由共有组件给、媒体由本连接层按 purpose 取 ——
+    // 两组用互不相同的 media_id，删错数组（下标越界即不出请求）或差一位都会现形
+    const 实景一 = { ...BFF企业媒体样本, media_id: 'office_1', url: 'https://cdn.example.com/office_1.png' };
+    const 实景二 = { ...BFF企业媒体样本, media_id: 'office_2', url: 'https://cdn.example.com/office_2.png' };
+    const 公司一 = { ...BFF企业媒体样本, media_id: 'company_1', url: 'https://cdn.example.com/company_1.png' };
+    置Backend应用状态({
+      企业档案快照: { ...BFF企业档案样本, office_media: [实景一, 实景二], company_media: [公司一] },
+    });
+    const 用户 = userEvent.setup();
+    渲染分区('album');
+    await 用户.click(screen.getByLabelText('删除实景照片第 2 张'));
+    expect(mock移除媒体).toHaveBeenCalledWith('office_photo', 'office_2');
+    await 用户.click(screen.getByLabelText('删除公司照片第 1 张'));
+    expect(mock移除媒体).toHaveBeenLastCalledWith('company_photo', 'company_1');
+    expect(mock移除媒体).toHaveBeenCalledTimes(2);
+  });
+
+  it('相册只读（member）：没有添加/删除入口，照片仍照常展示', () => {
+    置Backend应用状态({
+      企业关系列表: [{ ...BFF企业关系样本, role: 'member' }],
+      企业档案快照: {
+        ...BFF企业档案样本,
+        office_media: [BFF企业媒体样本],
+        company_media: [{ ...BFF企业媒体样本, media_id: 'company_1', url: 'https://cdn.example.com/company_1.png' }],
+      },
+    });
+    const 视图 = 渲染分区('album');
+    // 只读不是不可看：两组照片都在，计数照常
+    expect(screen.getByText('实景照片 1/3')).toBeTruthy();
+    expect(screen.getByText('公司照片 1/3')).toBeTruthy();
+    expect(视图.container.querySelector(`img[src="${BFF企业媒体样本.url}"]`)).toBeTruthy();
+    expect(视图.container.querySelector('img[src="https://cdn.example.com/company_1.png"]')).toBeTruthy();
+    // 只读用户没有上传入口也没有删除键，不能借展示层绕过权限
+    expect(screen.queryByLabelText('添加实景照片')).toBeNull();
+    expect(screen.queryByLabelText('添加公司照片')).toBeNull();
+    expect(screen.queryByLabelText('删除实景照片第 1 张')).toBeNull();
+    expect(screen.queryByLabelText('删除公司照片第 1 张')).toBeNull();
+  });
+
   it('相册上传校验 PNG/JPEG 与 10 MiB，合法文件按 purpose 调 上传并发布企业媒体', async () => {
     置Backend应用状态();
     const 用户 = userEvent.setup();
@@ -1006,6 +1099,24 @@ describe('公司档案分区编辑 · Backend 完整 replacement', () => {
 });
 
 describe('公司档案分区编辑 · Backend 媒体两步协议（页面侧）', () => {
+  it('上传在飞：本组显示上传预览并抑制添加入口，另一组不受影响，成功后收口', async () => {
+    置Backend应用状态();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:album-inflight-preview');
+    const 门 = deferred<void>();
+    mock上传媒体.mockImplementation(() => 门.promise);
+    const 用户 = userEvent.setup();
+    渲染分区('album');
+    await 用户.upload(screen.getByLabelText('上传公司照片'), pngFile);
+    // 两组都能加时，只有上传中的那一组给预览格、收起添加键（同一时间只跑一次上传）
+    expect(screen.getByAltText('上传预览')).toBeTruthy();
+    expect(screen.queryByLabelText('添加公司照片')).toBeNull();
+    expect(screen.getByLabelText('添加实景照片')).toBeTruthy();
+    门.resolve();
+    // 成功后预览收口（真实路径由 operation 用响应替换权威 snapshot）
+    await waitFor(() => expect(screen.queryByAltText('上传预览')).toBeNull());
+    expect(screen.getByLabelText('添加公司照片')).toBeTruthy();
+  });
+
   it('上传失败提示错误并回收预览，不出现放弃键', async () => {
     置Backend应用状态();
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:album-fail');
@@ -1095,6 +1206,26 @@ describe('公司档案分区编辑 · Mock 原型保持不变', () => {
     expect(mock保存企业档案).not.toHaveBeenCalled();
   });
 
+  // Task 3 补：直接返回（不点保存）就是丢弃改动 —— 文本草稿只活在本页 useState 里，
+  // 返回既不能写全局（零派发），重进分区也必须回到静态档原值。
+  it('Mock 返回不保存：文本草稿不落全局，重进分区回到静态档原值', async () => {
+    置Mock应用状态();
+    const 用户 = userEvent.setup();
+    const 视图 = 渲染分区('basic');
+    const 输入 = screen.getByLabelText('公司全称') as HTMLInputElement;
+    const 原值 = 输入.value;
+    await 用户.clear(输入);
+    await 用户.type(输入, '改了但不保存');
+    expect(输入.value).toBe('改了但不保存');
+    await 用户.click(screen.getByLabelText('返回'));
+    expect(mock返回).toHaveBeenCalledTimes(1);
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock保存企业档案).not.toHaveBeenCalled();
+    视图.unmount();
+    渲染分区('basic');
+    expect((screen.getByLabelText('公司全称') as HTMLInputElement).value).toBe(原值);
+  });
+
   it('Mock 行业取消不改行业；搜索只在本地池内过滤', async () => {
     置Mock应用状态();
     const 用户 = userEvent.setup();
@@ -1115,5 +1246,72 @@ describe('公司档案分区编辑 · Mock 原型保持不变', () => {
       (调用) => (调用[0] as { 型?: string }).型 === '存公司自述',
     ) as [{ 值: { 行业: string } }];
     expect(存自述[0].值.行业).toBe('金融科技');
+  });
+
+  it('Mock 相册选文件只进本页草稿：不即时写全局相册，点保存才派发 存公司自述', async () => {
+    置Mock应用状态();
+    // Mock 相册压成 data URL（长边 480）；jsdom 走不通图片解码，用桩把管线喂完
+    桩住压图('data:image/jpeg;base64,压缩相册图');
+    const 用户 = userEvent.setup();
+    渲染分区('album');
+    expect(screen.getByText('实景照片 0/3')).toBeTruthy();
+    await 用户.upload(screen.getByLabelText('上传实景照片'), pngFile);
+    await waitFor(() => expect(screen.getByText('实景照片 1/3')).toBeTruthy());
+    // 关键：选择文件只改本页草稿，绝不即时落全局（全局写入只发生在 保存）
+    expect(mock派发).not.toHaveBeenCalled();
+    expect(mock保存企业档案).not.toHaveBeenCalled();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(mock派发).toHaveBeenCalledWith(expect.objectContaining({
+        型: '存公司自述',
+        值: expect.objectContaining({
+          公司相册: { 实景照片: ['data:image/jpeg;base64,压缩相册图'], 公司照片: [] },
+        }),
+      })),
+    );
+    expect(mock返回).toHaveBeenCalled();
+  });
+
+  it('Mock 相册删除只改草稿：删第 2 张留第 1 张，未点保存不派发', async () => {
+    置Mock应用状态({
+      公司自述: {
+        公司相册: {
+          实景照片: ['data:image/jpeg;base64,甲', 'data:image/jpeg;base64,乙'],
+          公司照片: [],
+        },
+      },
+    });
+    const 用户 = userEvent.setup();
+    渲染分区('album');
+    expect(screen.getByText('实景照片 2/3')).toBeTruthy();
+    await 用户.click(screen.getByLabelText('删除实景照片第 2 张'));
+    expect(screen.getByText('实景照片 1/3')).toBeTruthy();
+    expect(mock派发).not.toHaveBeenCalled();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(mock派发).toHaveBeenCalledWith(expect.objectContaining({
+        型: '存公司自述',
+        值: expect.objectContaining({
+          公司相册: { 实景照片: ['data:image/jpeg;base64,甲'], 公司照片: [] },
+        }),
+      })),
+    );
+  });
+
+  it('Mock LOGO 仍是即时本地更新：压成 128 方图后派发 存公司LOGO，不经保存', async () => {
+    置Mock应用状态();
+    const 画布 = 桩住压图('data:image/jpeg;base64,压缩LOGO');
+    const 用户 = userEvent.setup();
+    渲染分区('basic');
+    await 用户.upload(screen.getByLabelText('更换公司 LOGO'), pngFile);
+    await waitFor(() =>
+      expect(mock派发).toHaveBeenCalledWith({ 型: '存公司LOGO', 图: 'data:image/jpeg;base64,压缩LOGO' }),
+    );
+    // LOGO 尺寸（128 见方）与相机角标入口保持原样；LOGO 不写公司自述、不离开页面
+    expect(画布.width).toBe(128);
+    expect(画布.height).toBe(128);
+    expect(screen.getByLabelText('上传公司 LOGO')).toBeTruthy();
+    expect(mock派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '存公司自述' }));
+    expect(mock返回).not.toHaveBeenCalled();
   });
 });

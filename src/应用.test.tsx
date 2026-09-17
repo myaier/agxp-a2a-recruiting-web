@@ -501,6 +501,92 @@ describe('应用路由：招聘方水合阶段决定落点', () => {
   });
 });
 
+// ── baseline-stg-matching Task 2（疑点①）：水合在飞期的用户导航不被落点 replace 吞掉 ──
+// README「已知事项」曾按 e2e 偶发翻红记录「hash 直达被在飞水合导航吞回落点路由」。
+// 这里用受控事件序给出确定性结论（不靠全量偶然通过）：
+//   主序：开始水合（初始化=进行中）→ 用户 hash 直达深链 → 水合返回（已登录 + 分流落定）
+//         —— 登录落点 effect 只在「本次渲染的 pathname 仍是登录」时才 replace；
+//            用户已导航的深链让该条件不成立，最终路由保留用户目的地。
+//   对照：先 resolve（落点 replace 落定进主壳）再导航 —— 正常顺序同样保留目的地。
+// 会话层前提（会话操作.test.ts 已有栅栏用例钉住）：过时轮水合在 是当前水合 栅栏整包
+// 丢弃，能写 已登录/主体 的只有当前轮 —— 本组只钉 应用.tsx 对「当前轮返回」的导航归属。
+describe('应用路由：水合在飞期的用户导航保留（疑点①受控时序）', () => {
+  beforeEach(() => {
+    mock应用状态.mockReset();
+    屏幕挂载次数.clear();
+  });
+
+  // 用户导航探针：模拟水合在飞期间的 hash 直达（与真实 hashchange 同走 location 更新）
+  function 导航探针() {
+    const 导航 = useNavigate();
+    return <button type="button" onClick={() => 导航(路径.我的简历)}>探针-去我的简历</button>;
+  }
+
+  it('开始水合→用户导航→水合返回：最终路由保留用户目的地，登录落点不吞深链', async () => {
+    const 路径记录 = vi.fn();
+    function 路径记录探针() {
+      const 位置 = useLocation();
+      useEffect(() => { 路径记录(位置.pathname); }, [位置.pathname]);
+      return <span data-testid="pathname">{位置.pathname}</span>;
+    }
+    // 开始水合：初始化进行中，应用停在加载屏，路由仍在登录
+    mock应用状态.mockReturnValue(后端应用值({ 初始化: '进行中', 已登录: false, 主体: null }));
+    const 树 = () => (
+      <MemoryRouter initialEntries={[路径.登录]}>
+        <应用 />
+        <导航探针 />
+        <路径记录探针 />
+      </MemoryRouter>
+    );
+    const { rerender } = render(树());
+    expect(screen.getByText('正在加载…')).toBeTruthy();
+    expect(当前路径()).toBe(路径.登录);
+
+    // 用户导航（水合在飞）：hash 直达深链 /resume
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '探针-去我的简历' }));
+    expect(当前路径()).toBe(路径.我的简历);
+    expect(screen.getByText('正在加载…')).toBeTruthy(); // 水合仍未返回
+
+    // 水合返回（当前轮收口）：已登录 + 已完成候选 —— 若落点导航不看当前位置，
+    // 这一步会把 /resume 吞回主壳（即 README 记录的疑似竞态形态）
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      Onboarding: Onboarding已完成('candidate'),
+      主体: { ...BFF主体样本, last_used_role: 'candidate' },
+    }));
+    rerender(树());
+
+    // 最终路由保留用户目的地：深页挂载、主壳一次都没挂、路径从未被改写成落点
+    await waitFor(() => expect(screen.getByTestId('屏幕:我的简历')).toBeTruthy());
+    expect(当前路径()).toBe(路径.我的简历);
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(0);
+    expect(路径记录.mock.calls.filter(([值]) => 值 === 路径.主壳)).toHaveLength(0);
+  });
+
+  it('对照（先 resolve 再导航）：落点 replace 落定后再导航，目的地同样保留', async () => {
+    mock应用状态.mockReturnValue(后端应用值({
+      初始化: '完成',
+      已登录: true,
+      Onboarding: Onboarding已完成('candidate'),
+      主体: { ...BFF主体样本, last_used_role: 'candidate' },
+    }));
+    render(
+      <MemoryRouter initialEntries={[路径.登录]}>
+        <应用 />
+        <导航探针 />
+        <位置探针 />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(当前路径()).toBe(路径.主壳));
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '探针-去我的简历' }));
+    await waitFor(() => expect(当前路径()).toBe(路径.我的简历));
+    expect(屏幕挂载次数.get('主壳') ?? 0).toBe(1);
+  });
+});
+
 describe('应用路由：候选 onboarding 预填恢复与退出清理（Task 7）', () => {
   beforeEach(() => {
     mock应用状态.mockReset();

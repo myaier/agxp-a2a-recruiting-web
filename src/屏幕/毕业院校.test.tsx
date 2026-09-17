@@ -149,6 +149,9 @@ describe('毕业院校 Backend', () => {
     const 用户 = userEvent.setup();
     await 用户.type(screen.getByRole('textbox'), '复旦');
     expect(await screen.findByText('上海市 · 中国')).toBeTruthy();
+    // Task 4：可访问名以学校名称为准 —— 副标题只作为行内文本，不拼进 accessible name
+    const 候选行 = screen.getByRole('button', { name: '复旦大学' });
+    expect(候选行.textContent).toContain('上海市 · 中国');
     await 用户.click(screen.getByText('复旦大学'));
     await 用户.click(screen.getByRole('button', { name: '下一步' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalled());
@@ -355,6 +358,33 @@ describe('毕业院校 Backend', () => {
     expect(行[1].textContent).toContain('✓');
   });
 
+  // Task 4 真实缺口：同名不同 ID 的两行，点哪行就落哪行的目录 ID（组件只回报稳定键，
+  // 页面按 id 在当前候选里定位 —— 绝不按显示名反查）
+  it('同名不同 ID 时保存的是点中那行的目录 ID', async () => {
+    const 查询Institution = vi.fn(async () => ({
+      items: [
+        { id: 'ins_a', display_name: '同名学院', location: { id: 'loc_a', display_name: '城市A', country_name: '国A' } },
+        { id: 'ins_b', display_name: '同名学院', location: { id: 'loc_b', display_name: '城市B', country_name: '国B' } },
+      ],
+      nextCursor: null,
+      catalogVersion: 'v2',
+    }));
+    const { 保存简历 } = render毕业院校({ 数据源: 'backend', 查询Institution });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByPlaceholderText('学校名称'), '同名');
+    const 行 = await screen.findAllByRole('button', { name: '同名学院' });
+    expect(行).toHaveLength(2);
+    // 点第二行（同名，id 不同）：保存的必须是 ins_b
+    await 用户.click(行[1]);
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalled());
+    expect(保存简历).toHaveBeenCalledWith(
+      expect.objectContaining({
+        教育: [expect.objectContaining({ 学校引用: { id: 'ins_b', display_name: '同名学院' } })],
+      }),
+    );
+  });
+
   // Task 5 修复：点选不改变当前查询——选中后加载更多仍沿首屏搜索词 + 游标翻页
   it('选中候选后加载更多仍用首屏搜索词（不是回填的完整名称）', async () => {
     let 调用次 = 0;
@@ -437,6 +467,27 @@ describe('毕业院校 Mock', () => {
       }),
     );
     // Mock 不带 学校引用
+    const 调用 = 保存简历.mock.calls[0][0] as { 教育: { 学校引用?: unknown }[] };
+    expect(调用.教育[0].学校引用).toBeUndefined();
+    // Task 4：可访问名就是学校名称（选中行也不把 ✓ 拼进 accessible name）
+    expect(screen.getByRole('button', { name: '复旦大学' })).toBeTruthy();
+  });
+
+  // Task 4 真实缺口：Mock 保持自由文本 —— 名录外的校名不点候选也能继续，
+  // 不引入「必须点候选 / 必须有目录 ID」的新规则
+  it('Mock 手输名录外的学校也能继续（自由文本，无目录必选）', async () => {
+    const { 保存简历 } = render毕业院校({ 数据源: 'mock' });
+    const 用户 = userEvent.setup();
+    await 用户.type(screen.getByRole('textbox'), '某某私塾');
+    // 名录里没有这所：过滤后无候选行，也不因此拦住下一步
+    expect(screen.queryByRole('button', { name: '某某私塾' })).toBeNull();
+    const 下一步 = screen.getByRole('button', { name: '下一步' }) as HTMLButtonElement;
+    expect(下一步.disabled).toBe(false);
+    await 用户.click(下一步);
+    await waitFor(() => expect(保存简历).toHaveBeenCalled());
+    expect(保存简历).toHaveBeenCalledWith(
+      expect.objectContaining({ 教育: [expect.objectContaining({ 学校: '某某私塾' })] }),
+    );
     const 调用 = 保存简历.mock.calls[0][0] as { 教育: { 学校引用?: unknown }[] };
     expect(调用.教育[0].学校引用).toBeUndefined();
   });

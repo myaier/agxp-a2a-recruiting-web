@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from 'react';
 import 样式 from './入职引导.module.css';
 import { 次级页外壳, 返回栏, 页面大标题, 主按钮, 滚动区 } from '../组件/通用';
+import { 教育目录候选列表, type 教育候选 } from '../组件/教育目录候选列表';
 import { 轻提示 } from '../组件/轻提示';
 import { use导航 } from '../路由/导航钩子';
 import { use应用状态 } from '../状态/应用状态';
@@ -156,6 +157,29 @@ export default function 选专业() {
     设专业(名);
   };
 
+  // Task 4：候选行改用共用 教育目录候选列表（原两套 map 删除）——只把两模式的展示值
+  // 映射成展示项：Backend 键=目录 id、选中按引用 id、专业无副文；Mock 键与名称=本地
+  // 地名、选中按词。Mock 无分页，还有/加载中恒为 false。
+  const 候选展示项: 教育候选[] = 是后端
+    ? 候选项.map((项) => ({
+        键: 项.id,
+        名称: 项.display_name,
+        选中: 专业引用?.id === 项.id,
+      }))
+    : mock候选.map((名) => ({ 键: 名, 名称: 名, 选中: 名 === 词 }));
+
+  // 组件按稳定键回报点击：Backend 只在当前候选里按 id 定位（绝不按显示名反查 id，
+  // 同名不同 id 不串）；结果已被新词换掉而找不到时什么都不做，不落错引用。
+  const 选定候选 = (键: string) => {
+    if (!是后端) {
+      选Mock候选(键);
+      return;
+    }
+    const 项 = 候选项.find((候选) => 候选.id === 键);
+    if (项 === undefined) return;
+    选候选(项);
+  };
+
   const 输入改变 = (值: string) => {
     设专业(值);
     // 只有用户真实输入才更新实际查询词（点候选不动查询）
@@ -211,37 +235,14 @@ export default function 选专业() {
           />
         </div>
 
-        {/* 联想候选：与毕业院校页同款行样式 */}
-        <div className={样式.候选列表}>
-          {是后端
-            ? 候选项.map((项) => (
-                <button
-                  key={项.id}
-                  className={`${样式.候选行} ${专业引用?.id === 项.id ? 样式.候选行选中 : ''} 可点`}
-                  onClick={() => 选候选(项)}
-                >
-                  <span>{项.display_name}</span>
-                  {/* Task 5 修复：选中按引用 ID 判断，同名不同 ID 不误打勾 */}
-                  {专业引用?.id === 项.id ? <span className={样式.候选勾}>✓</span> : null}
-                </button>
-              ))
-            : mock候选.map((名) => (
-                <button
-                  key={名}
-                  className={`${样式.候选行} ${名 === 词 ? 样式.候选行选中 : ''} 可点`}
-                  onClick={() => 选Mock候选(名)}
-                >
-                  <span>{名}</span>
-                  {名 === 词 ? <span className={样式.候选勾}>✓</span> : null}
-                </button>
-              ))}
-          {/* review-r2 R2-M-1：搜索返回 nextCursor 时显示「加载更多」，点击追加下一页 */}
-          {是后端 && 下一页游标 !== null ? (
-            <button className={`${样式.候选行} 可点`} onClick={加载更多} disabled={加载中} aria-label="加载更多">
-              {加载中 ? '加载中…' : '加载更多'}
-            </button>
-          ) : null}
-        </div>
+        {/* 联想候选：与毕业院校页同款行样式 —— 两模式共用 教育目录候选列表 */}
+        <教育目录候选列表
+          项们={候选展示项}
+          加载中={是后端 && 加载中}
+          还有={是后端 && 下一页游标 !== null}
+          选定={选定候选}
+          加载更多={加载更多}
+        />
 
         {/* Task 5：如实的搜索状态——在途 / 空结果 / 失败（Mock 分支永远 idle 不显示） */}
         {搜索阶段 === 'loading' ? <div role="status">加载中…</div> : null}
