@@ -17,9 +17,15 @@ type P7发送ResultShape = { status: 'confirmed' } | { status: 'unknown'; reason
 import Backend真人会话 from './Backend真人会话';
 // 仓库既有的 ?raw 源码合同模式（⋯ 控件形态 / 举报目标类型）
 import Backend真人会话tsx源码 from './Backend真人会话.tsx?raw';
+// Task 3：头像几何走 共用气泡对侧留白 的源码合同（jsdom 不做版式，Task 6 浏览器证明；
+// 仓库既有 readFileSync 读 CSS 源码的合同模式，见 聊天气泡.test.tsx）
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import 共用样式 from '../直聊会话.module.css';
 import { 轻提示 } from '../../组件/轻提示';
 import { 格式化聊天时间 } from '../../组件/聊天气泡';
 import { 候选详情DTO, 招聘详情DTO, 状态 } from '../P5/MatchCase详情.测试辅助';
+import { BFF招聘方档案样本 } from '../../测试/BFF样本';
 import type { P8ReportReceipt } from '../../数据/招聘数据源/P8控制面';
 
 const 导航 = vi.hoisted(() => ({ 跳转: vi.fn(), 返回: vi.fn() }));
@@ -34,6 +40,9 @@ const PDF租约 = vi.hoisted(() => ({
   url: 'blob:pdf-lease',
   revoke: vi.fn(),
 }));
+
+/** 真人会话.module.css 源码（对侧留白镜像净空的源码合同）。 */
+const 真人会话css源码 = readFileSync(join(process.cwd(), 'src', '屏幕', '真人会话.module.css'), 'utf8');
 
 function 会话详情(覆盖: Partial<P7会话项> = {}): P7会话项 {
   return {
@@ -79,6 +88,9 @@ function 环境(input: {
   提交P8举报?: (target: unknown, reason: unknown, alsoBlock: unknown) => Promise<P8ReportReceipt>;
   /** P5 详情快照（use真人会话资料 消费；键 = P5范围键.detail(role, caseId)） */
   P5详情?: Record<string, unknown>;
+  /** Task 3：我方头像来源覆盖（候选账号图 / 招聘方档案）。 */
+  求职头像?: string | null;
+  招聘方档案?: Record<string, unknown> | null;
 }) {
   const role = input.role ?? 'candidate';
   mock应用状态 = {
@@ -96,7 +108,8 @@ function 环境(input: {
     },
     状态: {
       基本信息: { 真名: '沈亦舟' },
-      招聘方档案: null,
+      求职头像: input.求职头像 ?? null,
+      招聘方档案: input.招聘方档案 ?? null,
       公开企业表: {},
       不可用公开企业编号: [],
     },
@@ -617,5 +630,174 @@ describe('Backend真人会话 · P8 会话举报', () => {
     // 源码合同：⋯ 仍是共用样式类的那枚 span，绝无 match_case 目标
     expect(Backend真人会话tsx源码).toContain('className={共用样式.更多}');
     expect(Backend真人会话tsx源码).not.toContain("type: 'match_case'");
+  });
+});
+
+// ── Task 3：真人消息 32px 头像与本人照片（Spec §3）────────────────────────────
+// 我方按角色读已有账号资料（候选 = 求职头像（commit 即带 ?v=revision 缓存戳）、
+// 招聘 = 档案 avatar_url + revision 缓存戳），直达会话即渲染；双方图片加载失败回退
+// 各自真实姓名首字（取姓名首字：trim 后首个 Unicode 码点，缺名「·」—— 绝不从回退
+// 标题/占位/alias 取字）；换 URL 整点重挂重新尝试；删图/换账号清掉旧图与失败状态，
+// 绝不串图。绝不拿演示人像填 Backend 缺图（本屏不 import Mock 数据）。
+
+/** 双端各一条 user_text：左右行同时在场，头像断言两侧都能落点。 */
+const 双方消息: P7分页快照<P7消息> = {
+  阶段: '成功', 刷新中: false, nextCursor: null, 已加载页数: 1, error: null, generation: 1,
+  items: [文本('4004', 'recruiter', '你好'), 文本('4005', 'candidate', '可以')],
+};
+
+/** 候选端视角的对方（发布人）授权档案：其余 jobDetail 键全 null（映射只消费
+ *  publisher_profile 的姓名/头像）。 */
+function 发布人档案详情(发布人: { 姓名: string; 头像: string | null }): Record<string, unknown> {
+  return {
+    阶段: '成功', 刷新中: false, error: null, generation: 1,
+    detail: {
+      ...候选详情DTO(),
+      state: 状态({ caseId: 'mc_3003' }),
+      jobDetail: {
+        title: '后端工程师', description: null, requirements: null, recruitment_type: null,
+        category: null, location: null, office_location: null, workplace_mode: null,
+        salary_lower: null, salary_upper: null, salary_period: null, annual_salary_months: null,
+        campus_cohort: null, internship_months: null, onsite_days_per_week: null,
+        experience_requirement: null, education_requirement: null, hard_requirements: null,
+        structured_requirements_confirmed: null, keywords: null, organization: null,
+        company_intro: null, office_address: null, benefit_codes: null,
+        publisher_profile: {
+          public_name: 发布人.姓名, title: '招聘负责人',
+          personal_verification_status: 'verified', avatar_url: 发布人.头像,
+        },
+      },
+    },
+  };
+}
+
+/** 招聘端视角的对方（候选人）disclosed 身份详情：姓名/头像独立给值。 */
+function 披露身份详情(身份: { name: string | null; 头像: string | null }): Record<string, unknown> {
+  return {
+    阶段: '成功', 刷新中: false, error: null, generation: 1,
+    detail: {
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      candidateIdentity: { state: 'disclosed', name: 身份.name, avatar_url: 身份.头像, disclosed_at: null },
+    },
+  };
+}
+
+function 我方头像图(容器: HTMLElement): HTMLImageElement | null {
+  return 容器.querySelector('[data-侧="右"] img');
+}
+function 对方头像图(容器: HTMLElement): HTMLImageElement | null {
+  return 容器.querySelector('[data-侧="左"] img');
+}
+function 我方头像字(容器: HTMLElement): string {
+  return 容器.querySelector(`[data-侧="右"] .${共用样式.我头像}`)?.textContent ?? '';
+}
+function 对方头像字(容器: HTMLElement): string {
+  return 容器.querySelector(`[data-侧="左"] .${共用样式.对方头像}`)?.textContent ?? '';
+}
+
+describe('Backend真人会话 · 真人消息头像（Spec §3）', () => {
+  it('候选直达会话：我方头像直接读当前账号求职头像（?v=revision 缓存戳原样）', async () => {
+    环境({ 求职头像: '/api/v1/me/avatar/content?v=7', 消息: 双方消息 });
+    const 页 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await waitFor(() => expect(我方头像图(页.container)).toBeTruthy());
+    expect(我方头像图(页.container)?.getAttribute('src')).toBe('/api/v1/me/avatar/content?v=7');
+  });
+
+  it('招聘端我方头像读档案 avatar_url，并按 revision 组同样的缓存戳', async () => {
+    环境({
+      role: 'recruiter',
+      招聘方档案: { ...BFF招聘方档案样本, avatar_url: '/api/v1/recruiter/avatar/content', revision: 5 },
+      消息: 双方消息,
+    });
+    const 页 = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await waitFor(() =>
+      expect(我方头像图(页.container)?.getAttribute('src')).toBe('/api/v1/recruiter/avatar/content?v=5'));
+  });
+
+  it('双方图片加载失败回退各自真实姓名首字（不从回退标题/占位取字）', async () => {
+    环境({
+      求职头像: '/api/v1/me/avatar/content?v=7',
+      P5详情: { 'p5:detail:candidate:mc_3003': 发布人档案详情({ 姓名: '林澈', 头像: 'https://cdn.example.com/p.png' }) },
+      消息: 双方消息,
+    });
+    const 页 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await waitFor(() => expect(对方头像图(页.container)).toBeTruthy());
+    fireEvent.error(我方头像图(页.container)!);
+    fireEvent.error(对方头像图(页.container)!);
+    // 我方回退本人真名（沈亦舟）首字；对方回退其真名（林澈）首字 —— 各取各的
+    expect(我方头像图(页.container)).toBeNull();
+    expect(我方头像字(页.container)).toBe('沈');
+    expect(对方头像字(页.container)).toBe('林');
+  });
+
+  it('有图无名仍显示图；坏图回退为「·」而不是页头占位文案或 alias 首字', async () => {
+    环境({
+      role: 'recruiter',
+      P5详情: { 'p5:detail:recruiter:mc_3003': 披露身份详情({ name: null, 头像: 'https://cdn.example.com/c.png' }) },
+      消息: 双方消息,
+    });
+    const 页 = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    // 头像独立于姓名：disclosed 无名时页头是占位文案，头像仍是授权图
+    await waitFor(() => expect(screen.getByText('候选人姓名暂未提供')).toBeTruthy());
+    expect(对方头像图(页.container)?.getAttribute('src')).toBe('https://cdn.example.com/c.png');
+    // 坏图回退取原始姓名首字（缺名 = 「·」），绝不取「候选人姓名暂未提供」或 C-07 的首字
+    fireEvent.error(对方头像图(页.container)!);
+    expect(对方头像图(页.container)).toBeNull();
+    expect(对方头像字(页.container)).toBe('·');
+  });
+
+  it('本轮缺图缺名：头像为「·」，绝不拿 alias 代真名首字', async () => {
+    环境({
+      role: 'recruiter',
+      P5详情: { 'p5:detail:recruiter:mc_3003': 披露身份详情({ name: null, 头像: null }) },
+      消息: 双方消息,
+    });
+    const 页 = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await waitFor(() => expect(screen.getByText('候选人姓名暂未提供')).toBeTruthy());
+    expect(对方头像图(页.container)).toBeNull();
+    expect(对方头像字(页.container)).toBe('·');
+  });
+
+  it('换 URL 整点重挂重新尝试加载（失败状态不粘住新图）', async () => {
+    环境({
+      P5详情: { 'p5:detail:candidate:mc_3003': 发布人档案详情({ 姓名: '林澈', 头像: 'https://cdn.example.com/p.png' }) },
+      消息: 双方消息,
+    });
+    const 页 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await waitFor(() => expect(对方头像图(页.container)?.getAttribute('src')).toBe('https://cdn.example.com/p.png'));
+    fireEvent.error(对方头像图(页.container)!);
+    expect(对方头像图(页.container)).toBeNull();
+    // 对方头像换新 URL（如服务端替换头像）：重挂重新加载，不沿用旧失败状态
+    mock应用状态.后端状态.P5详情['p5:detail:candidate:mc_3003']
+      = 发布人档案详情({ 姓名: '林澈', 头像: 'https://cdn.example.com/p2.png' });
+    页.rerender(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await waitFor(() => expect(对方头像图(页.container)?.getAttribute('src')).toBe('https://cdn.example.com/p2.png'));
+  });
+
+  it('删图/换账号：旧图与失败状态一并清掉，回落本人首字，绝不串图', async () => {
+    环境({ 求职头像: '/api/v1/me/avatar/content?v=7', 消息: 双方消息 });
+    const 页 = render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await waitFor(() => expect(我方头像图(页.container)?.getAttribute('src')).toBe('/api/v1/me/avatar/content?v=7'));
+    fireEvent.error(我方头像图(页.container)!);
+    expect(我方头像字(页.container)).toBe('沈');
+    // 账号切换清空账号资料（求职头像 → null）：旧图 URL 不再出现在页面任何位置
+    mock应用状态.状态.求职头像 = null;
+    页.rerender(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    expect(我方头像图(页.container)).toBeNull();
+    expect(页.container.querySelector('img[src="/api/v1/me/avatar/content?v=7"]')).toBeNull();
+    expect(我方头像字(页.container)).toBe('沈');
+    // 换成另一账号的图：整点重挂显示新账号的图（不残留旧失败态）
+    mock应用状态.状态.求职头像 = '/api/v1/me/avatar/content?v=9';
+    页.rerender(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await waitFor(() => expect(我方头像图(页.container)?.getAttribute('src')).toBe('/api/v1/me/avatar/content?v=9'));
+  });
+
+  it('源码合同：Backend 行对侧镜像净空按 32px 调整；不 import Mock 演示人像', () => {
+    // 我方头像 26 → 32 后，对方侧让出 32+gap9=41（原 35）；我方侧不变（对方头像 32+9）
+    expect(真人会话css源码).toMatch(/\.我方消息行 \.对侧留白 \{\s*max-width: calc\(100% - 41px\);/);
+    expect(真人会话css源码).toMatch(/\.对方消息行 \.对侧留白 \{\s*max-width: calc\(100% - 41px\);/);
+    // Step 4：绝不拿演示人像填 Backend 缺图 —— 本屏不 import Mock 数据
+    expect(Backend真人会话tsx源码).not.toContain('模拟数据');
   });
 });

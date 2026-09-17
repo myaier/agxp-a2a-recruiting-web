@@ -9,11 +9,17 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+// 仓库既有 readFileSync 读 CSS 源码的合同模式（见 聊天气泡.test.tsx）：jsdom 不做
+// 版式，头像几何走源码合同，Task 6 浏览器再证明尺寸与长消息几何
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import 直聊会话 from './直聊会话';
 import 样式 from './直聊会话.module.css';
 // 仓库既有的 ?raw 源码合同模式（Backend 隐藏分支必须在源里真实存在）
 import 直聊会话tsx源码 from './直聊会话.tsx?raw';
-import { 取直聊对象 } from '../数据/模拟数据';
+import { 取直聊对象, 我的信息 } from '../数据/模拟数据';
+
+const 直聊会话css源码 = readFileSync(join(process.cwd(), 'src', '屏幕', '直聊会话.module.css'), 'utf8');
 
 const mock派发 = vi.fn();
 const mock返回 = vi.fn();
@@ -149,5 +155,36 @@ describe('直聊会话 · Mock 原型行为原样', () => {
     await 用户.click(screen.getByRole('button', { name: '发送' }));
     expect(screen.getByText('今天下午方便电话')).toBeTruthy();
     expect(mock派发).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 3：真人消息 32px 头像的 Mock 同步（Spec §3）──────────────────────────
+// Mock 与 Backend 共用 直聊会话.module.css 的同一套真人头像类：32×32 圆形、我方
+// 26px/2px 偏移退役、镜像气泡净空按 32px 调整。Mock 无授权图源 —— 字标回退即同规则，
+// 不造演示人像（Backend 缺图也绝不借 Mock 人像填充）。
+describe('直聊会话 · 真人消息头像 32px 同步（Spec §3）', () => {
+  it('Mock 消息条双方头像沿用同一套真人头像类，字标回退且无演示人像', () => {
+    const { container } = 渲染('mock');
+    expect(container.querySelector(`.${样式.我头像}`)?.textContent).toBe(我的信息.首字);
+    expect(container.querySelector(`.${样式.对方头像}`)?.textContent).toBe(对方.首字);
+    expect(container.querySelector(`.${样式.我头像} img`)).toBeNull();
+    expect(container.querySelector(`.${样式.对方头像} img`)).toBeNull();
+  });
+
+  it('源码合同：我方 26px/2px 偏移退役、统一 32px 圆形、镜像净空按 32px 调整', () => {
+    const 我头像块 = 直聊会话css源码.match(/\.我头像 \{[\s\S]*?\}/)?.[0] ?? '';
+    expect(我头像块).not.toBe('');
+    expect(我头像块).toContain('width: 32px');
+    expect(我头像块).toContain('height: 32px');
+    expect(我头像块).toContain('border-radius: 50%');
+    // 26px 尺寸与 2px 下移退役（注释里的历史记录不算尺寸）
+    expect(我头像块).not.toMatch(/(width|height):\s*26px/);
+    expect(我头像块).not.toContain('margin-top');
+    // 我方气泡：右头像列 40（头像32+gap8）+ 左净空 41（对方头像32+gap9）
+    expect(直聊会话css源码).toContain('max-width: calc(100% - 81px)');
+    // 时间戳让开 32+8
+    expect(直聊会话css源码).toContain('margin-right: 40px');
+    // 对方头像保持 32px；列表 46px 容器不在本文件
+    expect(直聊会话css源码).toMatch(/\.对方头像 \{[^}]*width: 32px/);
   });
 });

@@ -34,9 +34,11 @@ import { 路径 } from '../../路由/路径表';
 import { use应用状态 } from '../../状态/应用状态';
 import { P7范围键, 取P7错误文案 } from '../../状态/后端/真人会话操作';
 import { use真人会话资料 } from './use真人会话资料';
+import { 取姓名首字, 非空 } from '../消息列表展示/会话资料映射';
 import type { P7角色, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type { P7发送结果, P7分页快照, P7详情快照 } from '../../状态/后端/类型';
 import type { PDF对象租约 } from '../../数据/PDF对象租约';
+import type { BFF招聘方档案 } from '../../数据/BFF契约';
 
 /** conversation_started 的固定中性系统行文案（spec §5.3，不伪造用户或未读）。 */
 const 系统行文案 = '双方已确认意向，现在可以直接沟通';
@@ -67,6 +69,15 @@ const 重试键样式: CSSProperties = {
   background: 'var(--浅灰底)', color: 'var(--正文)', fontSize: 12.5,
 };
 
+/** 招聘方档案头像的展示地址：avatar_url 拼当前 revision 作缓存戳（与候选账号头像
+ *  commit 时的 ?v= 同一机制）—— 替换头像后 revision 前进 → URL 变化 → 重新加载，
+ *  不命中旧图缓存；缺 URL 恒 null（回退首字字标，不造图）。 */
+function 招聘档案头像地址(档案: BFF招聘方档案 | null): string | null {
+  if (档案 === null) return null;
+  const 地址 = 非空(档案.avatar_url);
+  return 地址 === null ? null : `${地址}?v=${档案.revision}`;
+}
+
 /** Backend 访问无参 Mock 路由时的 fail-closed 视图：不读默认 J-01/A-01。 */
 export function 会话不可用() {
   const { 返回 } = use导航();
@@ -85,11 +96,18 @@ export function 会话不可用() {
 export default function Backend真人会话({ 角色: role, conversationId }: { 角色: P7角色; conversationId: string }) {
   const { 返回, 跳转 } = use导航();
   const { 后端状态, 操作, 状态 } = use应用状态();
-  // 我方头像只复用当前登录身份已有资料（候选 = 基本信息真名，招聘 = 档案公开名），
-  // 缺失用中性占位 —— 绝不用对方名字，也不把「会」当双方已知姓名（Spec §11.2）。
-  const 我首字 = (
-    role === 'candidate' ? 状态?.基本信息?.真名 : 状态?.招聘方档案?.public_name
-  )?.trim().charAt(0) || '·';
+  // 我方头像（Spec §3）：只复用当前登录身份已有资料 —— 候选 = 账号头像（commit 时已带
+  // ?v=revision 缓存戳；mount 水合与入口无关，直达会话同样可用），招聘 = 档案 avatar_url
+  // 按当前 revision 组同样的缓存戳（替换头像后 revision 前进 → URL 变化 → 重新加载）。
+  // 图片缺失/加载失败回退本人真实姓名首字（取姓名首字：trim 后首个 Unicode 码点，缺名
+  // 「·」）—— 绝不用对方名字、占位文案或 Mock 演示人像（Spec §11.2 + §3）。
+  const 招聘档案: BFF招聘方档案 | null = 状态?.招聘方档案 ?? null;
+  const 我方头像URL = role === 'candidate'
+    ? 状态?.求职头像 ?? null
+    : 招聘档案头像地址(招聘档案);
+  const 我首字 = 取姓名首字(
+    (role === 'candidate' ? 状态?.基本信息?.真名 : 招聘档案?.public_name) ?? null,
+  );
   const 详情键 = P7范围键.详情(role, conversationId);
   const 消息键 = P7范围键.消息(role, conversationId);
   const 详情快照: P7详情快照 | undefined = 后端状态.P7会话详情[详情键];
@@ -435,6 +453,7 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
               role={role}
               对方头像URL={会话资料.对方头像URL}
               对方首字={会话资料.对方首字}
+              我方头像URL={我方头像URL}
               我首字={我首字}
             />
           ))}
@@ -502,19 +521,22 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
 /** 单条消息行（Spec §11.5）：user_text 按 senderRole 对齐（本端右 / 对端左，
  *  data-侧 供回归断言），共用 聊天气泡（短气泡贴合内容、长文不撑破）+ 安全
  *  markdown 聊天正文；时间取该条 createdAt 本地时区格式化，两条消息各用各的时间。
- *  conversation_started 渲染固定中性系统胶囊。头像：对方用已授权身份资料
- *  （无图中性占位），我方只复用当前登录身份已有资料 —— 绝不从 Mock 姓名取首字。 */
+ *  conversation_started 渲染固定中性系统胶囊。头像（Spec §3）：双方 32px 同一套
+ *  真人头像类 —— 有授权图先渲染图（有图无名仍图），缺失/加载失败回退各自真实姓名
+ *  首字；我方只复用当前登录身份已有资料，绝不从 Mock 姓名取首字。 */
 function 消息行({
   行,
   role,
   对方头像URL,
   对方首字,
+  我方头像URL,
   我首字,
 }: {
   行: P7消息;
   role: P7角色;
   对方头像URL: string | null;
   对方首字: string;
+  我方头像URL: string | null;
   我首字: string;
 }) {
   if (行.kind === 'conversation_started') {
@@ -534,22 +556,34 @@ function 消息行({
         气泡类名={真人会话样式.对侧留白}
         头像={
           我方 ? (
-            <span className={共用样式.我头像}>{我首字}</span>
-          ) : 对方头像URL !== null ? (
-            <span className={共用样式.对方头像}>
-              <img
-                src={对方头像URL}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
-              />
-            </span>
+            <消息头像 key={我方头像URL ?? '我方'} URL={我方头像URL} 首字={我首字} 类名={共用样式.我头像} />
           ) : (
-            <span className={共用样式.对方头像}>{对方首字}</span>
+            <消息头像 key={对方头像URL ?? '对方'} URL={对方头像URL} 首字={对方首字} 类名={共用样式.对方头像} />
           )
         }
       >
         <聊天正文 内容={行.content} 格式="markdown" 类名={共用样式.气泡文字} />
       </聊天气泡>
     </div>
+  );
+}
+
+/** 32px 会话消息头像（Spec §3）：URL 在场先渲染授权图（objectFit cover、继承圆形），
+ *  加载失败回退真实姓名首字字标。调用方以 URL 为 key 挂载 —— 换图/删图/换账号/
+ *  换会话即整点重挂：失败状态与旧图不跨身份残留，新 URL 必然重新尝试加载。 */
+function 消息头像({ URL, 首字, 类名 }: { URL: string | null; 首字: string; 类名: string }) {
+  const [加载失败, 设加载失败] = useState(false);
+  if (URL === null || 加载失败) {
+    return <span className={类名}>{首字}</span>;
+  }
+  return (
+    <span className={类名}>
+      <img
+        src={URL}
+        alt=""
+        onError={() => 设加载失败(true)}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
+      />
+    </span>
   );
 }

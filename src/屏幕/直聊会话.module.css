@@ -145,9 +145,10 @@
 }
 
 .我气泡 {
-  /* 右侧头像列 34（头像26+gap8）+ 左侧 41 净空（=对方头像32+gap9）：
-     长气泡左缘与对方气泡起点线（x57）精确同线，右缘与对方内容右缘镜像 */
-  max-width: calc(100% - 75px);
+  /* 右侧头像列 40（头像32+gap8）+ 左侧 41 净空（=对方头像32+gap9）：
+     长气泡左缘与对方气泡起点线精确同线，右缘与对方内容右缘镜像
+     （Spec §3：双方统一 32px 后镜像净空同步调整，原 26px 时代为 75px） */
+  max-width: calc(100% - 81px);
   background: var(--气泡绿);
   border-radius: 14px 14px 3px 14px;
   padding: 10px 13px;
@@ -170,23 +171,24 @@
 }
 
 .我头像 {
+  /* Spec §3：双方消息头像统一 32×32 圆形 —— 原 26px 圆角方与 2px 下移一并退役，
+     与 .对方头像 同尺寸同形状；底色/字色沿用我方既有识别（不动 AI 专用头像） */
   flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 13px;
-  margin-top: 2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   background: var(--墨);
   color: var(--荧光绿);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* 有头像后时间戳与气泡右缘对齐（让开头像宽度） */
+/* 有头像后时间戳与气泡右缘对齐（让开头像 32 + gap 8） */
 .时间戳带头像 {
-  margin-right: 34px;
+  margin-right: 40px;
 }
 
 .气泡文字 {
