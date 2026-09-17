@@ -481,3 +481,57 @@ describe('归约隐私设置 · 拉黑携带组织编号（Mock 同组织同步�
     expect(状态.屏蔽名单).toHaveLength(1);
   });
 });
+
+describe('创建隐私操作 · 重读隐私 迟到回执栅栏（review-r1）', () => {
+  function 门<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+
+  it('写后权威回读不被更早发起的迟到读取覆盖：旧快照回包被丢弃', async () => {
+    const R0 = 门<ReturnType<typeof 从BFF隐私>>();
+    const 写后快照: BFF隐私快照 = {
+      ...BFF隐私快照样本,
+      organization_blocks: [
+        ...BFF隐私快照样本.organization_blocks,
+        { organization_id: 'org_9', organization_display_name: '星桥乙', organization_status: 'active', source: 'manual', created_at: '2026-09-17T00:00:00Z' },
+      ],
+      revision: BFF隐私快照样本.revision + 1,
+    };
+    const 读取隐私 = vi.fn()
+      .mockReturnValueOnce(R0.promise)                       // 挂载读取 R0（未决）
+      .mockReturnValueOnce(Promise.resolve(从BFF隐私(写后快照)));  // 写后权威回读 R1
+    const 添加组织屏蔽 = vi.fn().mockResolvedValue(BFF屏蔽回执样本);
+    const deps = 创建隐私测试依赖(
+      { 添加组织屏蔽, 读取隐私 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 操作 = 创建隐私操作(deps);
+    const R0调用 = 操作.重读隐私();          // 发起 R0，先不兑现
+    await 操作.添加组织屏蔽('org_9', '手动添加');  // 写成功，回执先行提交
+    const R1 = await 操作.重读隐私();        // 写后权威回读先落地
+    expect(R1?.服务端.revision).toBe(写后快照.revision);
+    R0.resolve(从BFF隐私(BFF隐私快照样本));   // 迟到的旧快照最后回包
+    await R0调用;
+    expect(更新后的隐私快照(deps)?.revision).toBe(写后快照.revision);
+    expect(更新后的隐私快照(deps)?.organization_blocks).toHaveLength(写后快照.organization_blocks.length);
+  });
+
+  it('重读隐私 的迟到 401 不清理新账号状态（主体/会话已切换）', async () => {
+    const R0 = 门<ReturnType<typeof 从BFF隐私>>();
+    const 读取隐私 = vi.fn().mockReturnValueOnce(R0.promise);
+    const deps = 创建隐私测试依赖(
+      { 读取隐私 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 操作 = 创建隐私操作(deps);
+    const R0调用 = 操作.重读隐私();
+    deps.主体标识引用.current = 'sub_2';   // 会话切换：旧读取属于上一个主体
+    deps.会话代际.current = 2;
+    R0.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(R0调用).resolves.toBeNull();   // 失效回执按未采用收口，不清新账号
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(更新后的隐私快照(deps)?.revision).toBe(BFF隐私快照样本.revision);
+    expect(deps.设后端状态).not.toHaveBeenCalled();
+  });
+});
