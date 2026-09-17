@@ -8,7 +8,7 @@
 # `tools/dev-env.sh exec --`).
 #
 # Catalog display names (清华大学 / 计算机科学与技术 / 测试工程师 / 北京市 /
-# 软件与信息技术服务业) resolve against the LIVE catalogs at run time: run
+# 开发者工具) resolve against the LIVE catalogs at run time: run
 # the online `validate` first — a missing or ambiguous dictionary entry is an
 # honest BLOCKED, never substituted.
 #

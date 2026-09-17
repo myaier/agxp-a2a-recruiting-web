@@ -566,7 +566,7 @@ FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前�
   未实测；该 run cleanup 停 `CLEANUP_BLOCKED` 且占用保持，后继 run 无法创建。解锁
   路径归后端 owner，解锁前不得重跑或写任何通过（指南第 11 节）。
 - **已修本地问题（合同内缺陷，TDD 最小修复，Task 4 扩大范围）**：
-  `src/数据/招聘数据源/展示资料.ts` 的 `解发布人档案` 把 PublicRecrufterProfile 的
+  `src/数据/招聘数据源/展示资料.ts` 的 `解发布人档案` 把 PublicRecruiterProfile 的
   `avatar_url` 当必填键，而冻结 openapi 合同 required 仅
   `[public_name,title,personal_verification_status]`（avatar_url 可选），BFF Go 侧
   `*string omitempty` 无头像时整键缺席 → Case 详情整页 invalid_response（STG 实测

@@ -8,8 +8,9 @@ Suite `stg-matching` 在真实 STG 后端上验收**双向匹配**的 S0–S3 �
   发起方向与 S2–S3 未实测）。**两个 Case 现阶段均为 `NOT_RUN`（无 PASS）**；
   当前 STG 部署存在决定性后端阻断（第 11 节 Hub enrollment 缺失：匹配 agent
   任务全部 `hub_rejected`、受影响 run 的 cleanup 停 `CLEANUP_BLOCKED`），
-  解锁前不得重跑或写任何通过。已固化：双端真实入口文字（第 6/8 节）、
-  安全登录通道实测（第 5 节）、PDF 上传解析链、S0 人工继续与 S1 递交披露的
+  解锁前不得重跑或写任何通过。已固化：双端真实入口文字（第 6/8 节，候选
+  发起入口 §7 待实测固化）、安全登录通道实测（第 5 节）、PDF 上传解析链、
+  S0 人工继续与 S1 递交披露的
   自动/人工分界、预算与失败恢复（第 3/10 节）。
 - 2026-09-17 两项 controller 裁定已应用于材料并经在线 validate 证实（见第 2、11 节）：
   经历行业重冻为活目录叶子 `开发者工具`；项目事实以文字并入经历 description。
@@ -28,7 +29,7 @@ Suite `stg-matching` 在真实 STG 后端上验收**双向匹配**的 S0–S3 �
   与会话就绪（不发送消息）。
 - 每轮、每 Case 都用全新 run；同一 run 不承载两个 Case，也不当第二轮复用。
 - 非目标：旧 B02 Suite 的替换/解析全分支、模型输出逐字断言、匹配分或固定秒数、
-  discovery 可选功能（见第 8 节禁用清单）。
+  discovery 可选功能（见第 9 节禁用清单）。
 
 ## 2. 材料与合成基线（固定值，字节不变使用）
 
@@ -61,9 +62,10 @@ Suite `stg-matching` 在真实 STG 后端上验收**双向匹配**的 S0–S3 �
   `--print-to-pdf`（stg-onboarding 先例工具）在本机把逐字形子集字体写碎，
   PDFKit 提取时出现「SQL → S/Q/L 交错」与个别字形顶出容器的伪影。
 - **经历下的 `projects` 键必须省略**（2026-09-17 在线 validate 实测：部署侧
-  ExperienceWrite 合同拒绝内嵌 projects，报 `must_be_omitted`；本仓库
-  `case.schema.json` 允许该键属后端 schema 与部署校验器的已知不一致，裁定按在线
-  权威执行）。项目事实以上表文字形式存在于经历 description 与 PDF。
+  ExperienceWrite 合同拒绝内嵌 projects，报 `must_be_omitted`；后端 checkout 的
+  `case.schema.json` 定义该键，但其描述已自洽写明 ExperienceWrite 拒绝内嵌、
+  默认省略，schema 与部署校验器并不矛盾；矛盾仅在 scene 嵌套创建路径不可达，
+  裁定按在线权威执行）。项目事实以上表文字形式存在于经历 description 与 PDF。
 - 材料可用不等于 Case 可跑：可运行性受第 3 节准入与部署前置约束。
 
 ## 3. 生命周期与 operator 命令（每轮现场核验）
@@ -246,11 +248,12 @@ README「双向匹配 dogfood」节）：discovery 卡片的不感兴趣/收藏/
   智能硬件/制造，仅叶子可选，GB/T 名亦无）。经 controller 裁定重冻为活目录叶子
   `开发者工具`（`tax_sclwtqpzwuv2qmiyz2dcjjr74q`），在线 validate 已回执唯一解析；
   证据链（unresolved 报错、探针、目录树清单）见 Task 3 报告。
-- **`projects` 载体**：部署侧 validate 拒绝 config 内嵌 projects（`must_be_omitted`），
-  与本仓库 `case.schema.json` 的 projects 定义及后端 scene 的嵌套创建代码
-  （`stg_fixture_scene.py` 逐条创建路径在当前部署校验下不可达）不一致；裁定按
-  在线权威省略该键、事实走 description 文字。**后端侧矛盾保留本记录供向后端方
-  报告，不在前端仓库修**。
+- **`projects` 载体**：部署侧 validate 拒绝 config 内嵌 projects（`must_be_omitted`）；
+  后端 checkout 的 `case.schema.json` 定义该键，但其描述已自洽写明 ExperienceWrite
+  拒绝内嵌、默认省略，与部署校验器并不矛盾；真正待后端定夺的矛盾仅在 scene 的
+  嵌套创建代码（`stg_fixture_scene.py` 逐条创建路径在当前部署校验下不可达）。
+  裁定按在线权威省略该键、事实走 description 文字。**后端侧矛盾保留本记录供向
+  后端方报告，不在前端仓库修**。
 - 在线 validate 的能力前提是 fixture 管理面与部署健康；`preflight` 三项准入任一
   缺失即 BLOCKED，不引用旧 PASS。
 - **STG Hub enrollment 缺失（2026-09-17 实测，当前部署的决定性阻断）**：本 run
