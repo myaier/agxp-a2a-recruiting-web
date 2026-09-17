@@ -626,7 +626,7 @@ function render引导问答(选项: {
     派发: vi.fn(),
     操作: mock操作,
   };
-  render(
+  return render(
     <MemoryRouter initialEntries={[`/onboard/wizard?stage=${选项.段 === '薪资段' ? 'salary' : 'preference'}`]}>
       <引导问答 />
     </MemoryRouter>,
@@ -899,6 +899,124 @@ describe('引导问答 个人优势独立编辑（Task 4，/wizard?from=resume�
     expect(mock操作.保存个人优势).not.toHaveBeenCalled();
     expect(mock操作.保存首次意向).not.toHaveBeenCalled();
     expect(mock跳转).not.toHaveBeenCalled();
+  });
+});
+
+// ── DF-004：提取说明服从「初始化是否真正采用了有效建议」──
+// 注册流的副标说明只有两种事实态：挂载时 取个人优势预填 真把当前轮有效建议种进了
+// 空输入（且输入仍非空）→ “已根据你上传的简历预先提取…”；其余（未上传/无建议、
+// 建议空白或不可用、由已有用户文本初始化——哪怕文本恰与建议相同、用户清空）一律
+// 中性说明。来源只在挂载算一次：恢复按钮沿用原动作不回改来源，后到建议不覆盖用户
+// 文本、也不让说明误称已应用。独立编辑（Task 4）仍不带任何说明。──
+
+describe('引导问答 个人优势提取说明服从实际预填来源（DF-004）', () => {
+  const 提取说明 = '已根据你上传的简历预先提取，直接删改即可。';
+  const 中性说明 = '可以介绍你的经验、技能和擅长的事情。';
+
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock操作.保存个人优势.mockReset().mockResolvedValue(undefined);
+    mock操作.保存首次意向.mockReset().mockResolvedValue(undefined);
+    mock操作.确认候选Onboarding预填分区.mockReset();
+  });
+
+  /** 偏好段首题（硬性排除）推进到个人优势题，返回已建立的 userEvent */
+  async function 推进到个人优势题() {
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '下一步' }));
+    await waitFor(() => expect(screen.getByLabelText('个人优势')).toBeTruthy());
+    return 用户;
+  }
+
+  it('无建议（未上传）用中性说明，不声称已提取', async () => {
+    render引导问答({ 段: '偏好段' });
+    await 推进到个人优势题();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it('建议空白（全空白 summary）不种入，仍用中性说明', async () => {
+    const 轮 = readySummary();
+    轮.suggestion!.draft.summary.value = '   ';
+    render引导问答({ 段: '偏好段', 预填: 轮 });
+    await 推进到个人优势题();
+    expect(优势框().value).toBe('');
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it.each([
+    ['manual 轮', (轮: 候选预填状态) => { 轮.phase = 'manual'; }],
+    ['summary 已确认', (轮: 候选预填状态) => { 轮.confirmed.summary = true; }],
+  ])('%s 的建议不可用：中性说明', async (_名, 改) => {
+    const 轮 = readySummary();
+    改(轮);
+    render引导问答({ 段: '偏好段', 预填: 轮 });
+    await 推进到个人优势题();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it('有效建议真正作为初值应用且输入非空时显示提取说明', async () => {
+    render引导问答({ 段: '偏好段', 预填: readySummary() });
+    await 推进到个人优势题();
+    expect(优势框().value).toBe('Builds reliable synthetic systems.');
+    expect(screen.getByText(提取说明)).toBeTruthy();
+    expect(screen.queryByText(中性说明)).toBeNull();
+  });
+
+  it('已有个人优势初始化（即便文本恰与建议相同）仍属用户文本：中性说明', async () => {
+    render引导问答({ 段: '偏好段', 预填: readySummary(), 个人优势: 'Builds reliable synthetic systems.' });
+    await 推进到个人优势题();
+    expect(优势框().value).toBe('Builds reliable synthetic systems.');
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it('用户清空输入后立即回中性说明', async () => {
+    render引导问答({ 段: '偏好段', 预填: readySummary() });
+    const 用户 = await 推进到个人优势题();
+    expect(screen.getByText(提取说明)).toBeTruthy();
+    await 用户.clear(优势框());
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it('用户文本初始化后点恢复写回建议，说明仍为中性', async () => {
+    const 轮 = readySummary();
+    轮.suggestion!.draft.summary.value = '当前轮真实建议';
+    render引导问答({ 段: '偏好段', 预填: 轮, 个人优势: '用户改写' });
+    const 用户 = await 推进到个人优势题();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /恢复简历识别建议/ }));
+    expect(优势框().value).toBe('当前轮真实建议');
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    expect(screen.queryByText(提取说明)).toBeNull();
+  });
+
+  it('挂载后到达的建议不覆盖用户文本，也不让说明误称已应用', async () => {
+    const 轮 = readySummary();
+    轮.suggestion!.draft.summary.value = '后到的建议';
+    const 视图 = render引导问答({ 段: '偏好段', 个人优势: '用户先写的' });
+    await 推进到个人优势题();
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    mock应用状态.后端状态 = { 候选预填状态: 轮 };
+    视图.rerender(
+      <MemoryRouter initialEntries={['/onboard/wizard?stage=preference']}>
+        <引导问答 />
+      </MemoryRouter>,
+    );
+    expect(优势框().value).toBe('用户先写的');
+    expect(screen.getByText(中性说明)).toBeTruthy();
+    // 建议可用后恢复按钮照常出现，动作沿用原实现
+    expect(screen.getByRole('button', { name: /恢复简历识别建议/ })).toBeTruthy();
+  });
+
+  it('独立编辑（from=resume）不带任何说明', () => {
+    render个人优势编辑({ 个人优势: '存量优势', 预填: readySummary() });
+    expect(screen.queryByText(提取说明)).toBeNull();
+    expect(screen.queryByText(中性说明)).toBeNull();
   });
 });
 // ── Task 5：职位与城市两模式共用各自原 Mock 展示 ──

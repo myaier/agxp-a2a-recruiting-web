@@ -65,7 +65,8 @@ export function 助手消息(
   };
 }
 
-/** 岗位推荐项（AssistantJobItem 九键闭合）。 */
+/** 岗位推荐项（AssistantJobItem 九键闭合）。safe_reasons 默认用真实已知码
+ *  （Spec §10.3 闭表内），各测试按需覆盖成完整真实样本组合。 */
 export function 岗位项(
   基础: { 岗位编号: string; 职位: string },
   覆盖: Partial<Omit<AssistantJobItem, 'job_id' | 'title'>> = {},
@@ -79,7 +80,7 @@ export function 岗位项(
     salary_upper: 40,
     salary_period: 'month',
     annual_salary_months: null,
-    safe_reasons: ['direction_match'],
+    safe_reasons: ['category_matched'],
     ...覆盖,
   };
 }

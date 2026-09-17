@@ -113,7 +113,7 @@ describe('账号资料缓存', () => {
     expect(读资料缓存(存储, 范围)).toEqual({ 当前企业关系编号: null });
   });
 
-  it('Backend 快照保留非 P1C 账号资料和可恢复组织选择', () => {
+  it('DF-014 Backend 写后 JSON 不含求职头像键，其他允许字段保持', () => {
     const setItem = vi.fn();
     const 存储 = { getItem: vi.fn(() => null), setItem, removeItem: vi.fn() };
     const 范围 = { 模式: 'backend', 环境: 'local', 账号: 'sub_1' } as const;
@@ -121,9 +121,32 @@ describe('账号资料缓存', () => {
       当前企业关系编号: null, 未认证公司声明: '', 求职头像: '章:林',
       飞书已接入: true, 企业飞书已接入: false,
     });
-    expect(JSON.parse(setItem.mock.calls[0][1])).toEqual({
-      当前企业关系编号: null, 未认证公司声明: '', 求职头像: '章:林',
+    const 落盘 = JSON.parse(setItem.mock.calls[0][1]);
+    // 头像由服务端权威接管：Backend 缓存不再持久化该字段（Mock 路径不受影响）
+    expect('求职头像' in 落盘).toBe(false);
+    expect(落盘).toEqual({
+      当前企业关系编号: null, 未认证公司声明: '',
       飞书已接入: true, 企业飞书已接入: false,
+    });
+  });
+
+  it('DF-014 Backend 旧缓存的头像脏值（null/URL/data URL）读后不含头像键，Mock 仍保留', () => {
+    for (const 脏值 of [null, '/api/v1/me/avatar/content?v=1', 'data:image/png;base64,AAAA']) {
+      const 存储 = {
+        getItem: vi.fn(() => JSON.stringify({ 当前企业关系编号: 'aff_1', 求职头像: 脏值 })),
+        setItem: vi.fn(), removeItem: vi.fn(),
+      };
+      const 读出 = 读资料缓存(存储, { 模式: 'backend', 环境: 'stg', 账号: 'sub_1' });
+      expect(读出).toEqual({ 当前企业关系编号: 'aff_1' });
+      expect('求职头像' in 读出).toBe(false);
+    }
+    // Mock 演示路径照旧：本地头像缓存照常读写
+    const Mock存储 = {
+      getItem: vi.fn(() => JSON.stringify({ 求职头像: 'data:image/png;base64,AAAA' })),
+      setItem: vi.fn(), removeItem: vi.fn(),
+    };
+    expect(读资料缓存(Mock存储, { 模式: 'mock', 环境: 'stg', 账号: 'demo' })).toEqual({
+      求职头像: 'data:image/png;base64,AAAA',
     });
   });
 
@@ -142,7 +165,8 @@ describe('账号资料缓存', () => {
       setItem: vi.fn(), removeItem: vi.fn(),
     };
     const 快照 = 读资料缓存(存储, { 模式: 'backend', 环境: 'local', 账号: 'sub_1' });
-    expect(快照).toEqual({ 当前企业关系编号: 'aff_1', 求职头像: null });
+    // DF-014：求职头像不再随 Backend 缓存恢复，其余允许键不受影响
+    expect(快照).toEqual({ 当前企业关系编号: 'aff_1' });
     expect('当前意向编号' in 快照).toBe(false);
   });
 

@@ -4,10 +4,13 @@
 
 import { expect, test } from '../fixtures/test';
 import { 信封 } from '../fixtures/bff/协议';
-import { 装P4候选, 装P5候选, 装P5双角色, 断言核心页无横向溢出, hash直达 } from '../fixtures/数据源交互';
+import { 装P4候选, 装P5候选, 装P5招聘, 装P5双角色, 断言核心页无横向溢出, hash直达 } from '../fixtures/数据源交互';
 import { P4编号, P4标记, P4发现fixture, type P4发现fixture形 } from '../fixtures/bff/发现推荐';
 import { P2新附件, 创建P2附件fixture, type P2附件fixture形 } from '../fixtures/bff/附件';
-import { P5连续ID, P5编号, P5标记, P5连续编号, 创建P5MatchCasefixture, type P5MatchCasefixture形 } from '../fixtures/bff/MatchCase';
+import {
+  P5连续ID, P5编号, P5标记, P5连续编号, 创建P5MatchCasefixture,
+  type P5Case记录形, type P5MatchCasefixture形,
+} from '../fixtures/bff/MatchCase';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // J-PILOT-01 连续委托接线 @backend（Task 7）：既有本地浏览器 fixture 的跨页面消费与
@@ -460,5 +463,116 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     await 断言核心页无横向溢出(page);
     await page.screenshot({ path: 'test-results/S0S3展示统一/bk-preCase-失败retry-320.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DF-008 dogfood 前端修复回归 @backend：双端 open → ended 跨真实生产 5 秒列表节拍，
+// 当前页在可见状态下移除终局卡；随后正常导航进历史回看。不动状态机、不清缓存、
+// 不用手动刷新代劳轮询；历史页零轮询、已载快照的刷新遵循现有合同（mutation 后
+// 已载刷新，重进不重读）。等待一律通过可观察请求/DOM 条件。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 把 open Case 推到 ended 终局：与 fixture 路由 P5终局化 同一组权威字段（wire 由
+ *  Case 记录动态求值，active 集合移除、历史集合新增都在权威侧发生）。 */
+function 终局化(c: P5Case记录形): void {
+  c.lifecycle = 'ended';
+  c.status = 'ended';
+  c.step = 'complete';
+  c.outcome = 'user_ended';
+  c.outcomeCode = 'user_ended';
+  c.finalizedAt = '2026-08-29T04:00:00Z';
+  c.updatedAt = c.finalizedAt;
+  c.终局 = { stage: c.stage, outcome: 'user_ended', reason_summary: 'user_ended', finalized_at: c.finalizedAt };
+  c.候选 = { needsAction: false, actions: [] };
+  c.招聘 = { needsAction: false, actions: [] };
+  c.协同 = undefined;
+}
+
+test.describe('DF-008 dogfood 回归 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('DF-008 候选：跨生产 5 秒节拍移除终局卡，首次进入历史回看 ended 记录 @backend @dogfood-frontend', async ({ page }) => {
+    const 请求序: string[] = [];
+    const fixture = await 装P5候选(page, {
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 15_000 });
+    const active读取数 = () =>
+      请求序.filter((项) => 项 === 'GET /api/v1/me/negotiations?shelf=active&limit=50').length;
+    const 首载数 = active读取数();
+
+    // 权威 active/open 集合改变：丁 open → ended（连续记录随 Case 动态落入历史集合）
+    终局化(fixture.cases[P5编号.丁]!);
+
+    // 不手动刷新：等下一次真实 5 秒列表节拍请求，页面随之移除该卡
+    await expect.poll(() => active读取数(), { timeout: 15_000 }).toBeGreaterThan(首载数);
+    await expect(page.getByText(P5标记.丁职位名)).toHaveCount(0, { timeout: 5_000 });
+
+    // 首次进入历史：真实 shelf=history 读取（dev StrictMode 首挂双跑，只认「确有新读取」），
+    // ended 记录可见且无处理中徽标
+    const 进历史前历史读取数 = 请求序.filter((项) => 项.startsWith('GET /api/v1/me/negotiations?shelf=history')).length;
+    await hash直达(page, '/#/archived');
+    await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('已结束', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('代理处理中')).toHaveCount(0);
+    await expect(page.getByText('需要你')).toHaveCount(0);
+    expect(请求序.filter((项) => 项.startsWith('GET /api/v1/me/negotiations?shelf=history')).length)
+      .toBeGreaterThan(进历史前历史读取数);
+  });
+
+  test('DF-008 招聘：预先访问历史后跨生产节拍移除终局卡，历史快照遵循现有合同零轮询 @backend @dogfood-frontend', async ({ page }) => {
+    const 请求序: string[] = [];
+    const fixture = await 装P5招聘(page, {
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await expect(page.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 15_000 });
+    const open读取数 = () =>
+      请求序.filter((项) => 项.startsWith('GET /api/v1/recruiter/match-cases?')).length;
+    const history读取数 = () =>
+      请求序.filter((项) => 项.startsWith('GET /api/v1/recruiter/match-cases/history?')).length;
+
+    // 预先访问历史：两架各自真实读取（ended=戊 / completed=己）
+    await hash直达(page, '/#/hr/archived');
+    await expect(page.getByText(P5标记.戊职位名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P5标记.己职位名)).toBeVisible({ timeout: 10_000 });
+    const 预访问历史数 = history读取数();
+    // dev StrictMode 首挂双跑会让冷读取翻倍：只认「两架都真实读过」
+    expect(预访问历史数).toBeGreaterThanOrEqual(2);
+
+    // 返回当前页：已载快照原样（缓存合同），open 卡在场
+    await hash直达(page, '/#/hr');
+    await expect(page.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 15_000 });
+    const 返回后open数 = open读取数();
+
+    // 权威集合改变：甲 open → ended，历史 ended 架新增甲
+    终局化(fixture.cases[P5编号.甲]!);
+    fixture.历史顺序.ended = [P5编号.甲, P5编号.戊];
+
+    // 页面保持可见，跨至少一次真实生产 5 秒节拍：当前卡移除（无手动刷新代劳）
+    await expect.poll(() => open读取数(), { timeout: 15_000 }).toBeGreaterThan(返回后open数);
+    await expect(page.getByText(P5标记.现职.甲)).toHaveCount(0, { timeout: 5_000 });
+
+    // 再进历史：已载快照遵循现有合同 —— 历史零轮询、重进不重读，既有 ended/completed
+    // 记录仍可读、无处理中徽标；服务端新增的终局记录不经清缓存强行可见
+    //（该合同由「历史读取数不变 + 既有记录仍可读」钉住）。
+    await hash直达(page, '/#/hr/archived');
+    await expect(page.getByText(P5标记.戊职位名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(P5标记.己职位名)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('代理处理中')).toHaveCount(0);
+    await expect(page.getByText('需要你')).toHaveCount(0);
+    // 历史页无定时请求：缺席证明窗跨一个完整 5 秒节拍周期（与既有「S0 观察期零写」
+    // 同款观察法 —— 不是等待条件，是断言窗口内 P5 域零请求）
+    const 观察窗前 = 请求序.length;
+    await page.waitForTimeout(5_500);
+    expect(请求序.slice(观察窗前).filter((项) => 项.includes('/match-cases') || 项.includes('/negotiations')))
+      .toEqual([]);
+    expect(history读取数()).toBe(预访问历史数);
   });
 });

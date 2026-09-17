@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import 真人会话操作栏 from './真人会话操作栏';
@@ -185,23 +185,87 @@ describe('双盲边界', () => {
   });
 });
 
-// ── P7 Task 4：判别联合属性 —— Backend 只带主项按下（导航/取件回调），不带联系方式 ──
-describe('P7 判别联合属性', () => {
-  it('Backend：无联系方式时不渲染电话/微信；主项按下直接回调，不盖层', async () => {
+// ── P7 Backend 增量（Spec §11.3/§11.4）：联系方式缺失占位 + 主项开关回调 + 授权占位禁用 ──
+describe('P7 Backend 增量', () => {
+  it('联系方式占位：电话/微信入口在场，展开显示「暂未提供」，无号码无复制动作', async () => {
     const 用户 = userEvent.setup();
-    const 主项按下 = vi.fn();
+    const 写剪贴板 = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: 写剪贴板 },
+      configurable: true,
+    });
     render(
       <真人会话操作栏
         主项名="看职位"
         主项图标={<span />}
-        主项按下={主项按下}
+        主项内容={<p>岗位正文占位</p>}
+        联系方式占位
       />
     );
-    expect(screen.queryByRole('button', { name: '电话' })).toBeNull();
-    expect(screen.queryByRole('button', { name: '微信' })).toBeNull();
+    expect(screen.getByRole('button', { name: '电话' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '微信' })).toBeTruthy();
     expect(screen.queryByText('138 0013 2046')).toBeNull();
-    await 用户.click(screen.getByRole('button', { name: '看职位' }));
-    expect(主项按下).toHaveBeenCalledTimes(1);
+
+    await 用户.click(screen.getByRole('button', { name: '电话' }));
+    expect(screen.getByText('电话暂未提供')).toBeTruthy();
+    // 占位是纯说明行：没有可点的复制控件，不写剪贴板
+    expect(screen.queryByRole('button', { name: /复制/ })).toBeNull();
+    await 用户.click(screen.getByText('电话暂未提供'));
+    expect(写剪贴板).not.toHaveBeenCalled();
+
+    // 互斥：点微信换下去
+    await 用户.click(screen.getByRole('button', { name: '微信' }));
+    expect(screen.getByText('微信暂未提供')).toBeTruthy();
+    expect(screen.queryByText('电话暂未提供')).toBeNull();
+  });
+
+  it('主项禁用：缺授权坐标时入口占位禁用，点击不开层、不触发打开回调', async () => {
+    const 用户 = userEvent.setup();
+    const 打开 = vi.fn();
+    render(
+      <真人会话操作栏
+        主项名="看职位"
+        主项图标={<span />}
+        主项内容={<p>岗位正文占位</p>}
+        主项禁用
+        主项打开={打开}
+        联系方式占位
+      />
+    );
+    const 键 = screen.getByRole('button', { name: '看职位' }) as HTMLButtonElement;
+    expect(键.disabled).toBe(true);
+    await 用户.click(键);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(打开).not.toHaveBeenCalled();
+  });
+
+  it('主项打开在层打开时回调一次；继续沟通与 Escape 关层都回调 主项关闭（租约回收时机归调用方）', async () => {
+    const 用户 = userEvent.setup();
+    const 打开 = vi.fn();
+    const 关闭 = vi.fn();
+    render(
+      <真人会话操作栏
+        主项名="看简历"
+        主项图标={<span />}
+        主项内容={<p>{简历正文占位}</p>}
+        主项打开={打开}
+        主项关闭={关闭}
+        联系方式占位
+      />
+    );
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    expect(打开).toHaveBeenCalledTimes(1);
+    expect(关闭).not.toHaveBeenCalled();
+    expect(screen.getByText(简历正文占位)).not.toBeNull();
+
+    await 用户.click(screen.getByRole('button', { name: '继续沟通' }));
+    expect(关闭).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Escape 路径同样回收
+    await 用户.click(screen.getByRole('button', { name: '看简历' }));
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    expect(关闭).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

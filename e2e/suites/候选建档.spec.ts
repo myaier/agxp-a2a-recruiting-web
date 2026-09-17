@@ -7,6 +7,9 @@ import { 装三级职位目录桩, 抽屉搜企业并选中, 走向导薪资 } f
 import { 标记 } from '../fixtures/bff/账号与目录';
 import { P3标记, P3隐私fixture, P3默认组织库 } from '../fixtures/bff/隐私与实名';
 import { 创建候选OnboardingFixture } from '../fixtures/bff/候选建档';
+import { P2限制, P2时间, P2新附件 } from '../fixtures/bff/附件';
+import { P4深克隆 } from '../fixtures/bff/发现推荐';
+import { 信封 } from '../fixtures/bff/协议';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,5 +266,273 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     expect(fixture.mutations.some((条) => 条.path.includes('/catalog/'))).toBe(false);
     // 角色偏好已落 candidate：reload 直接进主壳而非身份选择页
     expect(fixture.主体.last_used_role).toBe('candidate');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DF-002 dogfood 前端修复回归 @backend：PDF 预填两条缺公司/行业的工作经历在折叠卡上
+// 可发现（「待补充：…」行）；点顶部保存不发无效总保存，直接进入第一条不完整经历的
+// 既有编辑页并聚焦首错控件、字段旁可见提示；经既有 公司抽屉 + 行业目录 交互补齐后
+// 提示实时重算、下一次保存定位下一条，全部补齐后走既有成功流程，两条经历按所选
+// canonical ID 逐条提交。上传复用既有 fixture/覆盖能力（合成 PDF，不建新解析器）：
+// P2 附件 wire 的三个 ID 由覆盖改写成 resume-prefill.v1 冻结 grammar（rf_/rfv_/rp_
+// + 32 位十六进制，否则前端对 parse-result 的坐标预检会按 invalid_request 拒读），
+// parse-result 应答给出本用例的两条缺项建议。
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DF2文件ID = 'rf_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
+const DF2版本ID = 'rfv_b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a1';
+const DF2解析ID = 'rp_c3d4e5f6a7b8c9d0e1f2a3b4c5d6a1b2';
+
+/** value/confidence 同空的标量（其余分区全部留空，不影响旅程其它页的建议应用） */
+const DF2空标量 = { value: null, confidence: null };
+
+/** 两条缺公司/行业的 resume-prefill.v1 建议：第一条公司原文缺失，第二条公司原文在而缺组织 ID。 */
+function DF2建议wire() {
+  return {
+    schema_version: 'resume-prefill.v1',
+    source: { file_id: DF2文件ID, version_id: DF2版本ID, parse_id: DF2解析ID },
+    draft: {
+      profile: {
+        real_name: DF2空标量, work_start_year: DF2空标量, status: DF2空标量,
+        current_education: DF2空标量, graduation_year: DF2空标量, gender: DF2空标量,
+        birth_year: DF2空标量, birth_month: DF2空标量,
+      },
+      summary: DF2空标量,
+      skills: [],
+      experiences: [
+        {
+          company: { value: null, confidence: null },
+          industry: { source_name: { value: 'Software', confidence: 'medium' }, resolution: 'unresolved', match: null },
+          title: { value: 'Fixture 预填工程师甲', confidence: 'high' },
+          start_month: { value: '2021-07', confidence: 'high' },
+          end_month: DF2空标量,
+          description: DF2空标量,
+          internship: { value: false, confidence: 'high' },
+          projects: [],
+        },
+        {
+          company: { value: 'Fixture 乙公司原文', confidence: 'high' },
+          industry: { source_name: { value: 'Finance', confidence: 'medium' }, resolution: 'unresolved', match: null },
+          title: { value: 'Fixture 预填工程师乙', confidence: 'high' },
+          start_month: { value: '2020-03', confidence: 'high' },
+          end_month: DF2空标量,
+          description: DF2空标量,
+          internship: { value: false, confidence: 'high' },
+          projects: [],
+        },
+      ],
+      educations: [],
+      certificates: [],
+    },
+    warnings: [
+      { field_path: 'draft.experiences[0].company', reason: 'missing_required' },
+      { field_path: 'draft.experiences[0].industry', reason: 'catalog_unresolved' },
+      { field_path: 'draft.experiences[1].industry', reason: 'catalog_unresolved' },
+    ],
+  };
+}
+
+test.describe('DF-002 dogfood 回归 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('DF-002 预填缺项卡可发现、保存定位首错并聚焦，补齐后完成建档保存 @backend @dogfood-frontend', async ({ page }) => {
+    // 完整注册旅程 + 上传解析轮询（3 秒一读）+ 建档保存：给足预算
+    test.setTimeout(240_000);
+
+    const fixture = 创建候选OnboardingFixture();
+    // 合同 C：经历公司走 公司选择抽屉 —— 搜索池给默认组织库，选中按稳定 ID 回填
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+
+    // 合成附件（借 P2 附件 fixture 的 wire 形，ID 改写成冻结 grammar）；上传前清单为空
+    //（权威库里已有的行绝不被认领/替换），上传后清单 GET 按 P2 状态机同拍推进解析。
+    const 附件 = P2新附件(1, 'candidate.pdf', Buffer.from('%PDF-1.7\nfixture\n'));
+    附件.file_id = DF2文件ID;
+    附件.current_version.version_id = DF2版本ID;
+    let 已上传 = false;
+    let 附件清单读取 = 0;
+    let 建议送达数 = 0;
+
+    await 安装BFF路由(page, {
+      记录目录请求: () => {},
+      登录尝试id: 'att-df002-001',
+      候选OnboardingFixture: fixture,
+      隐私fixture: 隐私,
+      覆盖: {
+        'POST /api/v1/me/resume-files': () => {
+          已上传 = true;
+          return { status: 201, 响应: 信封(P4深克隆(附件)) };
+        },
+        'GET /api/v1/me/resume-files': () => {
+          if (!已上传) return { status: 200, 响应: 信封({ items: [], limits: P2限制 }) };
+          附件清单读取 += 1;
+          附件.current_version.parse = 附件清单读取 === 1
+            ? ({ status: 'pending', updated_at: P2时间 } as const)
+            : 附件清单读取 === 2
+              ? ({ status: 'processing', updated_at: P2时间 } as const)
+              : ({ status: 'succeeded', parse_id: DF2解析ID, updated_at: P2时间 } as const);
+          return { status: 200, 响应: 信封({ items: [P4深克隆(附件)], limits: P2限制 }) };
+        },
+        [`GET /api/v1/me/resume-files/${DF2文件ID}/parse-result`]: () => {
+          建议送达数 += 1;
+          return { status: 200, 头: { 'Cache-Control': 'no-store' }, 响应: 信封(DF2建议wire()) };
+        },
+      },
+    });
+    const 次数 = (方法: string, 路径: string) =>
+      fixture.mutations.filter((条) => 条.method === 方法 && 条.path === 路径).length;
+
+    // 期望职位页需要真实三级目录才能选叶子并点亮保存
+    await 装三级职位目录桩(page);
+
+    // ── 1. 身份选择 → 完善资料：上传合成 PDF，等解析完成与建议读取送达 ──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/identity$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '我要找工作' }).click();
+    await expect(page).toHaveURL(/#\/student$/, { timeout: 30_000 });
+    await page.locator('input[type=file]').setInputFiles({
+      name: 'candidate.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nfixture\n'),
+    });
+    await expect(page.getByText('允许 AI 识别这份简历？')).toBeVisible();
+    await page.getByRole('button', { name: '同意并继续' }).click();
+    // 解析轮推进（上传横幅即状态表）：激活 → arming/waiting_parse「正在识别简历」
+    // → 权威解析 succeeded → 建议读取 → ready「已识别，将填写空白项」
+    await expect(page.getByText('正在识别简历')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('已识别，将填写空白项')).toBeVisible({ timeout: 30_000 });
+    // 送达自证：parse-result 覆盖确实应答了（防覆盖静默失效）
+    await expect.poll(() => 建议送达数, { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+
+    // ── 2. 完善资料其余选择（同既有候选建档旅程口径）──
+    await page.getByRole('button', { name: '已毕业' }).click();
+    await page.getByRole('button', { name: '社招全职' }).click();
+    await expect(page.getByRole('button', { name: '社招全职' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '选择工作城市' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/city$/);
+    await page.getByPlaceholder('搜索城市 / 省份').fill('fixture');
+    await expect(page.getByRole('button', { name: 标记.城市display, exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 标记.城市display, exact: true }).click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+
+    await page.getByRole('button', { name: '选择期望职位' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/job$/);
+    const 职位键 = page.getByRole('button', { name: 标记.职位display });
+    await expect(职位键.first()).toBeVisible({ timeout: 10_000 });
+    await expect(职位键).toHaveCount(1, { timeout: 10_000 });
+    await 职位键.click();
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/student$/);
+
+    await expect(page.getByRole('button', { name: '现场' })).toHaveAttribute('aria-pressed', 'false');
+    await page.getByRole('button', { name: '现场' }).click();
+    await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
+
+    // ── 3. 薪资向导 → 档案四连页（预填轮 ready，下一步不被离页门拦）──
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/wizard\?stage=salary$/);
+    await 走向导薪资(page);
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/basic$/);
+    await page.getByPlaceholder('身份证上的名字').fill('Fixture 候选人');
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/status$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '在职 · 考虑机会' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+    await expect(page).toHaveURL(/#\/onboard\/degree$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '本科' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    await expect(page).toHaveURL(/#\/onboard\/school$/, { timeout: 15_000 });
+    await page.getByPlaceholder('学校名称').fill('fixture');
+    await expect(page.getByText(标记.学校display)).toBeVisible({ timeout: 10_000 });
+    await page.getByText(标记.学校display).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    await expect(page).toHaveURL(/#\/onboard\/major$/, { timeout: 15_000 });
+    await page.getByPlaceholder('专业名称').fill('fixture');
+    await expect(page.getByRole('button', { name: 'Fixture 专业', exact: true })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Fixture 专业', exact: true }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    await expect(page).toHaveURL(/#\/onboard\/eduyears$/, { timeout: 15_000 });
+    await page.getByRole('button', { name: '入学年和毕业年' }).click();
+    const 年抽屉 = page.getByRole('dialog', { name: '就读时间段' });
+    await 年抽屉.getByRole('listbox', { name: '入学年' }).getByRole('option', { name: '2020', exact: true }).click();
+    await 年抽屉.getByRole('listbox', { name: '毕业年' }).getByRole('option', { name: '2024', exact: true }).click();
+    await 年抽屉.getByRole('button', { name: '确定' }).click();
+    await page.getByRole('button', { name: '下一步' }).click();
+
+    // ── 4. 在线简历：两条预填经历折叠卡可发现具体缺项 ──
+    await expect(page).toHaveURL(/#\/experience$/, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: '在线简历' })).toBeVisible();
+    await expect(page.getByText('待补充：公司、行业')).toBeVisible();
+    await expect(page.getByText('待补充：请从目录选择公司、行业')).toBeVisible();
+
+    // ── 5. 点顶部保存：不发无效总保存，直接进第一条编辑页并聚焦首错「公司」──
+    const 首存前写入数 = fixture.mutations.length;
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    const 公司行 = page.getByRole('button').filter({ hasText: '公司名称' });
+    await expect(公司行).toBeVisible();
+    await expect(公司行).toBeFocused();
+    // 不自动弹目录；字段旁提示可见；打开的是第一条（解析职位甲）
+    await expect(page.getByRole('dialog', { name: '选择企业' })).toHaveCount(0);
+    await expect(page.getByText('待补充：公司')).toBeVisible();
+    await expect(page.getByText('待补充：行业')).toBeVisible();
+    await expect(page.getByPlaceholder('必填')).toHaveValue('Fixture 预填工程师甲');
+    expect(fixture.mutations.length).toBe(首存前写入数);
+
+    // ── 6. 既有目录交互补齐第一条：提示实时消失 ──
+    await 公司行.click();
+    await 抽屉搜企业并选中(page, '磐石', P3标记.手动组织甲);
+    await page.getByRole('button', { name: '所属行业' }).click();
+    await page.getByRole('button', { name: 'Fixture 行业', exact: true }).click();
+    await expect(page.getByText('待补充：公司')).toHaveCount(0);
+    await expect(page.getByText('待补充：行业')).toHaveCount(0);
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+    // 列表重算：第一条不再提示，第二条仍可发现
+    await expect(page.getByText('待补充：请从目录选择公司、行业')).toBeVisible();
+    await expect(page.getByText('待补充：公司、行业')).toHaveCount(0);
+
+    // ── 7. 下一次保存定位下一条；补齐后既有成功流程放行 ──
+    const 次存前写入数 = fixture.mutations.length;
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    const 公司行2 = page.getByRole('button').filter({ hasText: '公司名称' });
+    await expect(公司行2).toBeVisible();
+    await expect(公司行2).toBeFocused();
+    // 第二条公司原文在而缺组织 ID：提示明确选择目录；解析字段原样保留
+    await expect(page.getByText('请从目录选择公司')).toBeVisible();
+    await expect(page.getByPlaceholder('必填')).toHaveValue('Fixture 预填工程师乙');
+    expect(fixture.mutations.length).toBe(次存前写入数);
+
+    await 公司行2.click();
+    await 抽屉搜企业并选中(page, '磐石', P3标记.手动组织甲);
+    await page.getByRole('button', { name: '所属行业' }).click();
+    await page.getByRole('button', { name: 'Fixture 行业', exact: true }).click();
+    await page.getByRole('button', { name: '完成', exact: true }).click();
+
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible({ timeout: 20_000 });
+
+    // ── 8. 断言：被拦的两次保存零写入；最终保存按所选 canonical ID 逐条提交 ──
+    expect(次数('POST', '/api/v1/me/resume/experiences')).toBe(2);
+    const 经历写入们 = fixture.mutations.filter(
+      (条) => 条.method === 'POST' && 条.path === '/api/v1/me/resume/experiences',
+    );
+    for (const 写 of 经历写入们) {
+      expect(写.body).toMatchObject({
+        organization_id: 'org-fixture-p3-manual-a',
+        industry_id: 'ind-fixture-001',
+      });
+    }
+    expect(经历写入们.map((写) => (写.body as { title: string }).title))
+      .toEqual(['Fixture 预填工程师甲', 'Fixture 预填工程师乙']);
+    expect(经历写入们.map((写) => (写.body as { start_month: string }).start_month))
+      .toEqual(['2021-07', '2020-03']);
+    // 建档相关保存仍在场：profile 恰一次；建议的技能/证书分区为空且页面未新增，
+    // 分区 diff 无写入（PATCH skills / POST certificates 均为 0，非缺陷）
+    expect(次数('PATCH', '/api/v1/me/resume/profile')).toBe(1);
+    expect(次数('PATCH', '/api/v1/me/resume/skills')).toBe(0);
+    expect(次数('POST', '/api/v1/me/resume/certificates')).toBe(0);
   });
 });

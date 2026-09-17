@@ -158,6 +158,46 @@ describe('解职位资料', () => {
   });
 });
 
+// DF-005：发布人头像键缺席只在该对象边界归一成 null；显式 undefined/坏值/未知键/
+// 其余必需键缺席仍按契约漂移拒绝，共享样本默认值不改。
+describe('DF-005 发布人头像缺席归一化', () => {
+  const { avatar_url: _省略, ...缺头像档案 } = BFF安全职位资料样本.publisher_profile!;
+  const 归一档案 = { ...BFF安全职位资料样本.publisher_profile, avatar_url: null };
+
+  it('省略 avatar_url 键：解职位资料整包解码成功且头像归一为 null', () => {
+    const 解出 = 解职位资料({ ...BFF安全职位资料样本, publisher_profile: 缺头像档案 });
+    expect(解出.publisher_profile).toEqual(归一档案);
+  });
+
+  it('显式 null 与合法字符串仍原样保留', () => {
+    expect(解职位资料(BFF安全职位资料样本).publisher_profile?.avatar_url).toBeNull();
+    expect(解职位资料({
+      ...BFF安全职位资料样本,
+      publisher_profile: { ...BFF安全职位资料样本.publisher_profile, avatar_url: 'https://cdn.example.com/p.png' },
+    }).publisher_profile?.avatar_url).toBe('https://cdn.example.com/p.png');
+  });
+
+  it.each([
+    ['显式 undefined 不视作缺席', { avatar_url: undefined }],
+    ['数字头像', { avatar_url: 3 }],
+    ['对象头像', { avatar_url: { url: 'https://cdn.example.com/p.png' } }],
+    ['未知键', { extra: 1 }],
+  ] as const)('%s仍按契约漂移拒绝', (_label, 覆盖) => {
+    expect(() => 解职位资料({ ...BFF安全职位资料样本, publisher_profile: { ...缺头像档案, ...覆盖 } }))
+      .toThrowError(expect.objectContaining(契约漂移));
+  });
+
+  it.each([
+    ['缺 public_name', 'public_name'],
+    ['缺 title', 'title'],
+    ['缺 personal_verification_status', 'personal_verification_status'],
+  ] as const)('头像缺席之外%s仍按契约漂移拒绝', (_label, 键) => {
+    const { [键]: _再省略, ...更缺 } = 缺头像档案;
+    expect(() => 解职位资料({ ...BFF安全职位资料样本, publisher_profile: 更缺 }))
+      .toThrowError(expect.objectContaining(契约漂移));
+  });
+});
+
 describe('解候选在线简历', () => {
   it('完整七键样本逐字段原样解码', () => {
     expect(解候选在线简历(BFF候选在线简历样本)).toEqual(BFF候选在线简历样本);

@@ -19,8 +19,10 @@ export interface 资料缓存范围 {
 
 /**
  * P1C：字段全部可选 —— Backend 白名单快照只带 服务端尚未接管 的键
- * （当前企业关系编号/未认证公司声明/求职头像/飞书已接入/企业飞书已接入）；
+ * （当前企业关系编号/未认证公司声明/飞书已接入/企业飞书已接入）；
  * 企业认证/招聘头像/公司LOGO/公司自述 已被 P1C 服务端事实取代，只走 Mock 路径。
+ * DF-014：求职头像同样由服务端权威接管（account-profile 水合 + 上传回读），
+ * Backend 缓存不持久化也不恢复，只走 Mock 路径。
  * Mock migration 仍显式补齐全量旧字段。
  */
 export interface 资料缓存快照 {
@@ -28,6 +30,7 @@ export interface 资料缓存快照 {
   企业认证?: { 姓名: string; 公司: string; 职务?: string };
   招聘头像?: string | null;
   公司LOGO?: string | null;
+  /** 仅 Mock 本地演示持久化；Backend 由服务端权威水合，缓存不落盘、不恢复（DF-014）。 */
   求职头像?: string | null;
   飞书已接入?: boolean;
   企业飞书已接入?: boolean;
@@ -129,7 +132,9 @@ export function 读资料缓存(存储: 资料缓存存储 | null, 范围: 资�
     if (是企业认证(值.企业认证)) 快照.企业认证 = 值.企业认证;
     if (是招聘头像(值.招聘头像)) 快照.招聘头像 = 值.招聘头像;
     if (是招聘头像(值.公司LOGO)) 快照.公司LOGO = 值.公司LOGO;
-    if (是求职头像(值.求职头像)) 快照.求职头像 = 值.求职头像;
+    // DF-014：Backend 读缓存忽略求职头像 —— 旧缓存里的 null、旧 URL 或旧本地图片
+    // 都不得进应用状态覆盖服务端权威值；Mock 演示路径照常保留。
+    if (范围.模式 === 'mock' && 是求职头像(值.求职头像)) 快照.求职头像 = 值.求职头像;
     if (typeof 值.飞书已接入 === 'boolean') 快照.飞书已接入 = 值.飞书已接入;
     if (typeof 值.企业飞书已接入 === 'boolean') 快照.企业飞书已接入 = 值.企业飞书已接入;
     if (是先问偏好(值.求职先问偏好)) 快照.求职先问偏好 = 值.求职先问偏好;
@@ -156,7 +161,11 @@ export function 读资料缓存(存储: 资料缓存存储 | null, 范围: 资�
 export function 写资料缓存(存储: 资料缓存存储 | null, 范围: 资料缓存范围, 快照: Partial<资料缓存快照>): boolean {
   if (!存储) return false;
   try {
-    存储.setItem(资料缓存键(范围), JSON.stringify(快照));
+    // DF-014：Backend 缓存边界不落求职头像（服务端权威所有物）；Mock 路径不受影响。
+    const 落盘: Partial<资料缓存快照> = 范围.模式 === 'backend'
+      ? (() => { const { 求职头像: _服务端所有物, ...其余 } = 快照; return 其余; })()
+      : 快照;
+    存储.setItem(资料缓存键(范围), JSON.stringify(落盘));
     return true;
   } catch {
     return false;

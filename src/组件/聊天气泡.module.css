@@ -1,0 +1,163 @@
+/* 聊天气泡 公共展示样式（Spec §11.5）：只管行向/头像槽/气泡列/时间与正文排版，
+   业务端差（求职/招聘字体档、市场卡消费者等）由调用方的 类名/气泡类名 叠加。
+   时间样式参考 阶段对话流.module.css 的匿名初筛 A2A 口径：10px、最弱色、气泡外下方。 */
+
+/* ── 行：对方头像在左、我方头像在右 ── */
+.对方,
+.我方 {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.我方 {
+  justify-content: flex-end;
+}
+
+/* 头像槽不参与压缩；尺寸与视觉由调用方头像自带 */
+.头像槽 {
+  flex: none;
+  display: flex;
+}
+
+/* ── 气泡列：气泡 + 气泡外下方时间。列是纵向 flex，时间不强迫气泡横向拉伸 ── */
+.气泡列 {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.我方 .气泡列 {
+  align-items: flex-end;
+}
+
+/* ── 气泡：短句抱内容（fit-content 不 grow），长文到上限换行、无空格串不撑破。
+   默认外观即产品令牌：左白底描边左上切角 / 右气泡绿右下切角（Spec §11.5） ── */
+.气泡 {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: 4px 14px 14px 14px;
+  padding: 10px 13px;
+}
+
+.我方 .气泡 {
+  background: var(--气泡绿);
+  border: none;
+  border-radius: 14px 14px 3px 14px;
+}
+
+/* 宽内容（AI 带 cards 的简报容器）显式伸展回整列 */
+.宽内容 {
+  align-self: stretch;
+}
+
+/* ── 时间：气泡外下方，字号/弱化色/间距参考 A2A 时间样式 ── */
+.时间 {
+  font-size: 10px;
+  color: var(--最弱);
+  margin-top: 3px;
+  padding: 0 3px;
+}
+
+/* ── 正文 · 纯文本：保留原文换行 ── */
+.纯文本 {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 正文 · markdown：局部排版服从手机气泡，不用网页默认大标题；
+   所有元素选择器都锚在 .正文 下，不写全局元素 CSS ── */
+.正文 {
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.正文 p {
+  margin: 0 0 6px;
+}
+
+.正文 p:last-child {
+  margin-bottom: 0;
+}
+
+/* 标题不放大成网页档：与正文同族、只加粗与收紧间距 */
+.正文 h1,
+.正文 h2,
+.正文 h3,
+.正文 h4,
+.正文 h5,
+.正文 h6 {
+  margin: 8px 0 4px;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 700;
+}
+
+.正文 h1:first-child,
+.正文 h2:first-child,
+.正文 h3:first-child,
+.正文 h4:first-child,
+.正文 h5:first-child,
+.正文 h6:first-child {
+  margin-top: 0;
+}
+
+.正文 ul,
+.正文 ol {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.正文 li {
+  margin: 2px 0;
+}
+
+.正文 blockquote {
+  margin: 4px 0;
+  padding: 2px 10px;
+  border-left: 3px solid var(--淡绿描边2);
+  color: var(--正文);
+}
+
+.正文 code {
+  font-family: ui-monospace, Menlo, monospace;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+
+/* 代码块不撑破气泡：块内横向滚动，长行折行兜底 */
+.正文 pre {
+  margin: 4px 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.正文 pre code {
+  background: none;
+  padding: 0;
+  white-space: pre-wrap;
+}
+
+.正文 hr {
+  border: none;
+  border-top: 1px solid var(--描边);
+  margin: 8px 0;
+}
+
+.正文 a {
+  color: var(--深绿);
+}

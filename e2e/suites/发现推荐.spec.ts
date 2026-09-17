@@ -2,9 +2,12 @@
 // C6：原「P4 发现推荐域 fixture @backend / P4 Mock 数据源隔离 @mock」等价迁入。
 
 import { expect, test } from '../fixtures/test';
-import { 装P4候选, 装P4招聘, 左滑候选卡, 断言核心页无横向溢出, hash直达 } from '../fixtures/数据源交互';
+import { 装P4候选, 装P4招聘, 左滑候选卡, 断言核心页无横向溢出, 断言纵序, hash直达 } from '../fixtures/数据源交互';
 import { 信封 } from '../fixtures/bff/协议';
-import { P4编号, P4标记, P4补充编号, P4CandidateJob, P4候选卡, P4意向, P4招聘岗位, P4发现fixture } from '../fixtures/bff/发现推荐';
+import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
+import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系 } from '../fixtures/bff/招聘组织';
+import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
+import { P4编号, P4标记, P4补充编号, P4CandidateJob, P4候选卡, P4意向, P4招聘岗位, P4招聘卡, P4发现fixture } from '../fixtures/bff/发现推荐';
 import { P2新附件, 创建P2附件fixture } from '../fixtures/bff/附件';
 import { 创建P5MatchCasefixture } from '../fixtures/bff/MatchCase';
 import { type Page } from '@playwright/test';
@@ -447,16 +450,21 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
   });
 
   // ── S0–S3 展示统一 Task 7（原 S0-S3 展示统一 Backend 端用例迁入 P4 域）──
-  test('独立匿名简历 Backend canonical 深链：安全简历缺区保留标题、匹配分析缺失在位、遮蔽公司不披露 @backend @s0-s3-display', async ({ page }) => {
+  // DF-011 起：独立匿名简历 Backend 详情入口启用「推荐依据」（默认 fixture highlights
+  // 全未知 → 「暂无推荐依据」），匹配区缺失文案换成批准的「暂无逐条匹配证据」。
+  test('独立匿名简历 Backend canonical 深链：安全简历缺区保留标题、推荐依据缺失状态在位、遮蔽公司不披露 @backend @s0-s3-display', async ({ page }) => {
     await 装P4招聘(page);
     // P4 独立匿名简历只吃 canonical 双坐标深链（旧 /hr/resume/:id 在 Backend 已是失效页）
     await page.goto(`/#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}`);
     await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 20_000 });
 
-    // Task 6 已裁决的合规变化（S0–S3 展示统一）：该分支显式 完整布局 → 匹配区
-    // 标题与「匹配分析缺失」保留，不整区消失（R1）；安全来源无匹配证据不伪造分数
+    // S0–S3 展示统一（R1）：显式 完整布局 → 匹配区标题保留，不整区消失；
+    // DF-011：无逐条证据用「暂无逐条匹配证据」、全未知高亮给「暂无推荐依据」，安全来源无匹配证据不伪造分数
     await expect(page.getByText('匹配度分析')).toBeVisible();
-    await expect(page.getByText('匹配分析缺失')).toBeVisible();
+    await expect(page.getByText('暂无逐条匹配证据')).toBeVisible();
+    await expect(page.getByText('推荐依据', { exact: true })).toBeVisible();
+    await expect(page.getByText('暂无推荐依据')).toBeVisible();
+    await expect(page.getByText('distributed_systems')).toHaveCount(0);
     // 非空安全简历照旧：项目整区在（后端有项目即出）、遮蔽公司给「未披露」
     await expect(page.getByText('项目经历')).toBeVisible();
     await expect(page.getByText('P4 Fixture 项目')).toBeVisible();
@@ -547,6 +555,113 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     // 切回甲：新代际照常加载
     await page.getByRole('button', { name: 'P4 意向甲' }).click();
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
+  });
+
+  // ── DF-011：双端独立详情匹配区内联「推荐依据」──
+  test('DF-011：双端独立详情展示已有中文原因（无原码、无第二分数环、换记录清旧、直取真实缺失）@backend @dogfood-frontend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const 请求序: string[] = [];
+    const fixture = P4发现fixture();
+    // 只在本例覆盖原因数据（不改共享默认）：双端各给已知四码（带重复与未知码）；
+    // 乙 / 备选岗位没有推荐上下文 —— 用于换记录不残留与直取的真实缺失状态
+    fixture.候选推荐 = {
+      [P4编号.intention]: [P4候选卡({
+        match_reasons: ['category_matched', 'location_matched', 'category_matched', 'direction_match'],
+      })],
+    };
+    fixture.候选岗位 = {
+      ...fixture.候选岗位,
+      [P4补充编号.备选岗位]: P4CandidateJob({ job_id: P4补充编号.备选岗位, title: 'P4 Fixture 备选岗位' }),
+    };
+    fixture.招聘可用 = {
+      [P4编号.recruiterJob]: [
+        P4招聘卡({ highlights: ['category_matched', 'location_matched', 'category_matched', 'distributed_systems'] }),
+        P4招聘卡({
+          recommendation_id: P4补充编号.招聘候选乙,
+          candidate_alias: 'P4候选乙', rank: 2, match_score: 76, highlights: [],
+        }),
+      ],
+    };
+    // 双端单用例：与 装P5双角色 同一模式 —— 组织 fixture 的招聘主体起步 + 隐私 fixture
+    // （切回候选端要交互式水合，me/privacy 缺席域兜底会让整轮水合被第一错误挡住）
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-p4-df011',
+      记录目录请求: () => undefined,
+      招聘组织Fixture: 带企业关系(
+        P1C招聘组织Fixture,
+        [P1C管理员关系],
+        { [P1C标记.组织甲编号]: P1C组织甲() },
+        [P4招聘岗位()],
+      ),
+      主体初始角色: 'recruiter',
+      发现fixture: fixture,
+      隐私fixture: P3隐私fixture(),
+      // 详情直取按 hiring_organization_ref 补读公开企业：与既有 @backend 用例同一修法，
+      // 按坐标显式声明空应答（只修测试定义，不改产品）。
+      覆盖: {
+        'GET /api/v1/organizations/org-fixture-p4': () => ({ status: 200, 响应: 信封(null) }),
+      },
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+
+    // ── 招聘端：推荐列表 → 独立匿名简历 ──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '推荐', exact: true }).click();
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '查看候选画像' }).first().click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}$`));
+    await expect(page.getByText('推荐依据').first()).toBeVisible({ timeout: 15_000 });
+    // 已有中文原因上屏：重复只展示一次、原 token 不透出不猜词义
+    await expect(page.getByText('职位方向匹配')).toHaveCount(1);
+    await expect(page.getByText('工作地点匹配')).toHaveCount(1);
+    await expect(page.getByText('category_matched')).toHaveCount(0);
+    await expect(page.getByText('distributed_systems')).toHaveCount(0);
+    // 分数只有顶栏一个位置：正文无第二分数环；无逐条证据用批准缺失文案
+    await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(0);
+    await expect(page.getByText('暂无逐条匹配证据')).toBeVisible();
+    // 位置：匹配区在画像之后、个人优势之前
+    await 断言纵序(page, ['P4 本科', '匹配度分析', '职位方向匹配', '个人优势']);
+
+    // 导航另一记录（无已知原因的乙）：旧原因立即清除，不残留
+    await hash直达(page, `/#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4补充编号.招聘候选乙}`);
+    await expect(page.getByText('推荐依据').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('暂无推荐依据')).toBeVisible();
+    await expect(page.getByText('职位方向匹配')).toHaveCount(0);
+
+    // ── 切到求职端：推荐列表 → 独立职位详情 ──
+    await hash直达(page, '/#/identity?switch=1&from=hr');
+    await page.getByRole('button', { name: '翻到「求职者」那一面' }).click();
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+    await expect(page.getByText(P4标记.jobTitle).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '查看职位详情' }).first().click();
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
+    await expect(page.getByText('推荐依据').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('职位方向匹配')).toHaveCount(1);
+    await expect(page.getByText('工作地点匹配')).toHaveCount(1);
+    await expect(page.getByText('direction_match')).toHaveCount(0);
+    // 候选端核对环是唯一分数环：原因说明不新增第二个环，核对行照常
+    await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(1);
+    await 断言纵序(page, [P4标记.jobTitle, '职位方向匹配', '岗位信息与职位详情']);
+
+    // 直接详情无推荐上下文：真实缺失状态（暂无推荐依据 + 无分缺位），不借上一条记录的原因
+    await hash直达(page, `/#/job/${P4补充编号.备选岗位}`);
+    await expect(page.getByText('P4 Fixture 备选岗位').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('暂无推荐依据')).toBeVisible();
+    await expect(page.getByRole('img', { name: '匹配分未知' })).toBeVisible();
+    await expect(page.getByText('职位方向匹配')).toHaveCount(0);
+
+    // 网络中不增加推荐刷新或 Case 补读请求：Case 域只允许主壳水合的摘要读，
+    // 绝无逐 Case 详情补读；推荐刷新 POST 全程为零
+    const Case读们 = 请求序.filter((项) => 项.includes('/match-cases') || 项.includes('/negotiations'));
+    const 主壳摘要读 = new Set([
+      'GET /api/v1/me/match-cases/summary',
+      'GET /api/v1/recruiter/match-cases',
+      'GET /api/v1/me/negotiations',
+    ]);
+    for (const 读 of Case读们) expect(主壳摘要读.has(读)).toBe(true);
+    expect(请求序.filter((项) => 项.startsWith('POST') && 项.includes('refresh'))).toEqual([]);
   });
 });
 // ─────────────────────────────────────────────────────────────────────────────

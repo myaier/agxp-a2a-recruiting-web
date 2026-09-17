@@ -48,7 +48,9 @@ const 学历要求文案 = { none: '不限', associate: '大专', bachelor: '本
 // 只有本表内的码有中文展示，表外码一律不出现在页面上 —— 未知/空状态给中性文案，
 // 未知亮点直接丢弃，绝不透出原 token、拆下划线或猜含义。
 const 求职状态文案 = { employed: '在职' } as const;
-const 亮点文案 = {
+// 四项匹配亮点闭表（Spec §10.3）：助手岗位卡内中文理由与招聘卡亮点共用这一份翻译，
+// 不复制第二个表（导出给 助手匹配理由 与测试核对）。
+export const 亮点文案 = {
   category_matched: '职位方向匹配',
   experience_met: '经验要求匹配',
   location_matched: '工作地点匹配',
@@ -78,6 +80,24 @@ function 拆行(文本: string): string[] {
 export function 薪资文案(下: number, 上: number, 周期: 'month' | 'day' | 'hour'): string {
   const 单位 = 薪资单位[周期];
   return `${下}-${上}${单位 === 'K' ? 单位 : ` ${单位}`}`;
+}
+
+/** 助手岗位卡 safe_reasons → 卡内匹配理由（Spec §10.3，复用 亮点文案 闭表）：
+ *  已知码译中文并带肯定勾；未命中的机器码（完整匹配 ^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$）
+ *  不透出、不拆词猜译；空白项过滤；其他自然语言理由保留原文、作为普通说明（不加勾）。
+ *  保留传入顺序，不推导数值匹配分。 */
+export function 助手匹配理由(理由们: readonly string[]): { 文案: string; 已匹配: boolean }[] {
+  const 出: { 文案: string; 已匹配: boolean }[] = [];
+  for (const 原文 of 理由们) {
+    if (原文.trim() === '') continue;
+    if (已有键(亮点文案, 原文)) {
+      出.push({ 文案: 亮点文案[原文], 已匹配: true });
+      continue;
+    }
+    if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(原文)) continue;
+    出.push({ 文案: 原文, 已匹配: false });
+  }
+  return 出;
 }
 
 /** 开放 string 码只认闭合文案表内键（Spec §5.1：表外码不展示、不强转枚举）；空档给 null */
@@ -307,6 +327,23 @@ export function 从P4招聘候选(card: BFF招聘候选推荐 | BFF招聘推荐�
       // 摘要只在展开请求的卡上有键：默认详情/历史没有该键，视图不得伪造出 候选摘要: null
       : (card.candidate_summary === undefined ? {} : { 候选摘要: 映射招聘候选摘要(card.candidate_summary) })),
   };
+}
+
+/**
+ * DF-011 推荐依据：把当前推荐批次的原始原因码（候选 match_reasons / 招聘 highlights）
+ * 映射成双端独立详情匹配区的展示文案。只认上面 亮点文案 四码的自有键：未知开放码丢弃、
+ * 不猜词义、不透出原 token；已知原因稳定去重、保持首次出现顺序。列表卡 亮点 的既有
+ * 投影（保留重复项）不走这里 —— 两种口径并存，本函数只服务详情入口。
+ */
+export function 映射推荐依据(码们: readonly string[]): string[] {
+  const 依据们: string[] = [];
+  const 已见码 = new Set<string>();
+  for (const 码 of 码们) {
+    if (!已有键(亮点文案, 码) || 已见码.has(码)) continue;
+    已见码.add(码);
+    依据们.push(亮点文案[码]);
+  }
+  return 依据们;
 }
 
 /** BFF淘汰原因 → 展示文案（闭合四员，无表外键）。 */

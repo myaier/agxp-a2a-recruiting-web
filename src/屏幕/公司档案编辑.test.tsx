@@ -237,4 +237,24 @@ describe('公司档案编辑 · Mock 原型保持不变', () => {
       expect(screen.getByRole('button', { name: new RegExp(名) })).toBeTruthy();
     }
   });
+
+  it('行右列仍由静态档算出：计数来自档案、摘要取原文、空分区给去添加', () => {
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    // 状态.公司LOGO 为 null：基本信息六项里只差 LOGO → 5/6；福利标签与作息齐 → 2/2
+    expect(screen.getByText('5/6')).toBeTruthy();
+    expect(screen.getByText('2/2')).toBeTruthy();
+    // 单项分区填过给摘要（公司介绍取静态档简介首句截断）
+    expect(screen.getByText(/^做券商与银行的交易中台/)).toBeTruthy();
+    // 没填过的单项分区（产品介绍、团队介绍）给「去添加」
+    expect(screen.getAllByText('去添加')).toHaveLength(2);
+  });
+
+  it('点分区行跳对应分区页，与 Backend 是同一路径', async () => {
+    const 用户 = userEvent.setup();
+    render(<MemoryRouter><公司档案编辑 /></MemoryRouter>);
+    await 用户.click(screen.getByRole('button', { name: /基本信息/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.公司档案分区('basic'));
+    await 用户.click(screen.getByRole('button', { name: /公司福利/ }));
+    expect(mock跳转).toHaveBeenCalledWith(路径.公司档案分区('welfare'));
+  });
 });

@@ -1099,6 +1099,22 @@ describe('MatchCase数据源', () => {
     }, 'recruiter'))).toBe('invalid_response');
   });
 
+  it('DF-005：两端 Case 冻结 job_detail 省略发布人头像键仍整包解码，Case 坐标与状态保持', () => {
+    const { avatar_url: _头像, ...缺头像档案 } = BFF安全职位资料样本.publisher_profile!;
+    const 缺头像样本 = { ...BFF安全职位资料样本, publisher_profile: 缺头像档案 };
+    const 归一样本 = { ...缺头像样本, publisher_profile: { ...BFF安全职位资料样本.publisher_profile, avatar_url: null } };
+    const 候选 = 解P5详情({ ...候选展示详情Wire, job_detail: 缺头像样本 }, 'candidate');
+    expect(候选.jobDetail).toEqual(归一样本);
+    expect(候选.state).toMatchObject({
+      caseId: P5状态视图Wire.case_id, lifecycle: 'open', status: 'running', step: 'policy_check',
+    });
+    const 招聘 = 解P5详情({ ...招聘展示详情Wire, job_detail: 缺头像样本 }, 'recruiter');
+    expect(招聘.jobDetail).toEqual(归一样本);
+    expect(招聘.state).toMatchObject({
+      caseId: P5状态视图Wire.case_id, lifecycle: 'open', status: 'running', step: 'policy_check',
+    });
+  });
+
   it('招聘列表行与历史行解出 match_score/candidate_identity；0 分、null 评分与匿名身份合法', async () => {
     请求Mock
       .mockResolvedValueOnce(响应({ items: [招聘展开工作区项], next_cursor: null }))

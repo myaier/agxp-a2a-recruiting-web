@@ -217,6 +217,70 @@ describe('职位正文展示 · 说明分支与缺失占位（§3.2）', () => {
   });
 });
 
+// DF-011：匹配区内的「推荐依据」说明只按数据渲染 —— undefined（Mock/Case 未启用）原样、
+// []（启用但无已知原因）显示 暂无推荐依据、非空逐条展示；不重复分数环、不升级为逐条证据。
+describe('职位正文展示 · 推荐依据（DF-011）', () => {
+  const 带依据核对数据: 职位正文数据 = {
+    ...核对数据,
+    推荐依据: ['职位方向匹配', '工作地点匹配'],
+  };
+
+  it('候选有核对行时原内容保留，推荐依据同卡展示在职位名/薪资之后、JD 之前', () => {
+    const { container } = render(<职位正文展示 数据={带依据核对数据} />);
+    // 原核对内容逐项保留
+    expect(screen.getByRole('img', { name: '适配 50 分' })).toBeTruthy();
+    expect(screen.getByText('Go 主栈')).toBeTruthy();
+    expect(screen.getByText('墨句讲强项。')).toBeTruthy();
+    // 推荐依据区：标题 + 原因
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    // 顺序：薪资 → 推荐依据 →（JD 卡）职位详情标题
+    const 全文 = container.textContent ?? '';
+    expect(全文.indexOf('职位方向匹配')).toBeGreaterThan(全文.indexOf('60-80K'));
+    expect(全文.indexOf('职位详情')).toBeGreaterThan(全文.indexOf('工作地点匹配'));
+  });
+
+  it('说明分支（无推荐分缺分位）同样展示原因：不重复分数环、缺分位保留', () => {
+    render(
+      <职位正文展示
+        数据={{
+          ...说明未知数据,
+          推荐依据: ['经验要求匹配'],
+          匹配: { 种类: '说明', 分: null, 说明: ['结构化设置：已确认'] },
+        }}
+      />,
+    );
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('经验要求匹配')).toBeTruthy();
+  });
+
+  it('启用但无已知原因（[]）：显示「暂无推荐依据」，不猜词不编造', () => {
+    render(<职位正文展示 数据={{ ...核对数据, 推荐依据: [] }} />);
+    expect(screen.getByText('推荐依据')).toBeTruthy();
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+  });
+
+  it('undefined prop（Mock/Case 旧行为）完全保持：无推荐依据标题、无暂无文案', () => {
+    render(<职位正文展示 数据={核对数据} />);
+    expect(screen.queryByText('推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无推荐依据')).toBeNull();
+  });
+
+  it('有值 → 空/未启用 rerender：旧原因立即清除，不残留上一条记录的依据', () => {
+    const { rerender } = render(<职位正文展示 数据={带依据核对数据} />);
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    rerender(<职位正文展示 数据={{ ...核对数据, 推荐依据: [] }} />);
+    expect(screen.queryByText('职位方向匹配')).toBeNull();
+    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+    rerender(<职位正文展示 数据={核对数据} />);
+    expect(screen.queryByText('推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无推荐依据')).toBeNull();
+  });
+});
+
 describe('职位正文展示 · 真实媒体图位（Spec §6.1）', () => {
   const 公司图数据: 职位正文数据 = {
     ...说明未知数据,

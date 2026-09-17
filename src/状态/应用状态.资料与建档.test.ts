@@ -359,6 +359,116 @@ describe('当前意向编号 · Backend 意向编号载体', () => {
   });
 });
 
+// ── DF-014：Backend 缓存不覆盖账户头像 ──────────────────────────────────────
+// 头像以服务端 account-profile 权威回读（存求职头像）为唯一来源；会话缓存不持久化
+// 也不恢复该字段，旧缓存里的 null / 旧 URL / 旧本地图片都不得覆盖服务端值，服务端
+// 明确 null 必须清旧图，账户读取失败不得用缓存伪装权威成功。以下用例走真实
+// Provider effect/action 接线（挂载水合 → 缓存 effect 水合 → 写回），不自制 reducer 输入。
+// 注：生产接线里 缓存水合 effect 只随 主体变化触发，且发生在挂载水合完成之后 ——
+// 「缓存值先于服务端落地」的次序由归约层 DF-014 用例覆盖，这里覆盖接线真实次序。
+
+describe('应用状态提供者 DF-014 Backend 缓存不覆盖账户头像', () => {
+  const 权威头像 = '/api/v1/me/avatar/content?v=3';
+  const 旧本地图 = 'data:image/png;base64,AAAA';
+  const 范围键 = (账号: string) => 资料缓存键({ 模式: 'backend', 环境: 'stg', 账号 });
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn(), clear: vi.fn(),
+    });
+  });
+
+  function 挂载(后端: HTTP招聘数据源) {
+    let 当前!: ReturnType<typeof use应用状态>;
+    function 探针() { 当前 = use应用状态(); return null; }
+    render(createElement(
+      应用状态提供者,
+      { 数据源: { 模式: 'backend' as const, 后端环境: 'stg' as const, 后端 } },
+      createElement(探针),
+    ));
+    return () => 当前;
+  }
+
+  it('服务端头像已落、缓存水合（旧 null）后到：不覆盖权威值，写回 JSON 不含头像键', async () => {
+    globalThis.sessionStorage.setItem(范围键('sub_1'), JSON.stringify({ 求职头像: null }));
+    const 后端 = {
+      ...创建后端桩('candidate'),
+      读取候选账号档案: vi.fn(async () =>
+        ({ avatar_url: '/api/v1/me/avatar/content' as const, revision: 3, updated_at: '2026-09-01T00:00:00Z' })),
+    };
+    const 取当前 = 挂载(后端 as unknown as HTTP招聘数据源);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    // 服务端权威头像先落地
+    await waitFor(() => expect(取当前().状态.求职头像).toBe(权威头像));
+    // 缓存水合落地（资料缓存范围键 由 水合账号资料 写入）之后，旧 null 仍不得覆盖
+    await waitFor(() => expect(取当前().状态.资料缓存范围键).toBe(范围键('sub_1')));
+    expect(取当前().状态.求职头像).toBe(权威头像);
+    // Backend 写回不含头像键：该字段不再是会话缓存的所有物
+    await waitFor(() => expect(globalThis.sessionStorage.getItem(范围键('sub_1'))).not.toBe(null));
+    expect('求职头像' in JSON.parse(globalThis.sessionStorage.getItem(范围键('sub_1'))!)).toBe(false);
+  });
+
+  it('缓存里的旧本地图片同样不覆盖服务端头像', async () => {
+    globalThis.sessionStorage.setItem(范围键('sub_1'), JSON.stringify({ 求职头像: 旧本地图 }));
+    const 后端 = {
+      ...创建后端桩('candidate'),
+      读取候选账号档案: vi.fn(async () =>
+        ({ avatar_url: '/api/v1/me/avatar/content' as const, revision: 3, updated_at: '2026-09-01T00:00:00Z' })),
+    };
+    const 取当前 = 挂载(后端 as unknown as HTTP招聘数据源);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(取当前().状态.资料缓存范围键).toBe(范围键('sub_1')));
+    expect(取当前().状态.求职头像).toBe(权威头像);
+  });
+
+  it('服务端明确 null：清掉缓存里的旧本地图片', async () => {
+    globalThis.sessionStorage.setItem(范围键('sub_1'), JSON.stringify({ 求职头像: 旧本地图 }));
+    const 后端 = {
+      ...创建后端桩('candidate'),
+      读取候选账号档案: vi.fn(async () => ({ avatar_url: null, revision: 2, updated_at: '2026-09-01T00:00:00Z' })),
+    };
+    const 取当前 = 挂载(后端 as unknown as HTTP招聘数据源);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(取当前().状态.资料缓存范围键).toBe(范围键('sub_1')));
+    expect(取当前().状态.求职头像).toBeNull();
+  });
+
+  it('账户档案读取失败：不用缓存旧图伪装权威成功', async () => {
+    globalThis.sessionStorage.setItem(范围键('sub_1'), JSON.stringify({ 求职头像: 旧本地图 }));
+    const 后端 = {
+      ...创建后端桩('candidate'),
+      读取候选账号档案: vi.fn(async () => { throw new Error('network'); }),
+    };
+    const 取当前 = 挂载(后端 as unknown as HTTP招聘数据源);
+    await waitFor(() => expect(取当前().后端状态.初始化).toBe('完成'));
+    await waitFor(() => expect(取当前().状态.资料缓存范围键).toBe(范围键('sub_1')));
+    expect(取当前().状态.求职头像).toBeNull();
+  });
+
+  it('切账号不沿用旧图：A 的权威头像与 A/B 的旧缓存都不进 B', async () => {
+    globalThis.sessionStorage.setItem(范围键('sub_A'), JSON.stringify({ 求职头像: 旧本地图 }));
+    globalThis.sessionStorage.setItem(范围键('sub_B'), JSON.stringify({ 求职头像: 旧本地图 }));
+    const 后端 = {
+      ...创建后端桩('candidate'),
+      // A 本轮权威回读有头像；B 本轮权威回读明确无头像（返回类型显式标注：avatar_url 可为串或 null）
+      读取候选账号档案: vi.fn(async (): Promise<{ avatar_url: string | null; revision: number; updated_at: string | null }> =>
+        ({ avatar_url: null, revision: 1, updated_at: null })),
+    };
+    vi.mocked(后端.读取候选账号档案)
+      .mockResolvedValueOnce({ avatar_url: '/api/v1/me/avatar/content', revision: 3, updated_at: '2026-09-01T00:00:00Z' });
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_A' });
+    const 取当前 = 挂载(后端 as unknown as HTTP招聘数据源);
+    await waitFor(() => expect(取当前().状态.求职头像).toBe(权威头像));
+    // 同一 Provider 换主体登录：切账号先清空，再由 sub_B 的权威事实重建
+    vi.mocked(后端.读取主体).mockResolvedValue({ ...BFF主体样本, subject_id: 'sub_B' });
+    await 通过测试手机登录(取当前());
+    await waitFor(() => expect(取当前().后端状态.主体?.subject_id).toBe('sub_B'));
+    await waitFor(() => expect(取当前().状态.资料缓存范围键).toBe(范围键('sub_B')));
+    // B 服务端明确无头像：A 的权威头像与 A/B 的旧缓存图都不出现
+    expect(取当前().状态.求职头像).toBeNull();
+  });
+});
+
 // ── Task 2：候选当前意向选择的会话恢复（sessionStorage → 权威校验 → 落状态）──
 // 这里测的是「同一标签页 Provider 完整卸载重建」的刷新口径，不是内存里再水合一次。
 describe('应用状态提供者 候选当前意向的会话恢复', () => {

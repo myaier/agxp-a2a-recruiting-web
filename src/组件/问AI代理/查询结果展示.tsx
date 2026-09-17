@@ -1,13 +1,16 @@
-// 查询结果展示：求职端助手成功回复的固定展示组件（Plan 合同 B / Spec §4）。
-// 整条成功回复 = 无 cards 用现有 代理气泡；有 cards 用 代理气泡框 外观="求职" 简报，
-// 正文在前，三类结果按 cards 原序内嵌：岗位推荐逐项复用 求职推荐卡（Task 2 的原市场卡）、
-// 在谈列表逐项复用 求职在谈卡、在谈详情 = 同一张在谈卡 + 附属摘要段落（白卡 + 既有
-// 小节标题/正文样式），历次总结用原生 details/summary 展开，不新造手风琴。
+// 查询结果展示：求职端助手成功回复的固定展示组件（Plan 合同 B / Spec §4 + §10 展示增量）。
+// 整条成功回复 = 无 cards 用现有 代理气泡（Markdown 正文 + 消息时间）；有 cards 用
+// 代理气泡框 外观="求职" 简报（同一条 created_at 的时间只在整条气泡之后显示一次），
+// 正文在前（Markdown），其后一条结果分割线，三类结果按 cards 原序内嵌、各带中文类型标题：
+// 岗位推荐逐项复用 求职推荐卡（原市场卡 + 卡内中文匹配理由）、在谈列表逐项复用 求职在谈卡、
+// 在谈详情 = 同一张在谈卡 + 附属摘要段落（白卡 + 既有小节标题/正文样式），历次总结用原生
+// details/summary 展开，不新造手风琴。查询时间字段按协议解码保留但不在 UI 展示（§10.2）。
 // 映射纪律（Spec §4）：真实字段原样映射；DTO 合法缺失（null）出既有占位，空白文本按缺失，
 // 数组真实为空出空态；不补后端没给的招聘类型/办公方式/公司/分数/Logo/发布人，
 // 不用前端生成评语，内部标识 ID（evaluation_id/case_id/summary id）不作正文结论。
-// 薪资带复用 发现推荐映射 导出的既有 薪资文案，不另写格式化。导航与解读全走 props 回调，
-// 不读 Provider、不发请求、无状态副作用；整个回复不是点击区，可点元素都在卡/键自身。
+// 薪资带复用 发现推荐映射 导出的既有 薪资文案，匹配理由复用同一表的 助手匹配理由。
+// 导航与解读全走 props 回调，不读 Provider、不发请求、无状态副作用；
+// 整个回复不是点击区，可点元素都在卡/键自身。
 import type { ReactElement } from 'react';
 import 求职推荐卡 from '../列表卡片/求职推荐卡';
 import 求职在谈卡 from '../列表卡片/求职在谈卡';
@@ -19,7 +22,8 @@ import type {
   AssistantNegotiationItem,
   AssistantReply,
 } from '../../数据/招聘数据源/助手会话';
-import { 薪资文案 } from '../../数据/发现推荐映射';
+import { 助手匹配理由, 薪资文案 } from '../../数据/发现推荐映射';
+import { 聊天正文 } from '../聊天气泡';
 import { 代理气泡, 代理气泡框 } from './对话展示';
 import 对话样式 from './对话展示.module.css';
 import 简报样式 from './简报展示.module.css';
@@ -27,6 +31,8 @@ import 样式 from './查询结果展示.module.css';
 
 export interface 查询结果展示属性 {
   回复: AssistantReply;
+  /** 本条 AssistantMessage.created_at：整条回复的用户/Agent 两侧共用（Spec §10.4）。 */
+  时间: string;
   打开岗位: (jobId: string) => void;
   打开在谈: (recordId: string) => void;
   解读在谈: (item: AssistantNegotiationItem) => void;
@@ -57,6 +63,22 @@ const 中性发布人配色 = { 底色: '#5b7a9a', 字色: '#fff' } as const;
 /** 禁用委托槽的占位回调：委托禁用=true 时按钮不可点，回调永不触发。 */
 const 不动作 = () => undefined;
 
+// ── 后端已知卡片的中文类型标题（Spec §10.2 完整映射）：按解码后的 kind 直接映射，
+//    不根据正文/列表有无项目/下标猜测。satisfies 覆盖 AssistantCard['kind'] 全部成员，
+//    联合类型后续扩展已知成员时漏填标题会被静态检查发现；重复类型保留独立结果不合并。 ──
+const 结果标题 = {
+  job_recommendations: '推荐岗位',
+  negotiation_list: '在谈列表',
+  negotiation_detail: '在谈详情',
+} as const satisfies Record<AssistantCard['kind'], string>;
+
+/** 列表标题右侧的数量：当前返回数量（不是全库总数）；详情不伪造列表数量。 */
+function 数量文案(卡片: AssistantCard): string | null {
+  if (卡片.kind === 'job_recommendations') return `${卡片.data.items.length} 个岗位`;
+  if (卡片.kind === 'negotiation_list') return `${卡片.data.items.length} 条在谈`;
+  return null;
+}
+
 /** trim 后无有效字符的段不算已知内容（同 求职在谈卡 的缺失规则）：空白不得冒充已知值。 */
 function 已知文(值: string | null): string | null {
   return 值 !== null && 值.trim() !== '' ? 值 : null;
@@ -69,24 +91,31 @@ function 岗位可查看(项: AssistantNegotiationItem): boolean {
 
 export function 查询结果展示({
   回复,
+  时间,
   打开岗位,
   打开在谈,
   解读在谈,
   解读禁用,
 }: 查询结果展示属性): ReactElement {
-  // 无 cards（含 visibility=unavailable 的固定提示）：现有普通代理气泡，只出正文。
+  // 无 cards（含 visibility=unavailable 的固定提示）：现有普通代理气泡，只出 Markdown 正文。
   if (回复.cards.length === 0) {
-    return <代理气泡 外观="求职" 内容={回复.text} />;
+    return <代理气泡 外观="求职" 内容={回复.text} 正文格式="markdown" 时间={时间} />;
   }
   return (
-    <代理气泡框 外观="求职" 简报>
+    <代理气泡框 外观="求职" 简报 时间={时间}>
       {/* 端差挂点：简报样式的端差后代选择器要认本模块的 .求职（同 简报展示 的用法） */}
       <div className={简报样式.求职}>
-        <div className={简报样式.简报正文}>{回复.text}</div>
+        <聊天正文 内容={回复.text} 格式="markdown" 类名={简报样式.简报正文} />
+        {/* 正文与结果之间一条分割线（§10.2）：已知卡片在场才有，不孤立出现 */}
+        <hr className={样式.结果分割线} />
         {回复.cards.map((卡片, 序) => (
           <section key={`${序}-${卡片.kind}`} className={样式.结果区}>
-            {/* 查询时间取快照 queried_at，不替换为渲染时间；沿用既有 slice(0,10) 展示口径 */}
-            <span className={简报样式.简报时间}>{`查询于 ${卡片.queried_at.slice(0, 10)}`}</span>
+            <div className={样式.类型标题行}>
+              <span className={样式.类型标题}>{结果标题[卡片.kind]}</span>
+              {数量文案(卡片) !== null ? (
+                <span className={样式.类型数量}>{数量文案(卡片)}</span>
+              ) : null}
+            </div>
             <结果区
               卡片={卡片}
               打开岗位={打开岗位}
@@ -198,18 +227,8 @@ function 岗位项({
         委托禁用={true}
         委托={不动作}
         打开={() => 打开岗位(项.job_id)}
+        匹配理由={助手匹配理由(项.safe_reasons)}
       />
-      <div className={样式.附属}>
-        {项.safe_reasons.length === 0 ? (
-          <div className={样式.次要行}>暂无推荐理由</div>
-        ) : (
-          项.safe_reasons.map((理由, 序) => (
-            <div key={`${序}-${理由}`}>{理由}</div>
-          ))
-        )}
-        {/* 只读快照推导不了委托权限：委托槽保持 未委托+禁用，说明用现有次要文字样式 */}
-        <div className={简报样式.简报脚注}>请进入岗位详情操作</div>
-      </div>
     </div>
   );
 }

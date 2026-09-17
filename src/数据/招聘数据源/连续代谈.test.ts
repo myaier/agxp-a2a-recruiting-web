@@ -753,6 +753,34 @@ describe('连续代谈数据源', () => {
     expect(解NegotiationDetail(信息不足历史详情Wire).job_detail).toBe(null);
   });
 
+  it('DF-005：候选 negotiation 嵌套 Case 冻结 job_detail 省略发布人头像键仍解码，开案坐标与状态保持', () => {
+    const { avatar_url: _头像, ...缺头像档案 } = BFF安全职位资料样本.publisher_profile!;
+    const 缺头像样本 = { ...BFF安全职位资料样本, publisher_profile: 缺头像档案 };
+    const 归一样本 = { ...缺头像样本, publisher_profile: { ...BFF安全职位资料样本.publisher_profile, avatar_url: null } };
+    const 详情 = 解NegotiationDetail(连续详情Wire({
+      record_id: 案件记录ID,
+      record_kind: 'case',
+      delegation_id: null,
+      evaluation_id: null,
+      case_id: 'mc_1',
+      phase: 'case_started',
+      case_state: P5状态视图Wire,
+      case_detail: { ...P5候选详情Wire, job_detail: 缺头像样本 },
+      agent_summary: { public_evaluation: null, condition_confirmation: null },
+      evaluation: null,
+      job_detail: 缺头像样本,
+    }));
+    // 头像键缺席归一只发生在 publisher_profile 边界：开案坐标与 Case 状态原样解码
+    expect(详情.case_detail).toMatchObject({
+      role: 'candidate',
+      context: { intentionId: 意向ID },
+      state: { caseId: 'mc_1', lifecycle: 'open', status: 'running', step: 'policy_check' },
+    });
+    expect(详情.case_detail?.jobDetail).toEqual(归一样本);
+    // 详情自身 job_detail 与嵌套 Case 同批归一
+    expect(详情.job_detail).toEqual(归一样本);
+  });
+
   // ── 回执解码 ──
 
   it('retry/archive 回执逐字段闭合', () => {

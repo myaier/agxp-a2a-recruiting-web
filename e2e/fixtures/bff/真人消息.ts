@@ -1,7 +1,14 @@
 // e2e/fixtures/bff/真人消息.ts
 // P7 真人会话域 fixture（C2）：收件箱/详情/消息分页的 wire 投影与可变 fixture 工厂，
 // 从 e2e/数据源模式.spec.ts 原样迁出。可变状态归每次 安装BFF路由 所有。
+// 展示增量（Spec §11.2/§11.3）：补答会话页的三类定向补读 —— 同 Case 详情
+//（P5详情wire 复用 MatchCase 域构造器）、canonical 岗位（发布方 ref ≠ 用人企业）、
+// 公开企业与授权简历 PDF —— P7 旅程自包含，不为此激活其它域（其它域在场时仍按
+// 安装BFF路由 的固定分发顺序先行应答）。
 import { 信封, type 路由上下文形 } from './协议';
+import { P4CandidateJob, type P4CandidateJob形 } from './发现推荐';
+import { P5Case, P5详情wire, P5连续详情wire, type P5Case记录形, type P5连续记录形 } from './MatchCase';
+import { P1C企业档案 } from './招聘组织';
 
 // ── P7 真人会话域 fixture 与工厂 ──
 
@@ -16,7 +23,8 @@ import { 信封, type 路由上下文形 } from './协议';
 
 export const P7会话编号 = {
   会话: '3003',
-  案例: 'mc_p7_000000000000000000000001',
+  // 候选聚合 record_id 契约 ^(dlg_|mc_)[0-9a-f]{32}$：案例号同时充当聚合 canonical 坐标
+  案例: `mc_${'0'.repeat(28)}0771`,
   职位: 'job_00112233445566778899aabbccddeeff',
   简历: 'rf_00112233445566778899aabbccddeeff',
 } as const;
@@ -24,10 +32,22 @@ export const P7会话编号 = {
 export const P7标记 = {
   职位名: 'P7 Fixture 后端工程师',
   地点: 'P7 Fixture 市',
-  候选代号: 'candidate-p7fixture01',
+  // 們选别名契约 ^candidate-[0-9a-f]{12}$（招聘端 Case 详情 candidate_alias / P7 context 代号）
+  候选代号: 'candidate-0000000077a1',
   候选消息: 'P7 Fixture 候选：想约明天下午聊聊',
   招聘消息: 'P7 Fixture 招聘：可以，下午三点见',
   招聘回复: 'P7 Fixture 招聘：没问题，明天下午三点',
+} as const;
+
+/** Spec §11.2 补读数据的标记值：发布方与用人企业刻意不同（验证不张冠李戴）。 */
+export const P7资料标记 = {
+  发布人姓名: 'P7 Fixture 招聘负责人·林澈',
+  发布人职务: '招聘负责人',
+  发布方编号: 'org-p7-publisher-0001',
+  发布方名称: 'P7 Fixture 发布方猎头',
+  用人企业编号: 'org-p7-hiring-0002',
+  用人企业名: 'P7 Fixture 用人企业',
+  冻结职位说明: 'P7 Fixture 冻结职位说明：跨端协作的平台岗',
 } as const;
 
 export type P7角色词 = 'candidate' | 'recruiter';
@@ -51,6 +71,125 @@ export interface P7FixtureState {
   不存在: string[];
   /** 发送首答 503 operation_outcome_unknown（消息已落库、响应未知）：受控重试同键重放收敛一条 */
   首答未知: boolean;
+  /** Spec §11.2：caseId → Case 记录（页头身份/职位资料补读）；缺省 = P7 案例一条（disclosed + 冻结发布人档案 + 已披露可取 PDF） */
+  case们?: Record<string, P5Case记录形>;
+  /** Spec §11.2：候选端聚合读（me/negotiations）的连续记录；缺省 = P7 案例一条（case_started） */
+  连续记录?: Record<string, P5连续记录形>;
+  /** Spec §11.2：jobId → canonical 岗位（候选页头发布方公司链）；缺省 = P7 职位（发布方 ≠ 用人企业） */
+  岗位?: Record<string, P4CandidateJob形>;
+  /** Spec §11.2：orgId → 公开企业 display_name；缺省 = 发布方编号 → 发布方名称 */
+  企业?: Record<string, string>;
+}
+
+/** P7 会话案例的 Case 记录：completed 单（招聘端 candidateIdentity=disclosed 出真名；
+ *  候选端 jobDetail 带发布人档案）；已披露 = true 使授权简历 PDF 可取。 */
+export function P7案例记录(覆盖: Partial<P5Case记录形> = {}): P5Case记录形 {
+  const 案例们 = P5Case({
+    caseId: P7会话编号.案例,
+    lifecycle: 'completed',
+    stage: 'intent_confirmation',
+    status: 'passed',
+    step: 'handoff_pending',
+    职位名: P7标记.职位名,
+    alias: P7标记.候选代号,
+    createdAt: '2026-08-29T01:00:00Z',
+    updatedAt: '2026-08-29T02:00:00Z',
+    finalizedAt: '2026-08-29T02:00:00Z',
+    意向词: { candidate: 'confirm' as const, recruiter: 'confirm' as const },
+    终局: { stage: 'intent_confirmation', outcome: '', reason_summary: '', finalized_at: '2026-08-29T02:00:00Z' },
+    身份: 'disclosed',
+    已披露: true,
+    jobDetail: {
+      title: P7标记.职位名,
+      description: P7资料标记.冻结职位说明,
+      requirements: 'P7 Fixture 冻结职位要求',
+      recruitment_type: 'social_full_time',
+      category: { id: 'cat_p7', display_name: '后端开发' },
+      location: { id: 'loc_p7', display_name: P7标记.地点 },
+      office_location: 'P7 Fixture 办公地址',
+      workplace_mode: 'hybrid',
+      salary_lower: 25,
+      salary_upper: 40,
+      salary_period: 'month',
+      annual_salary_months: 15,
+      campus_cohort: null,
+      internship_months: null,
+      onsite_days_per_week: null,
+      experience_requirement: null,
+      education_requirement: '本科',
+      hard_requirements: {
+        alternate_weekend_work: 'unknown',
+        outsourcing_only: 'not_required',
+        onsite_only: 'unknown',
+        frequent_travel: 'unknown',
+      },
+      structured_requirements_confirmed: null,
+      keywords: [],
+      organization: null,
+      company_intro: null,
+      office_address: null,
+      benefit_codes: null,
+      publisher_profile: {
+        public_name: P7资料标记.发布人姓名,
+        title: P7资料标记.发布人职务,
+        personal_verification_status: 'verified',
+        avatar_url: null,
+      },
+    },
+    ...覆盖,
+  });
+  // completed 单的 S3 段摘要是真实 wire step word（同 MatchCase 域 己 样本口径）
+  案例们.阶段区们[3]!.summary = 'handoff_pending';
+  案例们.阶段区们[3]!.transcript = [
+    {
+      event_id: 'evt_p7_done', stage: 'intent_confirmation', kind: 'case_completed',
+      role: '', reason_code: 'handoff_pending', occurred_at: '2026-08-29T02:00:00Z',
+    },
+  ];
+  return 案例们;
+}
+
+/** P7 会话的 canonical 当前岗位：发布方 ref 指猎头组织、用人企业是另一家 ——
+ *  候选页头公司只能来自发布方链，绝不拿 organization/claim 替代。 */
+export function P7当前岗位(覆盖: Partial<P4CandidateJob形> = {}): P4CandidateJob形 {
+  return P4CandidateJob({
+    job_id: P7会话编号.职位,
+    title: P7标记.职位名,
+    publisher_organization_ref: P7资料标记.发布方编号,
+    hiring_organization_ref: P7资料标记.用人企业编号,
+    hiring_organization_claim: { display_name: P7资料标记.用人企业名 },
+    organization: {
+      organization_id: P7资料标记.用人企业编号,
+      display_name: P7资料标记.用人企业名,
+      industry: null,
+      company_size: null,
+      funding_stage: null,
+      logo: null,
+    },
+    ...覆盖,
+  });
+}
+
+/** P7 案例的候选连续记录（canonical = case 坐标，case_started 相位）。 */
+export function P7连续记录(): P5连续记录形 {
+  return {
+    recordId: P7会话编号.案例,
+    recordKind: 'case',
+    caseId: P7会话编号.案例,
+    delegationId: null,
+    evaluationId: null,
+    phase: 'case_started',
+    needsAction: false,
+    actions: { retry: false, archive: false, open_case: false },
+    failure: null,
+    refusalCode: null,
+    retryGeneration: 0,
+    职位名: P7标记.职位名,
+    createdAt: '2026-08-29T01:00:00Z',
+    updatedAt: '2026-08-29T02:00:00Z',
+    archivedAt: null,
+    公开评: null,
+  };
 }
 
 export function 创建P7fixture(): P7FixtureState {
@@ -62,6 +201,10 @@ export function 创建P7fixture(): P7FixtureState {
     contexts: {},
     不存在: [],
     首答未知: false,
+    case们: { [P7会话编号.案例]: P7案例记录() },
+    连续记录: { [P7会话编号.案例]: P7连续记录() },
+    岗位: { [P7会话编号.职位]: P7当前岗位() },
+    企业: { [P7资料标记.发布方编号]: P7资料标记.发布方名称 },
   };
 }
 
@@ -167,6 +310,93 @@ export async function 处理真人消息域(
       });
       return true;
     }
+  }
+
+  // ── Spec §11.2/§11.3：会话页三类定向补读（同 Case 详情 / canonical 岗位 / 公开企业）
+  //    与授权简历 PDF 内容。P7 旅程自包含作答；其它域 fixture 在场时按统一分发顺序
+  //    先行应答（本段只兜 P7-only 安装）。候选端 Case 详情走聚合 alias
+  //   （me/negotiations，case_detail 投影 P5详情）。──
+  const P7聚合匹配 = /^\/api\/v1\/me\/negotiations\/([^/]+)$/.exec(path);
+  if (P7聚合匹配 && method === 'GET') {
+    const 坐标 = decodeURIComponent(P7聚合匹配[1]!);
+    const r = P7域.连续记录?.[坐标];
+    const c = r?.caseId !== null && r !== undefined ? P7域.case们?.[r.caseId!] : undefined;
+    if (!r || !c) {
+      await route.fulfill({
+        status: 404,
+        json: { error: { type: 'negotiation_not_found', message: '记录不存在', request_id: 'p7-fixture' } },
+      });
+      return true;
+    }
+    await P7答复(200, 信封(P5连续详情wire(P7域.case们 ?? {}, r)));
+    return true;
+  }
+  const P7案例匹配 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)$/.exec(path);
+  if (P7案例匹配 && method === 'GET') {
+    const 角色: P7角色词 = P7案例匹配[1] === 'me' ? 'candidate' : 'recruiter';
+    const c = P7域.case们?.[decodeURIComponent(P7案例匹配[2]!)];
+    if (!c) {
+      await route.fulfill({
+        status: 404,
+        json: { error: { type: 'match_case_not_found', message: 'Case 不存在', request_id: 'p7-fixture' } },
+      });
+      return true;
+    }
+    await P7答复(200, 信封(P5详情wire(c, 角色)));
+    return true;
+  }
+  const P7内容匹配 = /^\/api\/v1\/(me|recruiter)\/match-cases\/([^/]+)\/resume-submission\/content$/.exec(path);
+  if (P7内容匹配 && method === 'GET') {
+    const c = P7域.case们?.[decodeURIComponent(P7内容匹配[2]!)];
+    if (!c || !c.已披露) {
+      await P7答复(409, { error: { type: 'resume_submission_not_allowed', message: '简历尚未披露' } });
+      return true;
+    }
+    await route.fulfill({
+      status: 200,
+      body: Buffer.from('%PDF-1.7\nP7 fixture raw resume\n'),
+      contentType: 'application/pdf',
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'attachment; filename="P7-Fixture-简历.pdf"',
+      },
+    });
+    return true;
+  }
+  const P7岗位匹配 = /^\/api\/v1\/jobs\/([^/]+)$/.exec(path);
+  if (P7岗位匹配 && method === 'GET') {
+    const 岗 = P7域.岗位?.[decodeURIComponent(P7岗位匹配[1]!)];
+    if (!岗) {
+      await route.fulfill({
+        status: 404,
+        json: { error: { type: 'job_not_found', message: '岗位不存在', request_id: 'p7-fixture' } },
+      });
+      return true;
+    }
+    await P7答复(200, 信封(JSON.parse(JSON.stringify(岗))));
+    return true;
+  }
+  const P7企业匹配 = /^\/api\/v1\/organizations\/([^/]+)$/.exec(path);
+  if (P7企业匹配 && method === 'GET') {
+    const 编号 = decodeURIComponent(P7企业匹配[1]!);
+    const 名称 = P7域.企业?.[编号];
+    if (名称 === undefined) {
+      await route.fulfill({
+        status: 404,
+        json: { error: { type: 'organization_not_found', message: '企业不存在', request_id: 'p7-fixture' } },
+      });
+      return true;
+    }
+    await P7答复(200, 信封({
+      organization_id: 编号,
+      legal_name: null,
+      display_name: 名称,
+      verified_at: null,
+      profile: { ...P1C企业档案(), display_name: 名称 },
+      active_verified_job_count: 0,
+    }));
+    return true;
   }
   return false;
 }
