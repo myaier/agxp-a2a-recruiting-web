@@ -394,3 +394,13 @@ Round 1：Claude Opus/high/plan，session `b978bd42-d87a-4e7d-86d3-1a5c8a9f7714`
   - `src/状态/应用状态.会话.test.ts`：冻结「应用操作公开 shape」清单需登记 `重读隐私`。
 - **Review：** 宿主内 spec（opus）+ quality（sonnet）双档；Important#1（混合场景隐私写先于简历校验）经 fix round 1 修复并由 scoped re-review 核实 ADDRESSED。递延 minor 见会话 ledger（引导文案三处复制、Mock 双去重键等，均不阻塞）。
 - **环境备注：** worktree 无 node_modules，按本分支 lockfile `npm ci` 安装（lockfile/package.json 零改动）。
+
+### Task 2 执行记录（2026-09-17）
+
+- **现场基线：** 分支 `fix/chat-recommend-display`，基于 cb0e6f34（Task 1 收口后 HEAD）。
+- **Commits：** `75547327`（契约A + 编排 hook + 单飞等待边界修复 + 三行版式，20 文件）。
+- **定向结果：** `npm test -- src/屏幕/消息列表展示/会话资料映射.test.ts src/屏幕/消息列表展示/消息行映射.test.ts src/屏幕/消息列表展示/消息列表展示.test.tsx src/屏幕/P7/use会话列表资料.test.tsx src/屏幕/P7/Backend会话列表.test.tsx src/屏幕/P7/use真人会话资料.test.tsx src/状态/后端/MatchCase操作.test.ts src/状态/后端/发现推荐操作.test.ts src/状态/后端/组织操作.test.ts` → 9 files / 451 passed；`npm run typecheck` 零错误；oxlint 改动目录零告警。消费者回归（消息列表/企业消息/Backend真人会话/会话操作/应用状态.会话/企业详情/企业代理设置/职位详情/规则库/组织/HTTP招聘数据源/发现推荐）12 files / 481 passed。
+- **TDD：** 反例先 RED（两新文件 import 失败 + 既有 7 文件 27 失败，含「读锁让路立即兑现」「迟到 401 清新会话」「资料缺名/失败文案」反例），实现后全绿。
+- **现场差异（清单内未改动的 2 项，含因果）：** `src/屏幕/消息列表.tsx`、`src/屏幕/企业消息.tsx` 无需编辑 —— Mock 行经共享 消息列表展示 自动获得三行版式，副标题语义由既有 fixture 承担；两文件是 Backend/Mock 分发连接层，本轮无新接线。无清单外增补文件。
+- **实现要点：** 契约A 纯映射（会话资料映射.ts）列表与详情同源；use会话列表资料 编排（available-only / role+case 去重 / ≤4 并发 / 岗位·企业本轮去重 / 翻页追加 / 失败定向重试 / 轮键=主体:role 隔离迟到回执）；操作层三方法同 key 复用真实在飞 Promise（读取详情、读取候选岗位详情）与 读取公开企业 会话栅栏+同 id 在飞表；Backend会话列表 行/搜索同源消费资料并出「部分会话资料暂不可用」重试提示。替换旧断言：招聘 detail 副标题改「投递企业 · 投递岗位」、`对方首字` 缺名回退「·」（旧「招」）、disclosed 缺名有图仍显示图（契约两字段独立）。
+- **缺口备注：** jsdom 不证明三行版式/46px 图片头像几何（Task 6 浏览器/视觉验收）；招聘端 loading 窗口仍按既有语义显示 P7 viewer-safe 标签（含代号位），资料落地/失败后绝不显示代号 —— 如需加载窗口也匿名属产品语义变更，未自行更改。
