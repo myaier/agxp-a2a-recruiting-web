@@ -52,7 +52,10 @@ const 薪资入口 = (page: Page): Locator => page.getByRole('button', { name: /
 function 采抽屉打开帧(page: Page, 入口文本: string): Promise<采样结果> {
   return page.evaluate((文本) => new Promise<采样结果>((resolve, reject) => {
     const 标题 = document.querySelector('h1');
-    const 入口 = [...document.querySelectorAll('button')].find((钮) => 钮.textContent?.includes(文本));
+    // 入口按行内文本匹配；行内只有值（如首屏薪资行）时退回可访问名（aria-label）
+    const 入口 = [...document.querySelectorAll('button')].find(
+      (钮) => 钮.textContent?.includes(文本) || 钮.getAttribute('aria-label')?.includes(文本),
+    );
     if (!标题 || !入口) {
       reject(new Error(`找不到 h1 或入口行（${文本}）`));
       return;
@@ -502,35 +505,39 @@ test.describe('年份区间抽屉（bottom-drawer 统一 Task 4）', () => {
 test.describe('薪资抽屉统一（bottom-drawer 统一 Task 5）', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  /** Mock 数据源直接进引导薪资题：默认职位/城市已选，两步「下一步」到期望薪资 */
+  /** Mock 数据源直接进求职意向首屏：薪资行是同一份「求职引导」用途的抽屉入口。
+   *  2026-09-17（Task 3 合同 C）起薪资并入首屏，独立薪资页与向导薪资段已取消 ——
+   *  本 helper 原先走 /#/wizard?stage=salary（现被替换回首屏）。 */
   async function 进引导薪资题(page: Page) {
-    await page.goto('/#/wizard?stage=salary');
-    await page.getByRole('button', { name: /保存（已选/ }).click(); // 期望职位（Mock 默认已选）
-    await page.getByRole('button', { name: /保存（已选/ }).click(); // 工作城市（Mock 默认上海）
-    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
+    await page.goto('/#/student');
+    await expect(page.getByRole('heading', { name: '完善资料' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '期望薪资', exact: true })).toBeVisible();
+    // 等首屏布局/字体稳定再取基线，避免采样撞上首次布局抖动
     await page.waitForTimeout(300);
   }
 
-  test('引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0', async ({ page }, testInfo) => {
+  test('首屏引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0', async ({ page }, testInfo) => {
     await 进引导薪资题(page);
-    const 入口 = page.getByRole('button', { name: /薪资要求（月薪/ });
-    await expect(入口).toContainText('面议');
+    // 行可访问名被 aria-label="期望薪资" 覆盖；行内值文本单独断言
+    const 入口 = page.getByRole('button', { name: '期望薪资', exact: true });
+    // 未确认时是占位：滚轮初始落点不算已填写
+    await expect(入口).toContainText('请选择');
 
-    const 结果 = await 采抽屉打开帧(page, '薪资要求');
+    const 结果 = await 采抽屉打开帧(page, '期望薪资');
     await 附采样证据(testInfo, '薪资-引导面议-390x844', 结果, page);
     断背景纹丝不动(结果);
 
-    // 面议 0/0：左轮停在面议档，右轮整列隐藏
+    // 面议 0/0 起手：左轮停在面议档，右轮整列隐藏
     const 抽屉 = page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' });
     await expect(抽屉.getByRole('listbox', { name: '薪资上限' })).toHaveCount(0);
     await expect(抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '面议' })).toHaveAttribute('aria-selected', 'true');
 
-    // 取消零回填，行仍面议
+    // 取消零回填：行仍是未确认占位
     await 抽屉.getByRole('button', { name: '取消' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(入口).toContainText('面议');
+    await expect(入口).toContainText('请选择');
 
-    // 确定写 0/0：行仍显示面议
+    // 确定写 0/0：明确面议上屏
     await 入口.click();
     await page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' }).getByRole('button', { name: '确定' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);

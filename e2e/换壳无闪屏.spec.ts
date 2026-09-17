@@ -123,8 +123,13 @@ test.describe('注册流换壳不闪中间屏', () => {
     await page.getByRole('button', { name: '产品经理', exact: true }).click();
     await page.getByRole('button', { name: '保存' }).click();
     await expect(page).toHaveURL(/#\/student$/);
-    await page.getByRole('button', { name: '下一步' }).click();
-    await expect(page.getByRole('heading', { name: '期望现金月薪是？' })).toBeVisible();
+    // 首屏薪资（合同 C）：薪资并入求职意向区域，独立薪资页与向导薪资段已取消。
+    // 这里按明确面议确定（写 0/0），「下一步」才放行。
+    const 薪资行 = page.getByRole('button', { name: '期望薪资', exact: true });
+    await 薪资行.click();
+    await page.getByRole('dialog', { name: '薪资要求(月薪，单位:千元)' }).getByRole('button', { name: '确定' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(薪资行).toContainText('面议');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await page.getByRole('button', { name: '下一步' }).click();
@@ -137,9 +142,10 @@ test.describe('注册流换壳不闪中间屏', () => {
     }
     await expect(page).toHaveURL(/#\/experience$/);
     await page.getByRole('button', { name: '保存' }).click();
+    // 补充偏好只剩一题（个人优势已随简历资料页保存），明确继续动作直接进披露说明
     await expect(page).toHaveURL(/#\/wizard$/);
+    await expect(page.getByRole('heading', { name: '哪些情况直接排除？' })).toBeVisible();
     await page.getByRole('button', { name: '下一步' }).click();
-    await page.getByRole('button', { name: '保存并继续' }).click();
     await expect(page).toHaveURL(/#\/disclosure$/);
     await page.getByRole('button', { name: '完成设置，开始匹配' }).click();
     await expect(page).toHaveURL(/#\/onboard\/avatar$/);

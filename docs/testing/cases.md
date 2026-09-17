@@ -17,7 +17,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 6104 例 · 265 文件
+## 第一层 · 单元/组件（Vitest） · 6105 例 · 265 文件
 
 ### 数据契约/映射 · 1615 例 · 54 文件
 
@@ -1863,7 +1863,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 状态 · 1289 例 · 32 文件
+### 状态 · 1290 例 · 32 文件
 
 <details>
 <summary>展开明细</summary>
@@ -2448,6 +2448,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 创建候选操作 · 经历建档恢复（合同 C） > prepared experience-create + 最新草稿已修改：原命令先重放结算，最新修改 PATCH 同一经历 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 经历建档恢复（合同 C） (> )?prepared experience-create \+ 最新草稿已修改：原命令先重放结算，最新修改 PATCH 同一经历' | 未知 |
 | 创建候选操作 · 经历建档恢复（合同 C） > prepared experience-create 槽按原 body/原幂等键重放：不再次创建已成功经历 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 经历建档恢复（合同 C） (> )?prepared experience-create 槽按原 body/原幂等键重放：不再次创建已成功经历' | 未知 |
 | 创建候选操作 · 经历建档恢复（合同 C） > 旧 company body 的槽不自动重放旧合同：抛需重新选企业文案，零 mutation，槽保留 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 经历建档恢复（合同 C） (> )?旧 company body 的槽不自动重放旧合同：抛需重新选企业文案，零 mutation，槽保留' | 未知 |
+| 创建候选操作 · 聚合链收尾的 next 基底（fix-r2） > 保存简历 紧接 保存个人优势：技能不被回退清空（next 用链后权威快照） |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 聚合链收尾的 next 基底（fix-r2） (> )?保存简历 紧接 保存个人优势：技能不被回退清空（next 用链后权威快照）' | 未知 |
 | 创建候选操作 · 首次意向身份（J-PILOT-02 Task 7） > 503 结果未知：保留 prepared 槽与原幂等键，重试复用同一把键不铸新键 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 首次意向身份（J-PILOT-02 Task 7） (> )?503 结果未知：保留 prepared 槽与原幂等键，重试复用同一把键不铸新键' | 未知 |
 | 创建候选操作 · 首次意向身份（J-PILOT-02 Task 7） > POST 201 后列表 GET 失败：ID/revision 已落草稿、槽已清，不再重复创建 |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 首次意向身份（J-PILOT-02 Task 7） (> )?POST 201 后列表 GET 失败：ID/revision 已落草稿、槽已清，不再重复创建' | 未知 |
 | 创建候选操作 · 首次意向身份（J-PILOT-02 Task 7） > 上次 PATCH 结果未知后改成新值：权威 GET 先结算旧槽，新改动照常 PATCH |  | [src/状态/后端/候选操作.test.ts](../../src/状态/后端/候选操作.test.ts) | npm test -- src/状态/后端/候选操作.test.ts -t '创建候选操作 · 首次意向身份（J-PILOT-02 Task 7） (> )?上次 PATCH 结果未知后改成新值：权威 GET 先结算旧槽，新改动照常 PATCH' | 未知 |
@@ -6183,7 +6184,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-## 第二层 · 浏览器（Playwright） · 366 例 · 26 文件
+## 第二层 · 浏览器（Playwright） · 367 例 · 26 文件
 
 ### Agent规则 · 11 例 · 1 文件
 
@@ -6422,22 +6423,22 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 展接线 Mock视觉 390 @mock > 采集 wiring-market @mock | mock | [e2e/展示字段接线.spec.ts:507](../../e2e/展示字段接线.spec.ts) | npm run test:e2e -- e2e/展示字段接线.spec.ts --project=mock --grep '展接线 Mock视觉 390 @mock 采集 wiring-market @mock' | 未知 |
 | 展接线 Mock视觉 390 @mock > 采集 wiring-resume-bottom @mock | mock | [e2e/展示字段接线.spec.ts:507](../../e2e/展示字段接线.spec.ts) | npm run test:e2e -- e2e/展示字段接线.spec.ts --project=mock --grep '展接线 Mock视觉 390 @mock 采集 wiring-resume-bottom @mock' | 未知 |
 | 展接线 Mock视觉 390 @mock > 采集 wiring-resume-top @mock | mock | [e2e/展示字段接线.spec.ts:507](../../e2e/展示字段接线.spec.ts) | npm run test:e2e -- e2e/展示字段接线.spec.ts --project=mock --grep '展接线 Mock视觉 390 @mock 采集 wiring-resume-top @mock' | 未知 |
-| 1280×900 桌面机身模式 > 1280×900 机身缩放逐帧：抽屉打开背景不跳动 | mock | [e2e/抽屉稳定性.spec.ts:277](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '1280×900 桌面机身模式 1280×900 机身缩放逐帧：抽屉打开背景不跳动' | 未知 |
-| 390×844 真手机全屏 > 390×844 已滚动页重复打开与取消：背景不二次跳动 | mock | [e2e/抽屉稳定性.spec.ts:161](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '390×844 真手机全屏 390×844 已滚动页重复打开与取消：背景不二次跳动' | 未知 |
-| 390×844 真手机全屏 > 390×844 逐帧：抽屉打开背景不跳动，焦点落取消，Escape 后焦点回薪资入口 | mock | [e2e/抽屉稳定性.spec.ts:138](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '390×844 真手机全屏 390×844 逐帧：抽屉打开背景不跳动，焦点落取消，Escape 后焦点回薪资入口' | 未知 |
-| 390×844 真手机全屏 > 长滚轮列表键盘可见：Tab 圈、滚轮方向键与 Home/End 目标可见，背景不动 | mock | [e2e/抽屉稳定性.spec.ts:197](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '390×844 真手机全屏 长滚轮列表键盘可见：Tab 圈、滚轮方向键与 Home/End 目标可见，背景不动' | 未知 |
-| 年份区间抽屉（bottom-drawer 统一 Task 4） > 390×500 短屏可达：入口行与抽屉取消键都落在视口内，Escape 可关 | mock | [e2e/抽屉稳定性.spec.ts:477](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年份区间抽屉（bottom-drawer 统一 Task 4） 390×500 短屏可达：入口行与抽屉取消键都落在视口内，Escape 可关' | 未知 |
-| 年份区间抽屉（bottom-drawer 统一 Task 4） > 390×844 逐帧：抽屉打开背景不跳动，取消零回填，确定才回填入口行 | mock | [e2e/抽屉稳定性.spec.ts:449](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年份区间抽屉（bottom-drawer 统一 Task 4） 390×844 逐帧：抽屉打开背景不跳动，取消零回填，确定才回填入口行' | 未知 |
-| 年月抽屉（picker 统一 Task 3） > 基本信息 生日抽屉：已滚动打开背景稳定，取消零写入、确定成对回填 | mock | [e2e/抽屉稳定性.spec.ts:372](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年月抽屉（picker 统一 Task 3） 基本信息 生日抽屉：已滚动打开背景稳定，取消零写入、确定成对回填' | 未知 |
-| 年月抽屉（picker 统一 Task 3） > 添加意向 毕业抽屉：缺值临时落次年6月、未来8年在档，已滚动打开取消稳定零写入 | mock | [e2e/抽屉稳定性.spec.ts:404](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年月抽屉（picker 统一 Task 3） 添加意向 毕业抽屉：缺值临时落次年6月、未来8年在档，已滚动打开取消稳定零写入' | 未知 |
-| 数字抽屉实习档位（picker 统一 Task 2） > 数字实习抽屉取消与 Escape 零写入，确定才回填 | mock | [e2e/抽屉稳定性.spec.ts:327](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '数字抽屉实习档位（picker 统一 Task 2） 数字实习抽屉取消与 Escape 零写入，确定才回填' | 未知 |
-| 数字抽屉实习档位（picker 统一 Task 2） > 数字档位只开放产品档：实习月数 1/3/6、每周到岗 2-5，岗位连续档不泄漏 | mock | [e2e/抽屉稳定性.spec.ts:301](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '数字抽屉实习档位（picker 统一 Task 2） 数字档位只开放产品档：实习月数 1/3/6、每周到岗 2-5，岗位连续档不泄漏' | 未知 |
-| 短屏 390×500 > 390×500 短屏回归：抽屉打开背景不跳动、取消与焦点恢复可用 | mock | [e2e/抽屉稳定性.spec.ts:262](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '短屏 390×500 390×500 短屏回归：抽屉打开背景不跳动、取消与焦点恢复可用' | 未知 |
-| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 岗位日薪双轮入口：开同一抽屉背景不跳动，缺值 200/200，取消零回填、确定两字段 | mock | [e2e/抽屉稳定性.spec.ts:540](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 岗位日薪双轮入口：开同一抽屉背景不跳动，缺值 200/200，取消零回填、确定两字段' | 未知 |
-| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 岗位月薪精确输入模式：入口开双轮再切金额框，Escape 关闭不回填 | mock | [e2e/抽屉稳定性.spec.ts:580](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 岗位月薪精确输入模式：入口开双轮再切金额框，Escape 关闭不回填' | 未知 |
-| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0 | mock | [e2e/抽屉稳定性.spec.ts:514](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0' | 未知 |
-| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 意向薪资短屏 390×500：抽屉可达且取消键在视口内，附件留档 | mock | [e2e/抽屉稳定性.spec.ts:614](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 意向薪资短屏 390×500：抽屉可达且取消键在视口内，附件留档' | 未知 |
-| 注册流换壳不闪中间屏 > 招聘端：发岗页 → 企业主壳，同一条时序在企业端同样不闪 | mock | [e2e/换壳无闪屏.spec.ts:167](../../e2e/换壳无闪屏.spec.ts) | npm run test:e2e -- e2e/换壳无闪屏.spec.ts --project=mock --grep '注册流换壳不闪中间屏 招聘端：发岗页 → 企业主壳，同一条时序在企业端同样不闪' | 未知 |
+| 1280×900 桌面机身模式 > 1280×900 机身缩放逐帧：抽屉打开背景不跳动 | mock | [e2e/抽屉稳定性.spec.ts:280](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '1280×900 桌面机身模式 1280×900 机身缩放逐帧：抽屉打开背景不跳动' | 未知 |
+| 390×844 真手机全屏 > 390×844 已滚动页重复打开与取消：背景不二次跳动 | mock | [e2e/抽屉稳定性.spec.ts:164](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '390×844 真手机全屏 390×844 已滚动页重复打开与取消：背景不二次跳动' | 未知 |
+| 390×844 真手机全屏 > 390×844 逐帧：抽屉打开背景不跳动，焦点落取消，Escape 后焦点回薪资入口 | mock | [e2e/抽屉稳定性.spec.ts:141](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '390×844 真手机全屏 390×844 逐帧：抽屉打开背景不跳动，焦点落取消，Escape 后焦点回薪资入口' | 未知 |
+| 390×844 真手机全屏 > 长滚轮列表键盘可见：Tab 圈、滚轮方向键与 Home/End 目标可见，背景不动 | mock | [e2e/抽屉稳定性.spec.ts:200](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '390×844 真手机全屏 长滚轮列表键盘可见：Tab 圈、滚轮方向键与 Home/End 目标可见，背景不动' | 未知 |
+| 年份区间抽屉（bottom-drawer 统一 Task 4） > 390×500 短屏可达：入口行与抽屉取消键都落在视口内，Escape 可关 | mock | [e2e/抽屉稳定性.spec.ts:480](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年份区间抽屉（bottom-drawer 统一 Task 4） 390×500 短屏可达：入口行与抽屉取消键都落在视口内，Escape 可关' | 未知 |
+| 年份区间抽屉（bottom-drawer 统一 Task 4） > 390×844 逐帧：抽屉打开背景不跳动，取消零回填，确定才回填入口行 | mock | [e2e/抽屉稳定性.spec.ts:452](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年份区间抽屉（bottom-drawer 统一 Task 4） 390×844 逐帧：抽屉打开背景不跳动，取消零回填，确定才回填入口行' | 未知 |
+| 年月抽屉（picker 统一 Task 3） > 基本信息 生日抽屉：已滚动打开背景稳定，取消零写入、确定成对回填 | mock | [e2e/抽屉稳定性.spec.ts:375](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年月抽屉（picker 统一 Task 3） 基本信息 生日抽屉：已滚动打开背景稳定，取消零写入、确定成对回填' | 未知 |
+| 年月抽屉（picker 统一 Task 3） > 添加意向 毕业抽屉：缺值临时落次年6月、未来8年在档，已滚动打开取消稳定零写入 | mock | [e2e/抽屉稳定性.spec.ts:407](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '年月抽屉（picker 统一 Task 3） 添加意向 毕业抽屉：缺值临时落次年6月、未来8年在档，已滚动打开取消稳定零写入' | 未知 |
+| 数字抽屉实习档位（picker 统一 Task 2） > 数字实习抽屉取消与 Escape 零写入，确定才回填 | mock | [e2e/抽屉稳定性.spec.ts:330](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '数字抽屉实习档位（picker 统一 Task 2） 数字实习抽屉取消与 Escape 零写入，确定才回填' | 未知 |
+| 数字抽屉实习档位（picker 统一 Task 2） > 数字档位只开放产品档：实习月数 1/3/6、每周到岗 2-5，岗位连续档不泄漏 | mock | [e2e/抽屉稳定性.spec.ts:304](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '数字抽屉实习档位（picker 统一 Task 2） 数字档位只开放产品档：实习月数 1/3/6、每周到岗 2-5，岗位连续档不泄漏' | 未知 |
+| 短屏 390×500 > 390×500 短屏回归：抽屉打开背景不跳动、取消与焦点恢复可用 | mock | [e2e/抽屉稳定性.spec.ts:265](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '短屏 390×500 390×500 短屏回归：抽屉打开背景不跳动、取消与焦点恢复可用' | 未知 |
+| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 岗位日薪双轮入口：开同一抽屉背景不跳动，缺值 200/200，取消零回填、确定两字段 | mock | [e2e/抽屉稳定性.spec.ts:547](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 岗位日薪双轮入口：开同一抽屉背景不跳动，缺值 200/200，取消零回填、确定两字段' | 未知 |
+| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 岗位月薪精确输入模式：入口开双轮再切金额框，Escape 关闭不回填 | mock | [e2e/抽屉稳定性.spec.ts:587](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 岗位月薪精确输入模式：入口开双轮再切金额框，Escape 关闭不回填' | 未知 |
+| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 意向薪资短屏 390×500：抽屉可达且取消键在视口内，附件留档 | mock | [e2e/抽屉稳定性.spec.ts:621](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 意向薪资短屏 390×500：抽屉可达且取消键在视口内，附件留档' | 未知 |
+| 薪资抽屉统一（bottom-drawer 统一 Task 5） > 首屏引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0 | mock | [e2e/抽屉稳定性.spec.ts:519](../../e2e/抽屉稳定性.spec.ts) | npm run test:e2e -- e2e/抽屉稳定性.spec.ts --project=mock --grep '薪资抽屉统一（bottom-drawer 统一 Task 5） 首屏引导面议：入口行开抽屉背景不跳动，右轮隐藏，取消零回填、确定写 0/0' | 未知 |
+| 注册流换壳不闪中间屏 > 招聘端：发岗页 → 企业主壳，同一条时序在企业端同样不闪 | mock | [e2e/换壳无闪屏.spec.ts:173](../../e2e/换壳无闪屏.spec.ts) | npm run test:e2e -- e2e/换壳无闪屏.spec.ts --project=mock --grep '注册流换壳不闪中间屏 招聘端：发岗页 → 企业主壳，同一条时序在企业端同样不闪' | 未知 |
 | 注册流换壳不闪中间屏 > 求职端：头像页 → 主壳，中间不闪注册流任何一屏，且后退退不回去 | mock | [e2e/换壳无闪屏.spec.ts:115](../../e2e/换壳无闪屏.spec.ts) | npm run test:e2e -- e2e/换壳无闪屏.spec.ts --project=mock --grep '注册流换壳不闪中间屏 求职端：头像页 → 主壳，中间不闪注册流任何一屏，且后退退不回去' | 未知 |
 | 问AI代理 Backend 320 > 固定入口与禁用外壳 candidate @agent @backend | fixture | [e2e/问AI代理展示.spec.ts:115](../../e2e/问AI代理展示.spec.ts) | npm run test:e2e -- e2e/问AI代理展示.spec.ts --project=fixture --grep '问AI代理 Backend 320 固定入口与禁用外壳 candidate @agent @backend' | 未知 |
 | 问AI代理 Backend 320 > 固定入口与禁用外壳 recruiter @agent @backend | fixture | [e2e/问AI代理展示.spec.ts:115](../../e2e/问AI代理展示.spec.ts) | npm run test:e2e -- e2e/问AI代理展示.spec.ts --project=fixture --grep '问AI代理 Backend 320 固定入口与禁用外壳 recruiter @agent @backend' | 未知 |
@@ -6487,21 +6488,21 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| P1C 招聘组织 fixture @backend > P1C 409 冲突保留公司介绍草稿并需人工再存 @backend | fixture | [e2e/suites/招聘组织.spec.ts:318](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 409 冲突保留公司介绍草稿并需人工再存 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C Organization 读取失败不回退 Mock 公司内容 @backend | fixture | [e2e/suites/招聘组织.spec.ts:439](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C Organization 读取失败不回退 Mock 公司内容 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C canonical ref 公司卡可进公开企业页，no-ref 声明卡不可点 @backend | fixture | [e2e/suites/招聘组织.spec.ts:374](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C canonical ref 公司卡可进公开企业页，no-ref 声明卡不可点 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C member 关系对公司档案只读 @backend | fixture | [e2e/suites/招聘组织.spec.ts:146](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C member 关系对公司档案只读 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C 企业媒体 multipart 带 metadata purpose，删除走 204 @backend | fixture | [e2e/suites/招聘组织.spec.ts:265](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 企业媒体 multipart 带 metadata purpose，删除走 204 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C 多 Organization 关系不自动猜测，选择后刷新恢复 @backend | fixture | [e2e/suites/招聘组织.spec.ts:100](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 多 Organization 关系不自动猜测，选择后刷新恢复 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C 409 冲突保留公司介绍草稿并需人工再存 @backend | fixture | [e2e/suites/招聘组织.spec.ts:321](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 409 冲突保留公司介绍草稿并需人工再存 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C Organization 读取失败不回退 Mock 公司内容 @backend | fixture | [e2e/suites/招聘组织.spec.ts:442](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C Organization 读取失败不回退 Mock 公司内容 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C canonical ref 公司卡可进公开企业页，no-ref 声明卡不可点 @backend | fixture | [e2e/suites/招聘组织.spec.ts:377](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C canonical ref 公司卡可进公开企业页，no-ref 声明卡不可点 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C member 关系对公司档案只读 @backend | fixture | [e2e/suites/招聘组织.spec.ts:149](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C member 关系对公司档案只读 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C 企业媒体 multipart 带 metadata purpose，删除走 204 @backend | fixture | [e2e/suites/招聘组织.spec.ts:268](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 企业媒体 multipart 带 metadata purpose，删除走 204 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C 多 Organization 关系不自动猜测，选择后刷新恢复 @backend | fixture | [e2e/suites/招聘组织.spec.ts:103](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 多 Organization 关系不自动猜测，选择后刷新恢复 @backend' | 未知 |
 | P1C 招聘组织 fixture @backend > P1C 招聘 Organization 全链路使用 HTTP fixture 且发岗 body 无可信字段 @backend | fixture | [e2e/suites/招聘组织.spec.ts:31](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 招聘 Organization 全链路使用 HTTP fixture 且发岗 body 无可信字段 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C 招聘名片保存档案与头像走 multipart 单 media part @backend | fixture | [e2e/suites/招聘组织.spec.ts:213](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 招聘名片保存档案与头像走 multipart 单 media part @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > P1C 管理员申请只在进入实名认证屏后读取 @backend | fixture | [e2e/suites/招聘组织.spec.ts:182](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 管理员申请只在进入实名认证屏后读取 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > 企业名片统一 Backend 公开页真实字段上屏、缺字段占位、岗位/导航能力不可执行 @backend | fixture | [e2e/suites/招聘组织.spec.ts:472](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 Backend 公开页真实字段上屏、缺字段占位、岗位/导航能力不可执行 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > 企业名片统一 Backend 合法空公开档案逐字段占位且真实 0 不是未知 @backend | fixture | [e2e/suites/招聘组织.spec.ts:535](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 Backend 合法空公开档案逐字段占位且真实 0 不是未知 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > 企业名片统一 Organization 读取失败只见诚实空态不见成功占位区 @backend | fixture | [e2e/suites/招聘组织.spec.ts:618](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 Organization 读取失败只见诚实空态不见成功占位区 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > 企业名片统一 名片保存失败保留输入与暂存头像并可重试 @backend | fixture | [e2e/suites/招聘组织.spec.ts:741](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 名片保存失败保留输入与暂存头像并可重试 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > 企业名片统一 名片空公开档案预览占位且未知不进输入与提交 @backend | fixture | [e2e/suites/招聘组织.spec.ts:645](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 名片空公开档案预览占位且未知不进输入与提交 @backend' | 未知 |
-| P1C 招聘组织 fixture @backend > 企业名片统一 实名只读姓名保留公开名且认证标记按事实 @backend | fixture | [e2e/suites/招聘组织.spec.ts:693](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 实名只读姓名保留公开名且认证标记按事实 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C 招聘名片保存档案与头像走 multipart 单 media part @backend | fixture | [e2e/suites/招聘组织.spec.ts:216](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 招聘名片保存档案与头像走 multipart 单 media part @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > P1C 管理员申请只在进入实名认证屏后读取 @backend | fixture | [e2e/suites/招聘组织.spec.ts:185](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend P1C 管理员申请只在进入实名认证屏后读取 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > 企业名片统一 Backend 公开页真实字段上屏、缺字段占位、岗位/导航能力不可执行 @backend | fixture | [e2e/suites/招聘组织.spec.ts:475](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 Backend 公开页真实字段上屏、缺字段占位、岗位/导航能力不可执行 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > 企业名片统一 Backend 合法空公开档案逐字段占位且真实 0 不是未知 @backend | fixture | [e2e/suites/招聘组织.spec.ts:538](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 Backend 合法空公开档案逐字段占位且真实 0 不是未知 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > 企业名片统一 Organization 读取失败只见诚实空态不见成功占位区 @backend | fixture | [e2e/suites/招聘组织.spec.ts:621](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 Organization 读取失败只见诚实空态不见成功占位区 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > 企业名片统一 名片保存失败保留输入与暂存头像并可重试 @backend | fixture | [e2e/suites/招聘组织.spec.ts:744](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 名片保存失败保留输入与暂存头像并可重试 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > 企业名片统一 名片空公开档案预览占位且未知不进输入与提交 @backend | fixture | [e2e/suites/招聘组织.spec.ts:648](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 名片空公开档案预览占位且未知不进输入与提交 @backend' | 未知 |
+| P1C 招聘组织 fixture @backend > 企业名片统一 实名只读姓名保留公开名且认证标记按事实 @backend | fixture | [e2e/suites/招聘组织.spec.ts:696](../../e2e/suites/招聘组织.spec.ts) | npm run test:e2e -- e2e/suites/招聘组织.spec.ts --project=fixture --grep 'P1C 招聘组织 fixture @backend 企业名片统一 实名只读姓名保留公开名且认证标记按事实 @backend' | 未知 |
 
 </details>
 
@@ -6606,16 +6607,17 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 简历与附件 · 15 例 · 1 文件
+### 简历与附件 · 16 例 · 1 文件
 
 <details>
 <summary>展开明细</summary>
 
 | 逻辑标题 | 执行变体（project） | 源码 | 选择坐标 | 计时 |
 | --- | --- | --- | --- | --- |
-| Onboarding简历修正 日常取消、失败与深链 @backend > 取消零写、保存失败留页可重试、深链硬刷安全替换并重读权威 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1296](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常取消、失败与深链 @backend 取消零写、保存失败留页可重试、深链硬刷安全替换并重读权威 @backend' | 未知 |
+| Onboarding简历修正 日常取消与保存失败 @backend > 取消零写、保存失败留页可重试且不返回 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1296](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常取消与保存失败 @backend 取消零写、保存失败留页可重试且不返回 @backend' | 未知 |
+| Onboarding简历修正 日常深链与硬刷 @backend > 深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1353](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常深链与硬刷 @backend 深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend' | 未知 |
 | Onboarding简历修正 日常编辑历史栈 @backend > 我→简历→编辑→保存→返回我：退一格回原简历，连续两分区编辑不留编辑页 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1220](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 日常编辑历史栈 @backend 我→简历→编辑→保存→返回我：退一格回原简历，连续两分区编辑不留编辑页 @backend' | 未知 |
-| Onboarding简历修正 空身份基本信息收口 @backend > 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1361](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 空身份基本信息收口 @backend 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend' | 未知 |
+| Onboarding简历修正 空身份基本信息收口 @backend > 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend | fixture | [e2e/suites/简历与附件.spec.ts:1405](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'Onboarding简历修正 空身份基本信息收口 @backend 空身份不进中间页：同页状态子视图保存后一起回我的简历，取消整链零写 @backend' | 未知 |
 | P2 附件简历 Backend @backend > Backend candidate owns PDF library without changing Mock visuals @backend | fixture | [e2e/suites/简历与附件.spec.ts:25](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'P2 附件简历 Backend @backend Backend candidate owns PDF library without changing Mock visuals @backend' | 未知 |
 | P2 附件简历 Backend @backend > failed resume parse requires fresh consent before retry @backend | fixture | [e2e/suites/简历与附件.spec.ts:141](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep 'P2 附件简历 Backend @backend failed resume parse requires fresh consent before retry @backend' | 未知 |
 | 候选个人优势编辑 @backend > 我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend | fixture | [e2e/suites/简历与附件.spec.ts:813](../../e2e/suites/简历与附件.spec.ts) | npm run test:e2e -- e2e/suites/简历与附件.spec.ts --project=fixture --grep '候选个人优势编辑 @backend 我的简历个人优势进编辑保存回读：刷新保持、返回零写、首次意向 POST 为零 @backend' | 未知 |

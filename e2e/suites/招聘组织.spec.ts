@@ -3,7 +3,7 @@
 // 公开页统一用例；titlePath 原样保留）。
 
 import { expect, test } from '../fixtures/test';
-import { 抽屉搜企业并选中, 走完后端发岗向导, hash直达 } from '../fixtures/数据源交互';
+import { 抽屉搜企业并选中, 走完后端发岗向导, 装三级职位目录桩, hash直达 } from '../fixtures/数据源交互';
 import { 信封 } from '../fixtures/bff/协议';
 import { P1C标记, 创建招聘方OnboardingFixture, P1C企业档案, P1C岗位, P1C招聘组织Fixture, P1C管理员关系, P1C成员关系, P1C组织甲, P1C组织乙, 带企业关系, 一像素PNG, type P1C企业档案形 } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture, P1C搜索池 } from '../fixtures/bff/隐私与实名';
@@ -44,6 +44,9 @@ test.describe('P1C 招聘组织 fixture @backend', () => {
       主体初始角色: 'recruiter',
       隐私fixture: 隐私,
     });
+    // 发布岗位的职位类别走真三级目录（一级自动展开 → 二级标题 + 三级叶子）；
+    // 走完后端发岗向导 要求调用方先装本桩
+    await 装三级职位目录桩(page);
 
     await hash直达(page, '/#/hr/card');
     await expect(page.getByRole('heading', { name: '招聘名片' })).toBeVisible({ timeout: 20_000 });

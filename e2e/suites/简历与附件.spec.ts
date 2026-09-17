@@ -1290,10 +1290,10 @@ test.describe('Onboarding简历修正 日常编辑历史栈 @backend', () => {
   });
 });
 
-test.describe('Onboarding简历修正 日常取消、失败与深链 @backend', () => {
+test.describe('Onboarding简历修正 日常取消与保存失败 @backend', () => {
   test.use({ baseURL: 'http://127.0.0.1:4182' });
 
-  test('取消零写、保存失败留页可重试、深链硬刷安全替换并重读权威 @backend', async ({ page }) => {
+  test('取消零写、保存失败留页可重试且不返回 @backend', async ({ page }) => {
     test.setTimeout(120_000);
     const fixture = 存量日常fixture();
     const 隐私 = P3隐私fixture();
@@ -1342,16 +1342,60 @@ test.describe('Onboarding简历修正 日常取消、失败与深链 @backend', 
     await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
     expect(档案写们()).toHaveLength(1);
     await expect(page.getByRole('button', { name: /姓名/ })).toContainText('存量候选·重试');
+  });
+});
 
-    // ── 深链/硬刷（本会话无来路证明）：保存后用来源固定路径安全替换，不盲退外站 ──
-    await page.goto('/#/basic?from=resume');
+// brief Step 2 明确要求「深链/硬刷用独立 Case 验证安全替换与重新读取已保存事实」，
+// 故与「取消零写 / 保存失败重试」分开成两条独立 Case（各自装配 fixture，互不依赖）。
+test.describe('Onboarding简历修正 日常深链与硬刷 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('深链与硬刷新后无来路证明：保存用来源固定路径安全替换并重新读取权威事实 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const fixture = 存量日常fixture();
+    const 隐私 = P3隐私fixture();
+    隐私.组织库 = P3默认组织库();
+    await 安装BFF路由(page, {
+      登录尝试id: 'att-onr-daily-deeplink-refresh',
+      记录目录请求: () => {},
+      候选OnboardingFixture: fixture,
+      隐私fixture: 隐私,
+    });
+    const 档案写们 = () => fixture.mutations.filter(
+      (条) => 条.method === 'PATCH' && 条.path === '/api/v1/me/resume/profile',
+    );
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
+
+    // ── 形式一：深链（新文档，本会话没有写下来路证明）。用共享 hash直达：它先等主壳挂载
+    //    再单次 goto，避开「在飞水合落点 replace 吞掉紧随其后的 hash 直达」的既有竞态
+    //    （README 已知事项；本用例在落主壳后立刻深链，正是该窗口）──
+    await hash直达(page, '/#/basic?from=resume');
     await expect(page.getByRole('heading', { name: '编辑基本信息' })).toBeVisible({ timeout: 15_000 });
     await page.getByPlaceholder('身份证上的名字').fill('存量候选·深链');
     await page.getByRole('button', { name: '保存', exact: true }).click();
+    // 安全替换到来源固定路径（我的简历），不盲退外站、不留下编辑页
     await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
-    expect(档案写们()).toHaveLength(2);
+    expect(档案写们()).toHaveLength(1);
     // 重新读取已保存事实：我的简历 展示服务端刚存下的值（不是本地遗留草稿）
     await expect(page.getByRole('button', { name: /姓名/ })).toContainText('存量候选·深链', { timeout: 15_000 });
+
+    // ── 形式二：硬刷新（先经真实入口写下 来路，再用 reload 换新文档使其失效）──
+    await page.getByRole('button').filter({ hasText: '工作年限' }).click();
+    await expect(page).toHaveURL(/#\/basic\?from=resume$/, { timeout: 15_000 });
+    await page.reload();
+    await expect(page).toHaveURL(/#\/basic\?from=resume$/, { timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible({ timeout: 15_000 });
+    // 刷新后未保存输入丢掉、读权威现值（姓名不是上一步的「深链」草稿残留）
+    await expect(page.getByPlaceholder('身份证上的名字')).toHaveValue('存量候选·深链');
+    await page.getByPlaceholder('身份证上的名字').fill('存量候选·硬刷');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/#\/resume$/, { timeout: 20_000 });
+    expect(档案写们()).toHaveLength(2);
+    await expect(page.getByRole('button', { name: /姓名/ })).toContainText('存量候选·硬刷', { timeout: 15_000 });
+    // 刷新后保存同样是替换、不是盲退：后退一步不落编辑页
+    await page.goBack();
+    await expect(page).not.toHaveURL(/from=resume/);
   });
 });
 
