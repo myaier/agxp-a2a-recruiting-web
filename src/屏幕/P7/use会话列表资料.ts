@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { use应用状态 } from '../../状态/应用状态';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
-import { 从P5详情取对方资料 } from '../消息列表展示/会话资料映射';
+import { 从P5详情取对方资料, 非空 } from '../消息列表展示/会话资料映射';
 import type { 会话资料状态 } from '../消息列表展示/会话资料映射';
 import type { BFFCandidateJob, BFF公开企业 } from '../../数据/BFF契约';
 import type { P7角色, P7会话项 } from '../../数据/招聘数据源/真人会话';
@@ -24,22 +24,19 @@ import type { P7角色, P7会话项 } from '../../数据/招聘数据源/真人�
 /** 同时运行的 Case 补读任务上限（spec §2：最多 4 个并发）。 */
 const 最大并发 = 4;
 
-/** trim 后非空才算已知企业名/坐标；空白不得冒充。 */
-function 非空(值: string | null | undefined): string | null {
-  const 文 = 值?.trim() ?? '';
-  return 文 === '' ? null : 文;
-}
-
 /** 轮内任务态：pending = 在飞；完成 = 链路已结算（成败由快照反应式判读）。 */
 type 任务态 = 'pending' | '完成';
 
 /**
  * 轮内链路记录（引用同步突变，随轮键整体重置）：case 已发起集合防同轮/重放重复
- * 发起；岗位/企业 成败表只记「本轮真实读取」的结算，失败不消费旧缓存。
+ * 发起；在飞Case 是并发上限的发起侧真相（state 只是镜像 —— StrictMode 同一 commit
+ * 内 effect 双执行时，第二遍看到的 任务表 仍是旧的，只有 ref 先于渲染更新）；
+ * 岗位/企业 成败表只记「本轮真实读取」的结算，失败不消费旧缓存。
  */
 interface 轮链 {
   键: string;
   已发起Case: Set<string>;
+  在飞Case: Set<string>;
   岗位: Map<string, 'ok' | '失败'>;
   已发起岗位: Set<string>;
   企业: Map<string, 'ok' | '失败'>;
@@ -50,6 +47,7 @@ function 新轮链(键: string): 轮链 {
   return {
     键,
     已发起Case: new Set(),
+    在飞Case: new Set(),
     岗位: new Map(),
     已发起岗位: new Set(),
     企业: new Map(),
@@ -132,19 +130,24 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
         }
       }
     }
+    // 完成即释放在飞占位（换轮后的新记录不含本 case，绝不动新轮的占位）
+    if (链引用.current.键 === 键) 链引用.current.在飞Case.delete(caseId);
     改任务(键, caseId, '完成');
   }, [角色, 操作, 改任务]);
 
-  // 调度：换轮先重置链记录；同轮补齐 pending 槽位（≤ 4 个在飞），翻页新 caseId 自然续排
-  //（items 换代 → 可补项 换代 → effect 复跑，成功旧项经任务表拦下不重拉）。
+  // 调度：换轮先重置链记录；同轮补齐在飞槽位（≤ 4 个）。空位以 在飞Case（ref 侧
+  // 真相）计数 —— StrictMode 同一 commit 内 effect 双执行时第二遍也看得到首批占位；
+  // 翻页新 caseId 自然续排（items 换代 → 可补项 换代 → effect 复跑，成功旧项经任务表
+  // 拦下不重拉）。
   useEffect(() => {
     if (链引用.current.键 !== 轮键) 链引用.current = 新轮链(轮键);
     if (轮.键 !== 轮键) return;
-    let 空位 = 最大并发 - Object.values(轮.任务).filter((态) => 态 === 'pending').length;
+    let 空位 = 最大并发 - 链引用.current.在飞Case.size;
     for (const 条 of 可补项) {
       if (空位 <= 0) break;
       if (轮.任务[条.caseId] !== undefined || 链引用.current.已发起Case.has(条.caseId)) continue;
       链引用.current.已发起Case.add(条.caseId);
+      链引用.current.在飞Case.add(条.caseId);
       改任务(轮键, 条.caseId, 'pending');
       空位 -= 1;
       void 运行任务(轮键, 条);
@@ -179,8 +182,10 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
     [资料表],
   );
 
-  // 显式重试：只摘当前仍失败的 case（opaque id 走集合，不拼键串），并清轮内岗位/企业
-  // 记录让链路按失败项重读；成功项不重拉。换轮后旧的重试闭包经轮键核对变成无操作。
+  // 显式重试：只摘当前仍失败的 case（opaque id 走集合，不拼键串）；链路坐标只定向
+  // 摘除「失败」结算 —— 成功坐标（ok）必须保留，否则资料表 memo 因轮变化立即重算，
+  // 无差别 clear 会把其他成功行的发布企业名一并抹成 null。成功项不重拉；换轮后旧的
+  // 重试闭包经轮键核对变成无操作。
   const 失败集 = useMemo(
     () => new Set(可补项.filter((条) => 资料表[条.caseId]?.状态 === 'unavailable')
       .map((条) => 条.caseId)),
@@ -190,10 +195,18 @@ export function use会话列表资料(角色: P7角色, items: P7会话项[]): {
     if (失败集.size === 0 || 轮.键 !== 轮键) return;
     const 链 = 链引用.current;
     for (const caseId of 失败集) 链.已发起Case.delete(caseId);
-    链.岗位.clear();
-    链.已发起岗位.clear();
-    链.企业.clear();
-    链.已发起企业.clear();
+    for (const [jobRef, 结算] of 链.岗位) {
+      if (结算 === '失败') {
+        链.岗位.delete(jobRef);
+        链.已发起岗位.delete(jobRef);
+      }
+    }
+    for (const [编号, 结算] of 链.企业) {
+      if (结算 === '失败') {
+        链.企业.delete(编号);
+        链.已发起企业.delete(编号);
+      }
+    }
     设轮((旧) => {
       if (旧.键 !== 轮键) return 旧;
       const 任务 = { ...旧.任务 };

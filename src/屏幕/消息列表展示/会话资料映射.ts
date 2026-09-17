@@ -29,7 +29,7 @@ export type 会话资料状态 =
   | { 状态: 'available'; 资料: 真人对方资料 };
 
 /** trim 后非空才算已知值；空白不得冒充披露（姓名/企业名/头像 URL 同一纪律）。 */
-function 非空(值: string | null | undefined): string | null {
+export function 非空(值: string | null | undefined): string | null {
   const 文 = 值?.trim() ?? '';
   return 文 === '' ? null : 文;
 }
@@ -41,8 +41,9 @@ export function 取姓名首字(name: string | null): string {
 
 /**
  * 从 P5详情（本轮成功快照）组装对方资料 —— 列表与详情页头同一映射，失败不暴露旧资料
- * 由调用方保证（只有本轮成功快照才进本函数）。角色与详情 role 不一致时按查看者角色
- * 只取两边都在场的 jobDetail/context 成员，身份字段保持 null。
+ * 由调用方保证（只有本轮成功快照才进本函数）。jobDetail/context 是双角色变体共有
+ * 成员、按查看者角色直接取用；candidateIdentity 只存在于 recruiter 变体，角色或详情
+ * role 任一不是 recruiter 时身份字段保持 null。
  */
 export function 从P5详情取对方资料(
   详情: P5详情,

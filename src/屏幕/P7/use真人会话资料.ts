@@ -19,15 +19,9 @@ import { use应用状态 } from '../../状态/应用状态';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 映射P5详情 } from '../../数据/MatchCase展示映射';
 import { 从P5到职位资料 } from '../../数据/详情展示映射';
-import { 从P5详情取对方资料, 取姓名首字 } from '../消息列表展示/会话资料映射';
+import { 从P5详情取对方资料, 取姓名首字, 非空 } from '../消息列表展示/会话资料映射';
 import type { 职位资料信息 } from '../../组件/在谈详情/类型';
 import type { P7角色, P7会话项 } from '../../数据/招聘数据源/真人会话';
-
-/** trim 后非空才算已知姓名/职务；空白不得冒充披露。 */
-function 非空(值: string | null | undefined): string | null {
-  const 文 = 值?.trim() ?? '';
-  return 文 === '' ? null : 文;
-}
 
 export function use真人会话资料(角色: P7角色, 详情: P7会话项 | null): {
   标题: string;

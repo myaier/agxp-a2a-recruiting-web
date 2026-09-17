@@ -178,6 +178,27 @@ describe('use会话列表资料 · 调度（去重 / 并发上限 / 翻页追加
     await waitFor(() => expect(result.current.资料表['mc_1']?.状态).toBe('available'));
     expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(1);
   });
+
+  it('StrictMode 双执行不突破 ≤4 并发上限：在飞读数以发起侧真相为准', async () => {
+    const 详情门们 = new Map<string, ReturnType<typeof 门<void>>>();
+    mock应用状态.操作.读取详情 = vi.fn(((_角色: string, caseId: string) => {
+      const 本次 = 门<void>();
+      详情门们.set(caseId, 本次);
+      return 本次.promise;
+    }));
+    const 八项 = [1, 2, 3, 4, 5, 6, 7, 8].map((序) => 会话项({
+      conversationId: String(3000 + 序), caseId: `mc_${序}`, context: 上下文(null),
+    }));
+    const { result } = renderHook(() => use会话列表资料('candidate', 八项), { wrapper: StrictMode });
+    await waitFor(() => expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(4));
+    await new Promise((完成) => setTimeout(完成, 0)); // 排干微任务：第二遍 effect 不得再放行
+    expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(4);
+    for (const 序 of ['mc_1', 'mc_2', 'mc_3', 'mc_4']) 详情门们.get(序)!.解决();
+    await waitFor(() => expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(8));
+    for (const 序 of ['mc_5', 'mc_6', 'mc_7', 'mc_8']) 详情门们.get(序)!.解决();
+    await waitFor(() =>
+      expect(Object.values(result.current.资料表).every((资料) => 资料.状态 !== 'loading')).toBe(true));
+  });
 });
 
 describe('use会话列表资料 · 候选端链路（Case→岗位→企业，本轮去重）', () => {
@@ -294,6 +315,49 @@ describe('use会话列表资料 · 失败 / 重试 / 失权撤下', () => {
     expect(mock应用状态.操作.读取详情).toHaveBeenLastCalledWith('candidate', 'mc_2', true);
     await waitFor(() => expect(result.current.资料表['mc_2']?.状态).toBe('available'));
     expect(result.current.有失败).toBe(false);
+  });
+
+  it('重试不抹其他成功行的发布企业名：只定向摘除失败坐标，成功链路零重读', async () => {
+    let mc1失败 = true;
+    mock应用状态.操作.读取详情 = vi.fn((_角色: string, caseId: string) => {
+      if (caseId === 'mc_1' && mc1失败) return Promise.reject(new Error('读失败'));
+      mock应用状态.后端状态.P5详情[P5范围键.detail('candidate', caseId)] = 快照({
+        ...候选资料详情(), state: 状态({ caseId }),
+      });
+      return Promise.resolve();
+    });
+    // 失败 case 走 job_1/org_p，成功 case 走 job_2/org_q —— 两条互不共享的链路
+    mock应用状态.操作.读取候选岗位详情 = vi.fn((jobId: string) => {
+      mock应用状态.后端状态.候选岗位详情[jobId] = 岗位条目(jobId === 'job_1' ? 'org_p' : 'org_q');
+      return Promise.resolve();
+    });
+    mock应用状态.操作.读取公开企业 = vi.fn((编号: string) => {
+      mock应用状态.状态.公开企业表[编号] = 企业条目(编号 === 'org_p' ? '星桥甲' : '星桥乙');
+      return Promise.resolve();
+    });
+    const 两项 = [
+      会话项(), // mc_1 / job_1
+      会话项({ conversationId: '3002', caseId: 'mc_2', context: 上下文('job_2') }),
+    ];
+    const { result } = renderHook(({ items }) => use会话列表资料('candidate', items), {
+      initialProps: { items: 两项 },
+    });
+    await waitFor(() => expect(result.current.资料表['mc_2']).toEqual({
+      状态: 'available',
+      资料: { 姓名: '林澈', 头像URL: null, 企业: '星桥乙', 职位: '招聘负责人' },
+    }));
+    await waitFor(() => expect(result.current.资料表['mc_1']).toEqual({ 状态: 'unavailable', 资料: null }));
+    mc1失败 = false;
+    act(() => { result.current.重试失败(); });
+    await waitFor(() => expect(result.current.资料表['mc_1']?.状态).toBe('available'));
+    expect(result.current.资料表['mc_1'].状态 === 'available' && result.current.资料表['mc_1'].资料!.企业)
+      .toBe('星桥甲');
+    // 关键反例：成功行 mc_2 的发布企业名不被重试抹掉（也不退化为 null）
+    expect(result.current.资料表['mc_2'].状态 === 'available' && result.current.资料表['mc_2'].资料!.企业)
+      .toBe('星桥乙');
+    // 成功链路坐标未被无差别清除：本轮岗位/企业仍各只两笔，无重试重读
+    expect(mock应用状态.操作.读取候选岗位详情).toHaveBeenCalledTimes(2);
+    expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledTimes(2);
   });
 
   it('P5 失权/清空当帧撤下：快照失败或被清掉立即回 unavailable，不残留旧姓名', async () => {
