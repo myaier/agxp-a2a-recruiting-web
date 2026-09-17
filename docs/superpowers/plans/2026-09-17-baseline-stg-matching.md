@@ -211,3 +211,5 @@ R2（同一 Claude Opus/high 会话）：候选 `3422179946ad`；后置 status/H
 终止裁决：两轮共 2 条 required 均已核实并修复；0 条拒绝、0 条 optional 延后、0 条未解决有效 required，按 review-loop 的“核实后无未解决 required”条件结束，并非声称 R2 原报告为 NO FINDINGS。执行提示词在此结论后生成。文档校验：源码/测试引用文件存在、5 个 Task/单一不计数收尾、无占位、git diff --check 通过；本阶段无产品测试或 STG 业务运行。
 
 交付校验：单文件双宿主 validate_prompt_grading.py 通过（5 Task、Claude Code subagent-driven-development、Codex executing-plans、高复杂度/高漂移/前沿模型）；配置路径示例改用 realpath 从仓库相对路径求运行时路径，避免校验器将拼接文本识别为固定绝对路径，行为合同不变。最终执行提示词在 docs/superpowers/prompts/2026-09-17-baseline-stg-matching.md，精确引用本 Plan 提交后的 revision/blob；仅文档交付，产品测试仍未执行。
+
+实施记录（Task 5 追加）：Task 4 期间扩大范围修复 avatar_url 合同内缺陷（src/数据/招聘数据源/展示资料.ts + 展示资料.test.ts，TDD，commit 8b34f899，证据 task-4-report §5 与 dogfood-output/front-match-recruiter-20260916T235043/）——这是 Plan 自身“裁决记入 Plan”约定的追加，不改批准合同正文。

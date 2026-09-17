@@ -17,9 +17,9 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 5719 例 · 254 文件
+## 第一层 · 单元/组件（Vitest） · 5720 例 · 254 文件
 
-### 数据契约/映射 · 1561 例 · 53 文件
+### 数据契约/映射 · 1562 例 · 53 文件
 
 <details>
 <summary>展开明细</summary>
@@ -1092,6 +1092,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 解职位资料 > benefit_codes 非数组按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?benefit_codes 非数组按契约漂移拒绝' | 未知 |
 | 解职位资料 > experience_requirement / education_requirement 是开放 string：表外码原样保留 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?experience_requirement / education_requirement 是开放 string：表外码原样保留' | 未知 |
 | 解职位资料 > keywords 含非串按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?keywords 含非串按契约漂移拒绝' | 未知 |
+| 解职位资料 > publisher_profile 的 avatar_url 缺席合法（冻结合同只要求三键），归一为 null |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?publisher_profile 的 avatar_url 缺席合法（冻结合同只要求三键），归一为 null' | 未知 |
 | 解职位资料 > salary_lower 小数按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?salary_lower 小数按契约漂移拒绝' | 未知 |
 | 解职位资料 > salary_upper 非数字按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?salary_upper 非数字按契约漂移拒绝' | 未知 |
 | 解职位资料 > structured_requirements_confirmed 字符串按契约漂移拒绝 |  | [src/数据/招聘数据源/展示资料.test.ts](../../src/数据/招聘数据源/展示资料.test.ts) | npm test -- src/数据/招聘数据源/展示资料.test.ts -t '解职位资料 (> )?structured_requirements_confirmed 字符串按契约漂移拒绝' | 未知 |
@@ -6323,15 +6324,21 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 ## L3 手写索引（非生成区）
 
-现有可执行 L3 只有 STG onboarding 四个组合与 STG 基础试点，沿用现有名称，不在静态清单
-登记永久 PASS；执行结果按 run 保存在既有证据位置：
+现有可执行 L3 有 STG onboarding 四个组合、STG 基础试点与 STG 匹配两个 Case，沿用现有
+名称，不在静态清单登记永久 PASS；执行结果按 run 保存在既有证据位置：
 
 - `stg-onboarding-candidate`（manual / parsed 两个执行组合）
 - `stg-onboarding-recruiter`（manual / parsed 两个执行组合）
 - STG 基础试点（两轮，含反证轮）
+- `stg-matching-recruiter`（招聘者发起；单 Case 可独立选择，每 Case 一轮全新 run）
+- `stg-matching-candidate`（求职者发起；单 Case 可独立选择，不与上一 Case 共用 run）
 
-进入方式与操作/凭据/清理合同见 [`docs/dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md)
-与 [`docs/dogfood/stg-onboarding.md`](../dogfood/stg-onboarding.md)。
+`stg-matching` 两 Case 当前均无 PASS（`NOT_RUN`，探索被 STG 部署的 Hub enrollment
+缺失阻断，见专门指南第 11 节）；此处只登记可执行身份，不登记任何 PASS。
+
+进入方式与操作/凭据/清理合同见 [`docs/dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md)、
+[`docs/dogfood/stg-onboarding.md`](../dogfood/stg-onboarding.md) 与
+[`docs/dogfood/stg-matching.md`](../dogfood/stg-matching.md)。
 
 旧 local L3（基础 B01–B05、Hosted H01–H04 与 backend-local-onboarding 六个 Case）已于
 2026-09-16 退出活动执行入口并归档：行为与报告段在 [`docs/dogfood/archive/`](../dogfood/archive/local-behavior.md)，

@@ -447,7 +447,8 @@ vitest 4 对象 `it.each` 不做 `$var` 标题插值、部分表驱动用例参�
 
 ### L3 未承接清单
 
-活动 L3 现只有 STG 两范围（见 [`cases.md`](cases.md) 手写区）；上表「未承接」列即
+活动 L3 现有 STG 三范围（见 [`cases.md`](cases.md) 手写区；`stg-matching` 于
+2026-09-17 注册，见文末「baseline-stg-matching 对账」）；上表「未承接」列即
 L3 未承接项。本轮 L3 selection 为 `none`：无产品/后端/真实 STG 操作语义变化，
 不执行真实登录/上传，不记 L3 PASS。
 
@@ -548,3 +549,28 @@ FINDINGS）后的最终责任运行，全部在候选 HEAD d746327a（含其前�
   行会清空 `test-results/`，先落 `/tmp/tl/` 再复制归档）。
 - 正式 L3 selection：`none`——本轮仅整理测试代码/目录/文档，无产品、后端或真实
   STG 操作语义变化；不执行真实登录/上传，不记 L3 PASS。
+
+## baseline-stg-matching 对账（stg-matching Suite 注册与已修本地问题，2026-09-17）
+
+- **新 L3 Suite**：`stg-matching`（真实 STG 双向匹配 S0–S3）注册为第三个活动 STG
+  范围：两个独立可单选 Case `stg-matching-recruiter`（招聘者发起）/
+  `stg-matching-candidate`（求职者发起），每 Case 一轮全新 run。登记位置：
+  [`cases.md`](cases.md) 手写 L3 区（恰好两条，不进 runner 自动区）、
+  [`../dogfood/真实后端行为验收.md`](../dogfood/真实后端行为验收.md) 第 11 节入口、
+  专门指南 [`../dogfood/stg-matching.md`](../dogfood/stg-matching.md)（材料、生命周期、
+  S0–S3 观察点、cleanup 判定与能力缺口）。本 Suite 不增加自动 runner；不改变旧
+  B02/Onboarding/试点任何既有结论。
+- **当前状态（诚实记录）**：两个 Case 均无 PASS（`NOT_RUN`）。2026-09-17 探索 run
+  `front-match-recruiter-20260916T235043` 招聘者方向实测到 S1 即被当前 STG 部署的
+  Hub enrollment 缺失决定性阻断（S0/S1 agent 任务全部 `hub_rejected`），候选方向
+  未实测；该 run cleanup 停 `CLEANUP_BLOCKED` 且占用保持，后继 run 无法创建。解锁
+  路径归后端 owner，解锁前不得重跑或写任何通过（指南第 11 节）。
+- **已修本地问题（合同内缺陷，TDD 最小修复，Task 4 扩大范围）**：
+  `src/数据/招聘数据源/展示资料.ts` 的 `解发布人档案` 把 PublicRecrufterProfile 的
+  `avatar_url` 当必填键，而冻结 openapi 合同 required 仅
+  `[public_name,title,personal_verification_status]`（avatar_url 可选），BFF Go 侧
+  `*string omitempty` 无头像时整键缺席 → Case 详情整页 invalid_response（STG 实测
+  复现）。修复：avatar_url 移入可选键、缺席归一 `null`（契约侧「BFF公开发布人档案」
+  形状不变），commit 8b34f899；新增失败先行测试 1 条，展示资料.test 40/40，全套
+  `npm test` 全绿、tsc 干净。证据：task-4-report §5 与
+  `dogfood-output/front-match-recruiter-20260916T235043/`（均 git-ignored）。
