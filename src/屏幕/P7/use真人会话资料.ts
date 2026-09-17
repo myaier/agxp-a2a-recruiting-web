@@ -19,14 +19,9 @@ import { use应用状态 } from '../../状态/应用状态';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 映射P5详情 } from '../../数据/MatchCase展示映射';
 import { 从P5到职位资料 } from '../../数据/详情展示映射';
+import { 从P5详情取对方资料, 取姓名首字, 非空 } from '../消息列表展示/会话资料映射';
 import type { 职位资料信息 } from '../../组件/在谈详情/类型';
 import type { P7角色, P7会话项 } from '../../数据/招聘数据源/真人会话';
-
-/** trim 后非空才算已知姓名/职务；空白不得冒充披露。 */
-function 非空(值: string | null | undefined): string | null {
-  const 文 = 值?.trim() ?? '';
-  return 文 === '' ? null : 文;
-}
 
 export function use真人会话资料(角色: P7角色, 详情: P7会话项 | null): {
   标题: string;
@@ -169,33 +164,35 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   let 标题 = 回落标题;
   let 副标题 = 回落副标题;
   let 对方头像URL: string | null = null;
-  let 对方首字 = 标题.charAt(0);
+  // 契约A：首字只从真实姓名取（trim 后首个 Unicode 码点），缺名为「·」—— 不从
+  // alias、公司、岗位或占位文案推导（回落窗口同样不给假首字）。
+  let 对方首字 = '·';
   let 职位资料: 职位资料信息 | null = null;
 
   if (明细 !== null) {
     const 发布方公司 = 公司链就绪 && 发布方编号 !== null && 状态.公开企业表[发布方编号] !== undefined
       ? 非空(状态.公开企业表[发布方编号].display_name)
       : null;
+    // 与列表同一纯映射（契约A）：招聘端忽略发布企业名参数（用人企业来自 jobDetail），
+    // 候选端企业走可信 publisher 链 —— 用人企业和发布企业不可混用。
+    const 资料 = 从P5详情取对方资料(明细, 角色, 发布方公司);
     if (明细.role === 'recruiter') {
-      const 身份 = 明细.candidateIdentity;
-      if (身份.state === 'anonymous') {
+      if (资料.姓名 !== null) {
+        标题 = 资料.姓名;
+      } else if (明细.candidateIdentity.state === 'anonymous') {
         标题 = 非空(明细.context.candidateAlias) ?? '候选人';
-      } else if (非空(身份.name) === null) {
-        标题 = '候选人姓名暂未提供';
       } else {
-        标题 = 非空(身份.name)!;
-        对方头像URL = 身份.avatar_url;
+        标题 = '候选人姓名暂未提供';
       }
-      副标题 = 非空(明细.context.job.job.title) ?? '职位信息未知';
+      // 投递企业 · 投递岗位：缺企业只显示岗位，两缺给既有占位（不显孤立分隔符）
+      副标题 = [资料.企业, 资料.职位].filter((段): 段 is string => 段 !== null).join(' · ')
+        || (资料.职位 ?? '职位信息未知');
     } else {
-      const 发布人 = 明细.jobDetail?.publisher_profile ?? null;
-      const 姓名 = 非空(发布人?.public_name);
-      const 职务 = 非空(发布人?.title);
-      标题 = 姓名 ?? '招聘者姓名暂未提供';
-      副标题 = `${发布方公司 ?? '公司暂未提供'} · ${职务 ?? '角色暂未提供'}`;
-      对方头像URL = 发布人?.avatar_url ?? null;
+      标题 = 资料.姓名 ?? '招聘者姓名暂未提供';
+      副标题 = `${资料.企业 ?? '公司暂未提供'} · ${资料.职位 ?? '角色暂未提供'}`;
     }
-    对方首字 = 标题.charAt(0);
+    对方头像URL = 资料.头像URL;
+    对方首字 = 取姓名首字(资料.姓名);
     // 职位资料只来自 Case 冻结 jobDetail：缺席给 null（弹层出不可用 + 局部重读），
     // 不拿当前岗位替代历史资料（Spec §11.3）
     const 视图 = 映射P5详情(明细);

@@ -254,6 +254,12 @@ function 读代际键(scopeKey: string): string {
 interface 读锁属主 {
   fence: P5栅栏;
   token: object;
+  /**
+   * Task 2 Step 3：该属主真实读取的在飞 Promise（仅详情直读登记）。同 key 的让路
+   * 调用复用它 —— 读锁让路的「立即 return」绝不能被调用方当成本轮授权读取成功。
+   * 属主栅栏过期被接管时随属主整包替换，不构成持久缓存。
+   */
+  promise?: Promise<void>;
 }
 
 const 读锁属主表 = new WeakMap<Set<string>, Map<string, 读锁属主>>();
@@ -601,6 +607,23 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
   function 释放读锁(取得: 读锁凭证): void {
     const 表 = 属主表();
     if (表.get(取得.键)?.token === 取得.token) 表.delete(取得.键);
+  }
+
+  /**
+   * Task 2 Step 3：同 key 在飞真实详情读取。属主栅栏仍当前且已登记 Promise 时返回
+   * 它（让路调用等真实结算）；否则 null（无在飞或已过期 —— 过期由 获取读锁 接管重发）。
+   */
+  function 取在飞详情读(scopeKey: string): Promise<void> | null {
+    const 属主 = 属主表().get(读锁键(scopeKey));
+    if (属主 && 栅栏仍当前(属主.fence) && 属主.promise !== undefined) return 属主.promise;
+    return null;
+  }
+
+  /** 把真实读取 Promise 登记到自己的锁属主上（token 易主后不动新属主的登记）。 */
+  function 登记在飞详情读(取得: 读锁凭证, promise: Promise<void>): void {
+    const 表 = 属主表();
+    const 属主 = 表.get(取得.键);
+    if (属主 && 属主.token === 取得.token) 属主.promise = promise;
   }
 
   // ── 快照落位的小工具 ──
@@ -1532,55 +1555,86 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
         const 快照 = 后端状态引用.current.P5详情[scopeKey];
         if (快照?.阶段 === '成功' && 快照.detail !== null) return;
       }
+      // Task 2 Step 3：同 key 在飞复用同一真实 Promise —— 读锁让路的调用（StrictMode
+      // 重放 / 列表跳详情 / 并发补读）等待真实读取结算，绝不把立即 return 当本轮成功。
+      const 在飞 = 取在飞详情读(scopeKey);
+      if (在飞 !== null) return 在飞;
       const 取得 = 获取读锁(scopeKey);
       if (!取得) return;
       const fence = 取得.fence;
-      try {
-        if (!后端) return;
-        设后端状态((旧态) => ({
-          ...旧态,
-          P5详情: {
-            ...旧态.P5详情,
-            [scopeKey]: 起步详情(旧态.P5详情[scopeKey], fence.scopeGeneration),
-          },
-        }));
-        if (role === 'candidate') {
-          // J-PILOT-01 Task 2：候选端同一条记录只经聚合 alias 读（不再并行第二个候选
-          // Case GET 补同份资料）—— 旧 读取详情('candidate') 消费者（详情页 / P7 / 历史
-          // 深链入口）都由此走聚合；canonical 聚合快照唯一落位，P5详情 槽由 case_detail
-          // 投影（retention 封闭时 detail 落 null，清旧内容不留镜像）。
-          const 聚合 = await 后端.读取候选连续详情(caseId);
-          if (!栅栏仍当前(fence)) return;
-          保存候选聚合快照({
-            输入坐标: caseId, 起步键: P5范围键.negotiation(caseId),
-            详情: 聚合, generation: fence.scopeGeneration, ownerSubjectId: fence.subjectId,
-          });
+      const promise = (async () => {
+        try {
+          if (!后端) return;
           设后端状态((旧态) => ({
             ...旧态,
             P5详情: {
               ...旧态.P5详情,
-              [scopeKey]: 聚合.case_detail === null
-                ? { 阶段: '成功', 刷新中: false, detail: null, error: null, generation: fence.scopeGeneration }
-                : 成功详情(聚合.case_detail, fence.scopeGeneration),
+              [scopeKey]: 起步详情(旧态.P5详情[scopeKey], fence.scopeGeneration),
             },
           }));
-          return;
-        }
-        const 详情 = await 后端.读取P5详情(role, caseId);
-        if (!栅栏仍当前(fence)) return;
-        设后端状态((旧态) => ({
-          ...旧态,
-          P5详情: { ...旧态.P5详情, [scopeKey]: 成功详情(详情, fence.scopeGeneration) },
-        }));
-      } catch (错误) {
-        if (!栅栏仍当前(fence)) return;
-        if (role === 'candidate') {
-          // 401 统一清账号；403/404 隐私清理（详情槽 + 连续槽清旧敏感内容）；
-          // 其余（网络/503/坏合同）保留同主体只读旧快照，只落重试错误。
-          if (是401(错误) || 是候选详情不可见(错误)) {
-            落候选聚合读失败({ 坐标: caseId, 详情槽键: scopeKey, fence, 错误 });
+          if (role === 'candidate') {
+            // J-PILOT-01 Task 2：候选端同一条记录只经聚合 alias 读（不再并行第二个候选
+            // Case GET 补同份资料）—— 旧 读取详情('candidate') 消费者（详情页 / P7 / 历史
+            // 深链入口）都由此走聚合；canonical 聚合快照唯一落位，P5详情 槽由 case_detail
+            // 投影（retention 封闭时 detail 落 null，清旧内容不留镜像）。
+            const 聚合 = await 后端.读取候选连续详情(caseId);
+            if (!栅栏仍当前(fence)) return;
+            保存候选聚合快照({
+              输入坐标: caseId, 起步键: P5范围键.negotiation(caseId),
+              详情: 聚合, generation: fence.scopeGeneration, ownerSubjectId: fence.subjectId,
+            });
+            设后端状态((旧态) => ({
+              ...旧态,
+              P5详情: {
+                ...旧态.P5详情,
+                [scopeKey]: 聚合.case_detail === null
+                  ? { 阶段: '成功', 刷新中: false, detail: null, error: null, generation: fence.scopeGeneration }
+                  : 成功详情(聚合.case_detail, fence.scopeGeneration),
+              },
+            }));
             return;
           }
+          const 详情 = await 后端.读取P5详情(role, caseId);
+          if (!栅栏仍当前(fence)) return;
+          设后端状态((旧态) => ({
+            ...旧态,
+            P5详情: { ...旧态.P5详情, [scopeKey]: 成功详情(详情, fence.scopeGeneration) },
+          }));
+        } catch (错误) {
+          if (!栅栏仍当前(fence)) return;
+          if (role === 'candidate') {
+            // 401 统一清账号；403/404 隐私清理（详情槽 + 连续槽清旧敏感内容）；
+            // 其余（网络/503/坏合同）保留同主体只读旧快照，只落重试错误。
+            if (是401(错误) || 是候选详情不可见(错误)) {
+              落候选聚合读失败({ 坐标: caseId, 详情槽键: scopeKey, fence, 错误 });
+              return;
+            }
+            设后端状态((旧态) => ({
+              ...旧态,
+              P5详情: {
+                ...旧态.P5详情,
+                [scopeKey]: 失败详情(旧态.P5详情[scopeKey], 错误, fence.scopeGeneration),
+              },
+            }));
+            return;
+          }
+          if (是401(错误)) {
+            清账号与P5();
+            return;
+          }
+          // 详情 404 是隐私清理例外：Case 已不可见，含 S0 records 的旧 detail 绝不能以
+          // 只读形态继续展示 —— 落无旧 detail 的失败快照，下次读取即可恢复。
+          if (是详情404(错误)) {
+            设后端状态((旧态) => ({
+              ...旧态,
+              P5详情: {
+                ...旧态.P5详情,
+                [scopeKey]: 失败详情(undefined, 错误, fence.scopeGeneration),
+              },
+            }));
+            return;
+          }
+          // 契约错误 / 服务错误一律落重试错误态（facade 已 fail closed，本层不再 decode）。
           设后端状态((旧态) => ({
             ...旧态,
             P5详情: {
@@ -1588,35 +1642,12 @@ export function 创建MatchCase操作(deps: 后端操作依赖): MatchCase操作
               [scopeKey]: 失败详情(旧态.P5详情[scopeKey], 错误, fence.scopeGeneration),
             },
           }));
-          return;
+        } finally {
+          释放读锁(取得);
         }
-        if (是401(错误)) {
-          清账号与P5();
-          return;
-        }
-        // 详情 404 是隐私清理例外：Case 已不可见，含 S0 records 的旧 detail 绝不能以
-        // 只读形态继续展示 —— 落无旧 detail 的失败快照，下次读取即可恢复。
-        if (是详情404(错误)) {
-          设后端状态((旧态) => ({
-            ...旧态,
-            P5详情: {
-              ...旧态.P5详情,
-              [scopeKey]: 失败详情(undefined, 错误, fence.scopeGeneration),
-            },
-          }));
-          return;
-        }
-        // 契约错误 / 服务错误一律落重试错误态（facade 已 fail closed，本层不再 decode）。
-        设后端状态((旧态) => ({
-          ...旧态,
-          P5详情: {
-            ...旧态.P5详情,
-            [scopeKey]: 失败详情(旧态.P5详情[scopeKey], 错误, fence.scopeGeneration),
-          },
-        }));
-      } finally {
-        释放读锁(取得);
-      }
+      })();
+      登记在飞详情读(取得, promise);
+      return promise;
     },
 
     async 加载连续列表(shelf, force) {

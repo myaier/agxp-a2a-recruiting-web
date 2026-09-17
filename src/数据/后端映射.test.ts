@@ -102,6 +102,18 @@ describe('候选人后端映射', () => {
     expect('company' in body).toBe(false);
   });
 
+  // 契约B（2026-09-17 聊天与推荐展示修复）：hidden 是既有 wire 字段，读写两侧都原样保留 ——
+  // 旧经历 true 不因无关保存被清空，新经历 false 如实落 false；该字段不再由企业屏蔽 UI 改写。
+  it('经历写入按段原值携带 hidden：旧 true 保留 true、新 false 如实落 false', () => {
+    const 段基底 = {
+      编号: 'exp_local', 组织编号: 'org_1', 公司: '快照名',
+      行业: '互联网', 行业引用: { id: 'tax_i', display_name: '互联网' },
+      职位: '工程师', 开始: '2021-01', 结束: null, 内容: '平台',
+    };
+    expect(转经历写入({ ...段基底, 隐藏: true })).toMatchObject({ hidden: true });
+    expect(转经历写入({ ...段基底, 隐藏: false })).toMatchObject({ hidden: false });
+  });
+
   it('缺组织 ID 的经历写入抛 organization_id 校验错「请选择公司」，不回退公司文本', () => {
     let 错误: unknown;
     try {

@@ -83,6 +83,13 @@ function 空列表页(): { 经历: 简历经历段[]; 教育: 简历教育段[];
   return { 经历: [], 教育: [], 技能: [], 证书: [] };
 }
 
+/** review fix-1（契约B 写前完备性预检）：Backend 保存类用例的经历行需可存齐
+ *  （行业引用 + 组织编号）—— 沿用共享种子行，仅补目录引用。 */
+const 完整经历行: 简历经历段 = {
+  ...简历经历初始[0],
+  行业引用: { id: 'tax_i', display_name: '互联网' },
+};
+
 /** 合同 C：经历编辑页里打开公司抽屉并选中指定行（搜索词由旧公司文本预填） */
 async function 抽屉选公司(
   用户: ReturnType<typeof userEvent.setup>,
@@ -184,7 +191,7 @@ describe('工作经历 · 简历编辑来源（from=resume）', () => {
   it('社招编辑：保存带 日常编辑 来源，成功只回我的简历，零分区确认零建档草稿', async () => {
     // 建档在场：证明编辑标记赢过 引导预填 非空 —— 旅程判定必须为 false
     const 保存简历 = vi.fn(async (_next?: unknown, _来源?: string) => {});
-    render工作经历({ 保存简历, 建档: { 资料: { 个人优势: '旧' } }, 入口: '/experience?from=resume' });
+    render工作经历({ 保存简历, 建档: { 资料: { 个人优势: '旧' } }, 经历: [完整经历行], 入口: '/experience?from=resume' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
@@ -200,6 +207,7 @@ describe('工作经历 · 简历编辑来源（from=resume）', () => {
   it('学生编辑：保存成功同样只回我的简历（不进求职状态）', async () => {
     render工作经历({
       基本信息: { 真名: '沈', 开始工作年: '', 身份: '在校' },
+      经历: [完整经历行],
       入口: '/experience?from=resume',
     });
     const 用户 = userEvent.setup();
@@ -212,10 +220,10 @@ describe('工作经历 · 简历编辑来源（from=resume）', () => {
 
   it('保存失败：轻提示并留在本页，零分区确认零跳转', async () => {
     const 保存简历 = vi.fn(async () => { throw new Error('网络失败'); });
-    render工作经历({ 保存简历, 入口: '/experience?from=resume' });
+    render工作经历({ 保存简历, 经历: [完整经历行], 入口: '/experience?from=resume' });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
-    await waitFor(() => expect(mock轻提示).toHaveBeenCalled());
+    await waitFor(() => expect(mock轻提示).toHaveBeenCalledWith('请求失败，请稍后再试'));
     expect(mock跳转).not.toHaveBeenCalled();
     expect(mock确认分区).not.toHaveBeenCalled();
   });
@@ -234,12 +242,13 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     mock确认分区.mockClear();
   });
 
-  it('空服务端且空页面时物化四分区：经历卡（隐私默认隐藏）/技能标签/证书行（年份空不渲染）', () => {
+  it('空服务端且空页面时物化四分区：经历卡（隐私默认不隐藏）/技能标签/证书行（年份空不渲染）', () => {
     render工作经历({ 预填: readyWork(), ...空列表页() });
-    // 经历卡：公司/职位来自建议；结束 null + 隐藏 true → 已对该公司隐身 徽标
+    // 经历卡：公司/职位来自建议；契约B —— 徽标按有效企业屏蔽派生，物化默认 隐藏:false
+    // 且无任何屏蔽记录：不显示「已对该公司隐身」
     expect(screen.getByText('Example Systems')).toBeTruthy();
     expect(screen.getByText('Backend Engineer')).toBeTruthy();
-    expect(screen.getByText('已对该公司隐身')).toBeTruthy();
+    expect(screen.queryByText('已对该公司隐身')).toBeNull();
     // 技能标签 / 证书行（year:null → 页面空串 → 不渲染「年取得」）
     expect(screen.getByText('Go')).toBeTruthy();
     expect(screen.getByText('Synthetic Cloud Certificate')).toBeTruthy();
@@ -255,7 +264,8 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     expect(段.编号.startsWith('prefill:')).toBe(true);
     expect(/^[a-z]{2,4}_[0-9a-f]{32}$/.test(段.编号)).toBe(false);
     expect(段.行业引用).toEqual({ id: 'tax_aaaaaaaaaaaaaaaaaaaaaaaaaa', display_name: 'Software' });
-    expect(段.隐藏).toBe(true);
+    // 契约B：解析预填沿用新建段默认 隐藏:false —— 企业屏蔽不再误写成公司名遮蔽
+    expect(段.隐藏).toBe(false);
     expect(种入[0].技能).toEqual(['Go']);
     expect(种入[0].证书).toEqual([{ 编号: 'prefill:cer:0', 名称: 'Synthetic Cloud Certificate', 年份: '' }]);
   });
@@ -492,10 +502,26 @@ describe('工作经历 候选 onboarding 预填（Spec §8）', () => {
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
     expect(mock轻提示).not.toHaveBeenCalledWith(expect.stringContaining('需要选择目录'));
-    // 保存携带物化条目（prefill: 临时编号 + 隐私默认 + 真实企业 ID）与物化技能
+    // 保存携带物化条目（prefill: 临时编号 + 新建默认 隐藏:false + 真实企业 ID）与物化技能
     expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
-      经历: [expect.objectContaining({ 编号: 'prefill:exp:0', 隐藏: true, 组织编号: 'org_example' })],
+      经历: [expect.objectContaining({ 编号: 'prefill:exp:0', 隐藏: false, 组织编号: 'org_example' })],
       技能: ['Go'],
+    }));
+  });
+
+  // 契约B：hidden 是既有 wire/本地字段 —— 旧经历原值在无关保存时保留，不批量清空也不顺手改写
+  it('旧经历 hidden=true 与企业屏蔽无关：保存原样携带 true', async () => {
+    const 保存简历 = vi.fn(async () => {});
+    render工作经历({
+      数据源: 'backend',
+      保存简历,
+      经历: [{ ...简历经历初始[0], 行业引用: { id: 'tax_i', display_name: '互联网' } }],
+    });
+    const 用户 = userEvent.setup();
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
+    expect(保存简历).toHaveBeenCalledWith(expect.objectContaining({
+      经历: [expect.objectContaining({ 隐藏: true })],
     }));
   });
 
@@ -717,6 +743,7 @@ describe('工作经历 · 空身份经历保存（M）', () => {
     render工作经历({
       数据源: 'backend',
       保存简历,
+      经历: [完整经历行],
       基本信息: { 真名: '沈', 开始工作年: '', 身份: '' },
     });
     const 用户 = userEvent.setup();
@@ -799,7 +826,7 @@ describe('工作经历 · Task 4 资料接线', () => {
 
   it('日常编辑（无旅程标记）不受教育门槛影响：结束为空是「至今在读」，照常保存', async () => {
     const 保存简历 = vi.fn(async () => {});
-    render工作经历({ 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
+    render工作经历({ 经历: [完整经历行], 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(保存简历).toHaveBeenCalledTimes(1));
@@ -810,7 +837,7 @@ describe('工作经历 · Task 4 资料接线', () => {
   // 这一串就会自己把草稿造出来，然后 简历域保存 改走单槽 + 缺项保护那条路。
   it('日常编辑真实次序：进经历编辑页敲字→回列表→保存，不生草稿、教育门槛不误伤「至今在读」', async () => {
     const 保存简历 = vi.fn(async () => {});
-    render工作经历({ 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
+    render工作经历({ 经历: [完整经历行], 教育: [{ ...完整教育, 结束: '' }], 保存简历 });
     const 用户 = userEvent.setup();
     await 用户.click(screen.getByText('字节跳动'));
     await 用户.type(screen.getAllByPlaceholderText('必填')[0], '改');

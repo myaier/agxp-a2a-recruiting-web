@@ -1415,12 +1415,14 @@ test.describe('卡片统一 Backend @backend', () => {
     const 卡们 = page.getByTestId('招聘推荐卡');
     await expect(卡们).toHaveCount(3, { timeout: 15_000 });
 
-    // 全空：六个未知占位齐，工作/教育/标签行一个不收
+    // 全空：五个未知占位齐（亮点行按 Task 5 批准语义给「暂无可展示亮点」），
+    // 工作/教育/标签行一个不收
     const 全空卡 = 卡们.nth(0);
     // 头行段外层 span 连着「｜」分隔符：占位文本用子串匹配
-    for (const 占位 of ['经验未知', '学历未知', '求职状态未知', '工作经历未知', '教育经历未知', '亮点信息未知']) {
+    for (const 占位 of ['经验未知', '学历未知', '求职状态未知', '工作经历未知', '教育经历未知']) {
       await expect(全空卡.getByText(占位)).toBeVisible();
     }
+    await expect(全空卡.getByText('暂无可展示亮点')).toBeVisible();
     await expect(全空卡.getByRole('img', { name: '性别未知' })).toBeVisible();
     await 断言卡在视口内(page, 全空卡);
     断言分数位让位(await 采集卡观察(page, 全空卡));
@@ -1433,14 +1435,15 @@ test.describe('卡片统一 Backend @backend', () => {
     断言分数位让位(长观察);
     断言头行最多两行(长观察);
 
-    // 零值：真实 0 分仍是 0 分环（不是未知占位）；0 年 = 「不满 1 年」；亮点空 → 占位；
-    // 纯空白学历（wire 上 degree: ' '）不冒充已知值 → 「学历未知」占位
+    // 零值：真实 0 分仍是 0 分环（不是未知占位）；0 年 = 「不满 1 年」；亮点合法空 →
+    // 「暂无可展示亮点」（Task 5 批准语义）；纯空白学历（wire 上 degree: ' '）不冒充
+    // 已知值 → 「学历未知」占位
     const 零卡 = 卡们.nth(2);
     await expect(零卡.getByRole('img', { name: '适配 0 分' })).toBeVisible();
     await expect(零卡.getByRole('img', { name: '匹配分未知' })).toHaveCount(0);
     await expect(零卡.getByText('不满 1 年')).toBeVisible();
     await expect(零卡.getByText('学历未知')).toBeVisible();
-    await expect(零卡.getByText('亮点信息未知')).toBeVisible();
+    await expect(零卡.getByText('暂无可展示亮点')).toBeVisible();
     await 断言卡在视口内(page, 零卡);
     await page.screenshot({ path: 'test-results/卡片统一/backend-推荐变体-390.png' });
 

@@ -225,17 +225,23 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     expect(screen.queryByText('TypeScript')).toBeNull();
   });
 
-  it('DF-011：推荐亮点不再有独立亮点区，原因只内联进匹配区「推荐依据」；原 token 与未核对文案不上屏', async () => {
+  it('Task 5：原因进唯一「匹配度分析」六行；无独立「推荐依据」标题；原 token 不上屏', async () => {
     置P4详情状态({
       详情: { ...BFF招聘推荐详情样本, structured_requirements_confirmed: false, highlights: ['category_matched', 'location_matched'] },
     });
     渲染详情();
     // 后端历史分保留（返回栏 匹配 N）
     expect(await screen.findByText('87')).toBeTruthy();
-    // DF-011：原因映射进匹配区的「推荐依据」，不是列表卡亮点区的复活
-    expect(screen.getByText('推荐依据')).toBeTruthy();
-    expect(screen.getByText('职位方向匹配')).toBeTruthy();
-    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('方向 · 职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('地点 · 工作地点匹配')).toBeTruthy();
+    // 缺原因维度给「未提供判定」，不画不匹配
+    expect(screen.getByText('技能 · 未提供判定')).toBeTruthy();
+    expect(screen.getByText('当前接口仅提供部分匹配依据')).toBeTruthy();
+    // 独立「推荐依据」标题与空分析区退役
+    expect(screen.queryByText('推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无逐条匹配证据')).toBeNull();
     // basis 未核对的说明属于求职端概念，招聘端简历正文不出；原 token 不透出
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
     expect(document.body.textContent).not.toContain('category_matched');
@@ -507,9 +513,10 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
   });
 });
 
-// ── DF-011：Backend 独立匿名简历正文内联「推荐依据」——只映射当前同 scope 权威卡的
-//    highlights（四码闭合表、去重保序），无第二分数环、无原 token；换记录/响应变空立即清旧。 ──
-describe('匿名在线简历 · 推荐依据（DF-011）', () => {
+// ── Task 5：Backend 独立匿名简历的匹配区 = 唯一「匹配度分析」六行有限依据 ——
+//    只消费当前同 scope 权威卡的 highlights / structured_requirements_confirmed /
+//    compensation_relationship（契约 C），无第二分数环、无原 token；换记录立即清旧。 ──
+describe('匿名在线简历 · 匹配依据（Task 5）', () => {
   beforeEach(() => {
     mock派发.mockClear();
     mock跳转.mockClear();
@@ -532,57 +539,80 @@ describe('匿名在线简历 · 推荐依据（DF-011）', () => {
   }
   const 渲染推荐详情 = (推荐编号: string) => render(推荐详情元素(推荐编号));
 
-  it('当前同 scope 权威卡的高亮映射进匹配区：中文原因、去重、无原 token、正文无第二分数环', async () => {
+  it('六行按 wire 三键落位：去重、未知码丢弃、原 token 不透出、统一说明在场', async () => {
     置P4详情状态({
       详情: {
         ...BFF招聘推荐详情样本,
-        highlights: ['category_matched', 'location_matched', 'category_matched', 'direction_match'],
+        structured_requirements_confirmed: true,
+        highlights: [
+          'category_matched', 'skills_matched', 'experience_met', 'location_matched',
+          'workplace_mode_matched', 'category_matched', 'direction_match',
+        ],
       },
     });
     渲染推荐详情('rec_r1');
-    expect(await screen.findByText('推荐依据')).toBeTruthy();
-    expect(screen.getByText('职位方向匹配')).toBeTruthy();
-    expect(screen.getByText('工作地点匹配')).toBeTruthy();
-    // 原始重复只展示一次；未知码丢弃且原 token 不透出
-    expect(screen.getAllByText('职位方向匹配')).toHaveLength(1);
+    expect(await screen.findByText('匹配度分析')).toBeTruthy();
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('方向 · 职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('技能 · 有技能命中')).toBeTruthy();
+    expect(screen.getByText('经验 · 经验要求匹配')).toBeTruthy();
+    expect(screen.getByText('地点 · 工作地点匹配')).toBeTruthy();
+    expect(screen.getByText('办公方式 · 办公方式匹配')).toBeTruthy();
+    expect(screen.getByText('薪资 · 薪资带有交集')).toBeTruthy();
+    expect(screen.getByText('当前接口仅提供部分匹配依据')).toBeTruthy();
+    // 原始重复只占一行；未知码丢弃且原 token 不透出
+    expect(screen.getAllByText('方向 · 职位方向匹配')).toHaveLength(1);
     expect(document.body.textContent).not.toContain('category_matched');
     expect(document.body.textContent).not.toContain('direction_match');
-    // 分数只有顶栏一个位置：正文无匹配环；无逐条证据给批准缺失文案，不用原因合成对齐行
+    // 分数只有顶栏一个位置：正文无匹配环
     expect(screen.getByText('87')).toBeTruthy();
     expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
-    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
     // 位置：匹配区在画像之后、个人优势之前
     const 正文 = document.body.textContent ?? '';
-    expect(正文.indexOf('推荐依据')).toBeGreaterThan(正文.indexOf('5 年'));
-    expect(正文.indexOf('个人优势')).toBeGreaterThan(正文.indexOf('推荐依据'));
+    expect(正文.indexOf('匹配度分析')).toBeGreaterThan(正文.indexOf('5 年'));
+    expect(正文.indexOf('个人优势')).toBeGreaterThan(正文.indexOf('匹配度分析'));
   });
 
-  it('原始 highlights 空或全未知：显示「暂无推荐依据」，不猜词义', async () => {
+  it('原始 highlights 空或全未知：六行给未提供判定/关系文案，不出旧空态', async () => {
     置P4详情状态({ 详情: BFF招聘推荐详情样本 }); // highlights ['full_stack'] 全未知
     const 页 = 渲染推荐详情('rec_r1');
-    expect(await screen.findByText('暂无推荐依据')).toBeTruthy();
-    // 空数组同样给空态，不残留上一条记录的原因
+    expect(await screen.findByText('技能 · 未提供判定')).toBeTruthy();
+    expect(screen.getByText('薪资 · 薪资带有交集')).toBeTruthy();
+    expect(screen.queryByText('暂无推荐依据')).toBeNull();
+    expect(screen.queryByText('暂无逐条匹配证据')).toBeNull();
+    // 空数组同构：六行仍在，不残留上一条记录的说明
     置P4详情状态({ 详情: { ...BFF招聘推荐详情样本, highlights: [] } });
     页.rerender(推荐详情元素('rec_r1'));
-    expect(await screen.findByText('暂无推荐依据')).toBeTruthy();
-    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
+    expect(await screen.findByText('方向 · 未提供判定')).toBeTruthy();
   });
 
-  it('导航另一记录原因变空：旧原因立即清除，不残留上一条的依据', async () => {
+  it('经验未确认：experience_met 不作正向声明；确认后恢复 positive', async () => {
     置P4详情状态({
-      详情: { ...BFF招聘推荐详情样本, highlights: ['experience_met', 'workplace_mode_matched'] },
+      详情: { ...BFF招聘推荐详情样本, structured_requirements_confirmed: false, highlights: ['experience_met'] },
     });
     const 页 = 渲染推荐详情('rec_r1');
-    expect(await screen.findByText('经验要求匹配')).toBeTruthy();
-    expect(screen.getByText('办公方式匹配')).toBeTruthy();
+    expect(await screen.findByText('经验 · 未提供判定')).toBeTruthy();
+    expect(screen.queryByText('经验 · 经验要求匹配')).toBeNull();
+    置P4详情状态({
+      详情: { ...BFF招聘推荐详情样本, structured_requirements_confirmed: true, highlights: ['experience_met'] },
+    });
+    页.rerender(推荐详情元素('rec_r1'));
+    expect(await screen.findByText('经验 · 经验要求匹配')).toBeTruthy();
+  });
+
+  it('薪资关系与原因矛盾给「判定不完整」；导航另一记录立即换行，不残留', async () => {
+    置P4详情状态({
+      详情: { ...BFF招聘推荐详情样本, highlights: ['compensation_overlap'], compensation_relationship: 'near_miss' },
+    });
+    const 页 = 渲染推荐详情('rec_r1');
+    expect(await screen.findByText('薪资 · 判定不完整')).toBeTruthy();
     // 另一条推荐（同岗位 scope）没有任何已知原因
     置P4详情状态({
       详情: { ...BFF招聘推荐详情样本, recommendation_id: 'rec_r2', highlights: ['full_stack'] },
     });
     页.rerender(推荐详情元素('rec_r2'));
-    expect(await screen.findByText('暂无推荐依据')).toBeTruthy();
-    expect(screen.queryByText('经验要求匹配')).toBeNull();
-    expect(screen.queryByText('办公方式匹配')).toBeNull();
+    expect(await screen.findByText('薪资 · 薪资带有交集')).toBeTruthy();
+    expect(screen.queryByText('经验 · 经验要求匹配')).toBeNull();
   });
 });
 // ── J（Task 8）：canonical 双坐标 —— 所有读写与 scope 只取 URL ──
@@ -732,6 +762,52 @@ describe('匿名在线简历 · 独立页默认行为（Task 4 共用正文后�
     页.rerender(<简历正文 档={匿名简历表['A-02']} 完整布局 />);
     expect(screen.getByText('项目经历')).toBeTruthy();
     expect(screen.getByText('暂无项目经历')).toBeTruthy();
+  });
+});
+
+// ── Task 5：Mock 独立屏同布局同有限信息模型 —— 六行来自 档.推荐依据 经真实映射，
+//    不再画 JD 硬性条件 × 简历原文的逐项对齐卡（不暗示可验证的逐项计分）。 ──
+describe('匿名在线简历 · Mock 匹配依据（Task 5）', () => {
+  /** 带岗位硬性条件的 Mock 状态：旧版式在此会渲染 匹配对齐卡（'Go 主栈' 行）。
+   *  岗位坐标走 在谈候选（屏幕只认 状态.企业候选列表 与全局 推荐列表 常量）。 */
+  function 置Mock详情状态() {
+    mock应用状态 = {
+      数据源模式: 'mock', 派发: mock派发,
+      状态: {
+        岗位列表: [{
+          编号: 'P-01', 名称: '资深后端工程师 · 交易网关', 状态: '在招',
+          薪资带: '50-65K', 硬性条件: ['Go 主栈', '5 年以上', '常驻上海', '可混合办公'],
+        }],
+        企业候选列表: [{
+          编号: 'A-01', 岗位编号: 'P-01', 在找: '后端工程师 · 在职看机会',
+        }],
+        推荐列表: [], 收藏候选: [], 不合适候选: {}, 已接触推荐: [],
+      },
+      操作: {},
+    };
+  }
+
+  it('六行布局与 Backend 同构；JD 逐项对齐卡退役；总分仍取档.适配分原样', () => {
+    置Mock详情状态();
+    render(
+      <MemoryRouter initialEntries={['/hr/resume/A-01']}>
+        <Routes>
+          <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('方向 · 职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('技能 · 有技能命中')).toBeTruthy();
+    expect(screen.getByText('经验 · 经验要求匹配')).toBeTruthy();
+    expect(screen.getByText('薪资 · 薪资带有交集')).toBeTruthy();
+    expect(screen.getByText('当前接口仅提供部分匹配依据')).toBeTruthy();
+    // JD 逐项计分版式不再出现（对齐行/证据原文）
+    expect(screen.queryByText('Go 主栈')).toBeNull();
+    expect(screen.queryByText('常驻上海')).toBeNull();
+    // 总分：返回栏 匹配 94 原样，正文无第二分数环
+    expect(screen.getByText('94')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
   });
 });
 

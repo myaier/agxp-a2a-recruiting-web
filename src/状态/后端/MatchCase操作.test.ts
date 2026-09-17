@@ -635,6 +635,43 @@ describe('详情读取', () => {
     expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(2);
   });
 
+  // ── Task 2 Step 3：同 key 在飞复用同一真实 Promise（读锁让路 ≠ 本轮授权成功）──
+
+  it('同 key 在飞复用同一真实 Promise：让路调用等待真实读取落地，只发一笔 GET', async () => {
+    const 读门 = deferred<NegotiationDetail>();
+    vi.mocked(env.数据源.读取候选连续详情).mockReturnValueOnce(读门.promise);
+    const 第一 = env.操作.读取详情('candidate', 'mc_1', true);
+    const 第二 = env.操作.读取详情('candidate', 'mc_1', true); // StrictMode 重放 / 列表跳详情
+    expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(1);
+    // 第二个调用不得在读锁让路时立即兑现（那会把旧快照误当本轮成功）
+    let 已兑现 = false;
+    void 第二.then(() => { 已兑现 = true; });
+    await new Promise((完成) => setTimeout(完成, 0));
+    expect(已兑现).toBe(false);
+    读门.resolve(连续聚合('mc_1', 权威候选详情));
+    await Promise.all([第一, 第二]);
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']).toMatchObject({
+      阶段: '成功', 刷新中: false, detail: 权威候选详情,
+    });
+    // 结算后锁已释放：下一次 force 是新的真实读取（不把共享 Promise 当持久缓存）
+    await env.操作.读取详情('candidate', 'mc_1', true);
+    expect(vi.mocked(env.数据源.读取候选连续详情)).toHaveBeenCalledTimes(2);
+  });
+
+  it('同 key 在飞复用同样适用于招聘端 Case 直读（recruiter 路径一笔 GET）', async () => {
+    const 权威招聘详情 = 解P5详情(P5招聘详情Wire, 'recruiter');
+    const 读门 = deferred<typeof 权威招聘详情>();
+    vi.mocked(env.数据源.读取P5详情).mockReturnValueOnce(读门.promise);
+    const 第一 = env.操作.读取详情('recruiter', 'mc_r');
+    const 第二 = env.操作.读取详情('recruiter', 'mc_r');
+    expect(vi.mocked(env.数据源.读取P5详情)).toHaveBeenCalledTimes(1);
+    读门.resolve(权威招聘详情);
+    await Promise.all([第一, 第二]);
+    expect(env.最新状态().P5详情['p5:detail:recruiter:mc_r']).toMatchObject({
+      阶段: '成功', detail: 权威招聘详情,
+    });
+  });
+
   it('详情失败落 失败快照（契约错误走重试错误态），旧成功 detail 保留不闪退', async () => {
     vi.mocked(env.数据源.读取候选连续详情).mockResolvedValueOnce(连续聚合('mc_1', 权威候选详情));
     await env.操作.读取详情('candidate', 'mc_1');

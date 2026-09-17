@@ -13,8 +13,12 @@ export interface 会话行数据 {
   副标题: string;
   时间: string;
   摘要: string;
-  /** Mock AI代理 → 代理标；真人/直聊与 Backend 中性「会」→ 字标（底色随数据） */
-  头像: { 种类: '代理' } | { 种类: '字标'; 字: string; 底色: string };
+  /** Mock AI代理 → 代理标；真人/直聊与 Backend 中性「会」→ 字标（底色随数据）；
+   *  Task 2 起已授权对方资料可带真实头像 URL（加载失败回退 回退字 字标）。 */
+  头像:
+    | { 种类: '代理' }
+    | { 种类: '字标'; 字: string; 底色: string }
+    | { 种类: '图片'; URL: string; 回退字: string };
   未读: 未读展示;
   /** 回归定位标识（Backend 保留 unread-${conversationId}；Mock 无此标识） */
   未读测试标识?: string;

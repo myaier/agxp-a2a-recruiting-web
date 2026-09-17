@@ -24,8 +24,6 @@ import { useParams } from 'react-router-dom';
 import 样式 from './匿名在线简历.module.css';
 import { 在线简历正文 } from '../组件/在谈详情/在线简历正文';
 import { 从Mock到简历正文, 从安全资料到简历正文, Mock默认薪资结论 } from '../数据/在线简历正文映射';
-import { 招聘侧对齐行 } from '../数据/匹配对齐';
-import type { 对齐行 } from '../数据/匹配对齐';
 import { 次级页外壳, 返回栏, 滚动区 } from '../组件/通用';
 import { 求职状态文案 } from './候选推荐';
 import { use导航 } from '../路由/导航钩子';
@@ -34,7 +32,9 @@ import { use应用状态 } from '../状态/应用状态';
 import { 匿名简历表, 推荐列表 } from '../数据/企业端模拟数据';
 import type { 匿名简历档 } from '../数据/企业端模拟数据';
 import { 薪资初筛, 薪资初筛文案 } from '../数据/薪资初筛';
-import { 从P4招聘候选, P4已开案, 映射P4委托展示, 映射推荐依据 } from '../数据/发现推荐映射';
+import { 从P4招聘候选, P4已开案, 映射P4委托展示 } from '../数据/发现推荐映射';
+import { 映射招聘匹配依据 } from '../数据/招聘匹配依据映射';
+import type { 匹配依据行 } from '../数据/招聘匹配依据映射';
 import { 从BFF到在线简历展示 } from '../数据/在线简历展示映射';
 import { 轻提示 } from '../组件/轻提示';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
@@ -44,14 +44,15 @@ import { P4委托进度未知文案, use发现推荐委托轮询 } from '../状�
 
 /** 独立屏旧调用者的 props 形状（S0–S3 展示统一 Task 6 兼容包装专用）：与旧正文 props
  *  同形（少 `资料` —— Backend 安全资料有自己的适配边界，不经本包装）。旧 props 调用
- *  只允许存在于这一处兼容边界。 */
+ *  只允许存在于这一处兼容边界。Task 5：对齐行们 退役（Mock 独立屏改走六行有限依据），
+ *  新增 匹配依据行们 透传。 */
 interface 简历正文兼容属性 {
   档: 匿名简历档 | null;
   真名?: string | null;
   求职状态?: string | null;
   薪资结论?: string;
   已确认?: boolean;
-  对齐行们?: 对齐行[] | null;
+  匹配依据行们?: readonly 匹配依据行[];
   完整布局?: boolean;
   缺失说明?: string | null;
 }
@@ -68,14 +69,14 @@ export function 简历正文({
   求职状态 = null,
   薪资结论 = Mock默认薪资结论,
   已确认 = false,
-  对齐行们 = null,
+  匹配依据行们 = undefined,
   完整布局 = false,
   缺失说明 = null,
 }: 简历正文兼容属性) {
   return (
     <在线简历正文
       内容={从Mock到简历正文({ 档, 真名, 求职状态, 薪资结论 })}
-      对齐行们={对齐行们}
+      匹配依据行们={匹配依据行们}
       已确认={已确认}
       完整布局={完整布局}
       缺失说明={缺失说明}
@@ -182,7 +183,10 @@ function Mock匿名简历() {
         <简历正文
           档={档}
           薪资结论={薪资结论}
-          对齐行们={招聘侧对齐行(状态.岗位列表.find((岗) => 岗.编号 === 岗位编号)?.硬性条件 ?? [], 档)}
+          /* Task 5（Spec §5）：Mock 与 Backend 同一六行有限依据模型 —— 档.推荐依据 是
+             与 wire 同形的三键演示事实，经真实 映射招聘匹配依据 落六行；不再画
+             JD 硬性条件 × 简历原文的逐项对齐卡（不暗示可验证的逐项计分）。 */
+          匹配依据行们={映射招聘匹配依据(档.推荐依据)}
           // 头行求职状态：在谈单取 在找 后半段；推荐候选按推荐卡同一口径中文化（2026-09-09）
           求职状态={在谈候选?.在找?.split(' · ')[1] ?? (推 ? 求职状态文案(推.求职状态) : null)}
         />
@@ -265,10 +269,19 @@ function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: str
   const 缓存卡 = 推荐编号 && !不可用 ? 后端状态.招聘候选详情?.[推荐编号] ?? null : null;
   const 卡 = 缓存卡 !== null && 缓存卡.job_id === 岗位编号 ? 缓存卡 : null;
   const 视图 = useMemo(() => (卡 === null ? null : 从P4招聘候选(卡)), [卡]);
-  // DF-011：推荐依据只来自当前同 scope 权威卡的 highlights（四码闭合表、去重保序）。
-  // 空/全未知给 []（「暂无推荐依据」），不借其他记录、不猜词义；既有 亮点 投影
-  // （保留重复项，服务列表卡）完全不动。
-  const 推荐依据 = 卡 === null ? null : 映射推荐依据(卡.highlights);
+  // Task 5（Spec §5 / 契约 C）：匹配依据六行只来自当前同 scope 权威卡的 wire 三键
+  // （highlights / structured_requirements_confirmed / compensation_relationship），
+  // 经 映射招聘匹配依据 落有限模型 —— 不重算分数、不按当前简历/岗位推算、不保存快照；
+  // 空/全未知也固定六行（缺码给「未提供判定」），不借其他记录、不猜词义。
+  // 既有 亮点 投影（保留重复项，服务列表卡）完全不动。
+  const 匹配依据行们 = useMemo(
+    () => (卡 === null ? null : 映射招聘匹配依据({
+      highlights: 卡.highlights,
+      structuredRequirementsConfirmed: 卡.structured_requirements_confirmed,
+      compensationRelationship: 卡.compensation_relationship,
+    })),
+    [卡],
+  );
 
   const 重试读取 = () => {
     if (!岗位编号 || !推荐编号) return;
@@ -415,13 +428,13 @@ function Backend匿名简历({ 岗位编号, 推荐编号 }: { 岗位编号: str
             安全展示资料经 从安全资料到简历正文 归一（candidate_resume = null 是合法缺源档
             → 各区原位缺失）。沿 Mock Up 原信息顺序，真名不进这条链路；求职状态只取
             summary 的闭表事实（无回退文案——占位归头行缺段）。显式 完整布局 保持本分支
-            自 Task 5 起的缺失布局（任一区块缺源不整区消失）。DF-011：把当前同 scope 卡的
-            原始 highlights 经 映射推荐依据 映射成「推荐依据」传给匹配区（无已知原因给 []）；
-            个人亮点 producer 与 personal_highlights 摘要事实不动。 ── */}
+            自 Task 5 起的缺失布局（任一区块缺源不整区消失）。Task 5：当前同 scope 卡的
+            wire 三键经 映射招聘匹配依据 落六行「匹配度分析」（唯一标题、无独立推荐依据区、
+            顶栏匹配分为唯一总分）；个人亮点 producer 与 personal_highlights 摘要事实不动。 ── */}
         <在线简历正文
           完整布局
           内容={从安全资料到简历正文(从BFF到在线简历展示(视图.candidateResume))}
-          推荐依据={推荐依据 ?? []}
+          匹配依据行们={匹配依据行们 ?? []}
         />
       </滚动区>
 

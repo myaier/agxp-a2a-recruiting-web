@@ -1,7 +1,7 @@
 // 企业真人会话 · 候选专属原件投影契约（P0）：顶部「看简历」打开的是 A-01 候选自己的原件
 // 投影，而不是求职端全局简历。校准后招聘方看到的履历属于对应候选，不会串成沈亦舟的全局版本。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,10 +58,38 @@ describe('企业真人会话 · 看简历读取候选投影', () => {
   it('企业真人会话的原件读取候选专属投影', async () => {
     const 用户 = userEvent.setup();
     render(<企业真人会话 />);
-    await 用户.click(screen.getByRole('button', { name: /看简历/ }));
-    // A-01 原件经历首段职位是「研发专家 · 交易中台」
-    expect(screen.getByText('研发专家 · 交易中台')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: /看在线简历/ }));
+    // A-01 原件经历首段职位是「研发专家 · 交易中台」（限定层内，页头同文不干扰）
+    const 层 = within(screen.getByRole('dialog', { name: /看在线简历/ }));
+    expect(层.getByText('研发专家 · 交易中台')).toBeTruthy();
     // 全局简历里的「研发专家 2-2 · 交易中台」不应出现在候选原件分支
+    expect(screen.queryByText(全局经历职位串)).toBeNull();
+  });
+
+  it('Task 4：纸身联系方式恒「—」，不取 Mock 原件的真实联系方式', async () => {
+    const 用户 = userEvent.setup();
+    render(<企业真人会话 />);
+    await 用户.click(screen.getByRole('button', { name: /看在线简历/ }));
+    const 层 = within(screen.getByRole('dialog', { name: /看在线简历/ }));
+    expect(层.getByText('手机：—')).toBeTruthy();
+    expect(层.getByText('邮箱：—')).toBeTruthy();
+    // Mock 投影里的真机/邮箱绝不进聊天纸身
+    expect(screen.queryByText('138 0217 6021')).toBeNull();
+    expect(screen.queryByText(/shenyizhou@qq\.com/)).toBeNull();
+  });
+
+  it('Task 4：未披露原件时纸身只给代号与「暂未提供」区段，不读求职端全局简历', async () => {
+    mock应用状态.状态.企业候选列表 = [
+      { 编号: 'A-01', 岗位编号: 'P-01', 代号: '陈屿', 真名: '', 头像字: '陈', 阶段: '意向确认', 轮次: '第 3 轮', 下一步: '', 辅助文案: '去消息页私聊', 需要你: false, 分歧: null, 匹配分: 94, 画像: '9 年 · Go / 高并发交易 · 字节跳动' },
+    ];
+    const 用户 = userEvent.setup();
+    render(<企业真人会话 />);
+    await 用户.click(screen.getByRole('button', { name: /看在线简历/ }));
+    const 层 = within(screen.getByRole('dialog', { name: /看在线简历/ }));
+    expect(层.getByText('陈屿')).toBeTruthy();
+    expect(层.getByText('工作经历').nextElementSibling?.textContent).toBe('暂未提供');
+    expect(层.getByText('教育经历').nextElementSibling?.textContent).toBe('暂未提供');
+    expect(层.getByText('个人优势').nextElementSibling?.textContent).toBe('暂未提供');
     expect(screen.queryByText(全局经历职位串)).toBeNull();
   });
 });

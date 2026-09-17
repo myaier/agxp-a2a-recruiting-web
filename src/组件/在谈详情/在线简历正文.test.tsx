@@ -11,6 +11,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { 在线简历正文 } from './在线简历正文';
+import { 映射招聘匹配依据 } from '../../数据/招聘匹配依据映射';
 import { 从Mock到简历正文, 从安全资料到简历正文 } from '../../数据/在线简历正文映射';
 import { 匿名简历表 } from '../../数据/企业端模拟数据';
 import type { 匿名简历档 } from '../../数据/企业端模拟数据';
@@ -353,63 +354,77 @@ describe('在线简历正文 · Backend 安全链路（从安全资料到简历�
   });
 });
 
-// DF-011：招聘匿名简历正文（独立详情）的匹配区可选展示「推荐依据」。
-// 传 prop 才启用：无逐条证据用「暂无逐条匹配证据」（不全局更换 Case 的「匹配分析缺失」）、
-// 原因与证据区分（不生成 Mock 级对齐行、正文无第二分数环）；undefined 完全保持旧行为。
-describe('在线简历正文 · 推荐依据（DF-011 招聘匿名简历正文）', () => {
-  it('传 prop 才显示「推荐依据」：原因在画像之后、个人优势之前，正文无分数环', () => {
-    const { container } = render(
-      <在线简历正文
-        内容={从安全资料到简历正文(资料齐备)}
-        完整布局
-        推荐依据={['职位方向匹配', '工作地点匹配']}
-      />,
-    );
-    expect(screen.getByText('推荐依据')).toBeTruthy();
-    expect(screen.getByText('职位方向匹配')).toBeTruthy();
-    expect(screen.getByText('工作地点匹配')).toBeTruthy();
-    // 顶栏唯一分数位：正文不重复分数环
-    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
-    const 正文 = container.firstElementChild;
-    if (!(正文 instanceof HTMLElement)) throw new Error('正文根节点缺失');
-    断言顺序(正文, ['示例公司 · 软件工程师', '匹配度分析', '暂无逐条匹配证据', '推荐依据', '职位方向匹配', '个人优势']);
+// Task 5（Spec §5 / 契约 C）：招聘推荐详情的匹配区改为唯一「匹配度分析」+ 六行有限依据
+// （匹配依据行们 prop）。传 prop 才启用：标题唯一、无独立「推荐依据」标题、无重复空分析区、
+// 无第二分数环；undefined 完全保持 Case/旧消费者的原行为（对齐卡或「匹配分析缺失」）。
+describe('在线简历正文 · 匹配依据行们（Task 5 唯一匹配度分析）', () => {
+  /** 真实映射产出：四正向 + 技能有命中 + 薪资交集（Backend wire 三键 → 六行） */
+  const 行们 = 映射招聘匹配依据({
+    highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'],
+    structuredRequirementsConfirmed: true,
+    compensationRelationship: 'overlap',
   });
 
-  it('无逐条匹配证据：用批准文案替换缺失说明，但不以已有原因生成 Mock 级对齐行', () => {
+  it('传 prop：唯一「匹配度分析」标题 + 六行 + 统一说明；无独立「推荐依据」标题与空分析区', () => {
     render(
-      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={['职位方向匹配']} />,
+      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 匹配依据行们={行们} />,
     );
-    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
-    expect(screen.queryByText('匹配分析缺失')).toBeNull();
-    // 原因只是说明文字：不是逐条对齐证据
-    expect(screen.queryByText('Go 主栈')).toBeNull();
-  });
-
-  it('启用但无已知原因（[]）：显示「暂无推荐依据」，缺失证据文案照常区分', () => {
-    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={[]} />);
-    expect(screen.getByText('推荐依据')).toBeTruthy();
-    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
-    expect(screen.getByText('暂无逐条匹配证据')).toBeTruthy();
-  });
-
-  it('undefined prop（Mock/Case 旧行为）完全保持：「匹配分析缺失」在位、无推荐依据区', () => {
-    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 />);
-    expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('方向 · 职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('技能 · 有技能命中')).toBeTruthy();
+    expect(screen.getByText('薪资 · 薪资带有交集')).toBeTruthy();
+    expect(screen.getByText('当前接口仅提供部分匹配依据')).toBeTruthy();
+    // 旧展示形态整体退役：独立标题、空分析区文案都不再出现
     expect(screen.queryByText('推荐依据')).toBeNull();
     expect(screen.queryByText('暂无推荐依据')).toBeNull();
     expect(screen.queryByText('暂无逐条匹配证据')).toBeNull();
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
+    // 顶栏唯一分数位：正文不重复分数环
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
   });
 
-  it('换记录原因变空：rerender 清旧原因并恢复空态文案，不残留上一条的依据', () => {
-    const { rerender } = render(
-      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={['职位方向匹配']} />,
+  it('六行在画像之后、个人优势之前（信息顺序不变）', () => {
+    const { container } = render(
+      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 匹配依据行们={行们} />,
     );
-    expect(screen.getByText('职位方向匹配')).toBeTruthy();
-    rerender(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 推荐依据={[]} />);
-    expect(screen.queryByText('职位方向匹配')).toBeNull();
-    expect(screen.getByText('暂无推荐依据')).toBeTruthy();
+    const 正文 = container.firstElementChild;
+    if (!(正文 instanceof HTMLElement)) throw new Error('正文根节点缺失');
+    断言顺序(正文, ['示例公司 · 软件工程师', '匹配度分析', '方向 · 职位方向匹配', '薪资 · 薪资带有交集', '个人优势']);
+  });
+
+  it('不传 完整布局（独立屏默认版式）也渲染六行匹配区', () => {
+    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 匹配依据行们={行们} />);
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('方向 · 职位方向匹配')).toBeTruthy();
+  });
+
+  it('undefined prop（Case/求职链路）完全保持旧行为：「匹配分析缺失」在位、无六行区', () => {
+    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 />);
+    expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+    expect(screen.queryByText('当前接口仅提供部分匹配依据')).toBeNull();
+    expect(screen.queryByText(/方向 · /)).toBeNull();
+  });
+
+  it('换记录行们更新：rerender 清旧行、不残留上一条的说明', () => {
+    const { rerender } = render(
+      <在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 匹配依据行们={行们} />,
+    );
+    expect(screen.getByText('薪资 · 薪资带有交集')).toBeTruthy();
+    rerender(
+      <在线简历正文
+        内容={从安全资料到简历正文(资料齐备)}
+        完整布局
+        匹配依据行们={映射招聘匹配依据({
+          highlights: [],
+          structuredRequirementsConfirmed: false,
+          compensationRelationship: 'unknown',
+        })}
+      />,
+    );
+    expect(screen.queryByText('薪资 · 薪资带有交集')).toBeNull();
+    expect(screen.getByText('薪资 · 未核对')).toBeTruthy();
     rerender(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 />);
-    expect(screen.queryByText('推荐依据')).toBeNull();
+    expect(screen.queryByText('薪资 · 未核对')).toBeNull();
     expect(screen.getByText('匹配分析缺失')).toBeTruthy();
   });
 });

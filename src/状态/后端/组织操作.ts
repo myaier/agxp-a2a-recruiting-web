@@ -244,6 +244,16 @@ export interface 企业媒体脱离错误 extends BFF错误 {
 export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
   const { 是后端, 后端, 派发, 状态引用 } = deps;
 
+  /**
+   * Task 2 Step 3：公开企业读取的同 id 在飞表 —— 同 id 并发复用同一真实 Promise
+   * （岗位/企业链的单飞等待边界），条目带主体+会话代际：换代后的新调用不掺和旧会话
+   * 的在飞读取，另起自己的真实 GET；旧回执按栅栏整包丢弃。结算即摘登记（只摘自己
+   * 那条，凭 token 身份），不构成持久缓存。
+   */
+  const 公开企业在飞 = new Map<string, {
+    主体: string | null; 代际: number; promise: Promise<void>; token: object;
+  }>();
+
   /** 统一组织域 401：走 清账号状态（含 清后端组织状态，但不触 Mock fixture）。 */
   function 处理组织401(error: unknown): void {
     if (error instanceof BFF错误 && error.status === 401) 清账号状态(deps);
@@ -622,21 +632,39 @@ export function 创建组织操作(deps: 后端操作依赖): 组织操作 {
 
     async 读取公开企业(id) {
       if (!是后端 || !后端) return;
-      try {
-        const organization = await 后端.读取公开企业(id);
-        派发({ 型: '缓存公开企业', 企业: organization });
-      } catch (error) {
-        if (error instanceof BFF错误 && error.status === 401) {
-          清账号状态(deps);
-        } else if (error instanceof BFF错误 &&
-          (error.code === 'organization_suspended' || error.code === 'organization_not_found')) {
-          派发({ 型: '标记公开企业不可用', 编号: id });
-          const state = 状态引用.current;
-          const current = state.企业关系列表.find((item) => item.affiliation_id === state.当前企业关系编号);
-          if (current?.organization_id === id) 派发({ 型: '选择当前企业关系', 编号: null });
+      // 会话栅栏：发起时捕获主体与会话代际 —— 迟到回执（含 401/不可用标记）只随单飞
+      // 收口，绝不派发、绝不清新会话；同 id 并发复用同一真实 Promise，等真实结算。
+      const subjectId = deps.主体标识引用.current;
+      const generation = deps.会话代际.current;
+      const 仍有效 = () => deps.主体标识引用.current === subjectId && deps.会话代际.current === generation;
+      const 在飞 = 公开企业在飞.get(id);
+      if (在飞 && 在飞.主体 === subjectId && 在飞.代际 === generation) return 在飞.promise;
+      // token 身份即本次登记凭据：finally 只摘自己那条（换代后被替换时不动新会话的）
+      const token: object = {};
+      const promise: Promise<void> = (async () => {
+        try {
+          const organization = await 后端!.读取公开企业(id);
+          if (仍有效()) 派发({ 型: '缓存公开企业', 企业: organization });
+        } catch (error) {
+          if (仍有效()) {
+            if (error instanceof BFF错误 && error.status === 401) {
+              清账号状态(deps);
+            } else if (error instanceof BFF错误 &&
+              (error.code === 'organization_suspended' || error.code === 'organization_not_found')) {
+              派发({ 型: '标记公开企业不可用', 编号: id });
+              const state = 状态引用.current;
+              const current = state.企业关系列表.find((item) => item.affiliation_id === state.当前企业关系编号);
+              if (current?.organization_id === id) 派发({ 型: '选择当前企业关系', 编号: null });
+            }
+          }
+          throw error;
+        } finally {
+          const 现 = 公开企业在飞.get(id);
+          if (现 !== undefined && 现.token === token) 公开企业在飞.delete(id);
         }
-        throw error;
-      }
+      })();
+      公开企业在飞.set(id, { 主体: subjectId, 代际: generation, promise, token });
+      return promise;
     },
 
     // ── 合同 A：目录三操作 —— 只读 / 零派发，绝不修改当前管理关系，不建目录缓存 ──

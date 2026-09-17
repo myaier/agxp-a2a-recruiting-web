@@ -358,7 +358,7 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
     }
   });
 
-  it('个人亮点空数组给「亮点信息未知」占位，不回退旧 highlights；旧代理小结文案不上卡', () => {
+  it('个人亮点空数组给「暂无可展示亮点」占位（Task 5 合法空文案），不回退旧 highlights；旧代理小结文案不上卡', () => {
     置P4状态({
       快照: P4快照({
         阶段: '成功',
@@ -371,8 +371,9 @@ describe('候选推荐 · P4 招聘发现（Backend）', () => {
       }),
     });
     render(<候选推荐 />);
-    // 占位只表示「没有可展示的亮点」，绝不把旧匹配理由 / 旧代理小结补回去
-    expect(screen.getByText('亮点信息未知')).toBeTruthy();
+    // 占位只表示「没有可展示的亮点」（Spec §6：合法空不声称未生成/解析失败），
+    // 绝不把旧匹配理由 / 旧代理小结补回去
+    expect(screen.getByText('暂无可展示亮点')).toBeTruthy();
     expect(screen.queryByText('带领5人团队交付')).toBeNull();
     expect(screen.queryByText('职位方向匹配')).toBeNull();
     expect(screen.queryByText('category_matched')).toBeNull();
@@ -1253,7 +1254,7 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     for (const 段 of ['经验未知', '学历未知', '求职状态未知']) expect(头行[0]).toContain(段);
     expect(screen.getByText('工作经历未知')).toBeTruthy();
     expect(screen.getByText('教育经历未知')).toBeTruthy();
-    expect(screen.getByText('亮点信息未知')).toBeTruthy();
+    expect(screen.getByText('暂无可展示亮点')).toBeTruthy();
     expect(头行[0]).not.toMatch(/薪资/);
     expect(document.body.textContent).not.toMatch(/薪资带/);
     expect(screen.queryByRole('img', { name: '男' })).toBeNull();
@@ -1300,7 +1301,7 @@ describe('候选推荐 · 去名改版头行（定稿 2026-09-08）', () => {
     expect(screen.queryByText('带领5人团队交付')).toBeNull();
     expect(screen.queryByText('在职看机会')).toBeNull();
     expect(screen.getByText('工作经历未知')).toBeTruthy();
-    expect(screen.getByText('亮点信息未知')).toBeTruthy();
+    expect(screen.getByText('暂无可展示亮点')).toBeTruthy();
     expect(screen.getByLabelText('性别未知')).toBeTruthy();
     expect(读头行文本()).toEqual([expect.stringContaining('经验未知')]);
   });

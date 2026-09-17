@@ -430,6 +430,119 @@ const 企业公开页场景 = 构造场景({
   },
 });
 
+// ── 聊天推荐前端修复（Task 6）：两端消息列表 / 真人聊天 / 招聘在线简历纸身的
+//    Mock 视觉场景。全部走 Mock 数据源（采集 spec 固定 mock 模式），按独立版式
+//    失败面拆分：三行列表、气泡对齐与 32px 头像槽、纸身版式。关键元素记录
+//    boundingBox —— 头像槽宽高即「图与首字同尺寸」的采集期几何证据。 ──
+
+// chat-recommend-frontend-candidate-messages：求职端消息列表三行版式（姓名/副标题/摘要）。
+const 修复候选消息场景: 视觉场景 = {
+  id: 'chat-recommend-frontend-candidate-messages',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/app', '求职端已注册');
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '搜索' })).toBeVisible();
+    await expect(page.getByText('林筱')).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '搜索按钮', 定位: page.getByRole('button', { name: '搜索' }) },
+      { 名称: 'AI代理动态行', 定位: page.getByRole('button', { name: /AI代理动态/ }).first() },
+      { 名称: '真人会话行 林筱', 定位: page.getByRole('button', { name: /林筱/ }).first() },
+      { 名称: '真人会话行头像', 定位: page.getByRole('button', { name: /林筱/ }).first().locator('span[class*="头像"]') },
+    ];
+  },
+};
+
+// chat-recommend-frontend-candidate-chat：求职端真人聊天（Mock 剧情林筱），气泡对齐 + 头像槽。
+const 修复候选聊天场景: 视觉场景 = {
+  id: 'chat-recommend-frontend-candidate-chat',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/app', '求职端已注册');
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+    await page.getByRole('button', { name: /林筱/ }).first().click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.locator('span[class*="对方头像"]').first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
+      { 名称: '对方头像槽', 定位: page.locator('span[class*="对方头像"]').first() },
+      { 名称: '我方头像槽', 定位: page.locator('span[class*="我头像"]').first() },
+    ];
+  },
+};
+
+// chat-recommend-frontend-recruiter-messages：招聘端消息列表（去名后列表 + 搜索）。
+const 修复招聘消息场景: 视觉场景 = {
+  id: 'chat-recommend-frontend-recruiter-messages',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/hr', '招聘端已注册');
+    await page.locator('nav').getByRole('button').filter({ hasText: '消息' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '搜索' })).toBeVisible();
+    await expect(page.getByText('AI代理动态')).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '搜索按钮', 定位: page.getByRole('button', { name: '搜索' }) },
+      { 名称: '搜索输入行', 定位: page.getByRole('textbox', { name: '搜索会话 / 候选 / 岗位' }) },
+      { 名称: 'AI代理动态行', 定位: page.getByRole('button', { name: /AI代理动态/ }).first() },
+    ];
+  },
+};
+
+// chat-recommend-frontend-recruiter-chat：招聘端真人聊天（A-01 沈亦舟）+ 操作栏。
+const 修复招聘聊天场景: 视觉场景 = 构造场景({
+  id: 'chat-recommend-frontend-recruiter-chat',
+  状态: '招聘端已注册',
+  路径: '/#/hr/chat/A-01',
+  就绪(page: Page): Promise<void> {
+    return (async () => {
+      await expect(page.locator('span[class*="对方头像"]').first()).toBeVisible();
+      await expect(page.getByRole('button', { name: '看在线简历' })).toBeVisible();
+    })();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
+      { 名称: '对方头像槽', 定位: page.locator('span[class*="对方头像"]').first() },
+      { 名称: '我方头像槽', 定位: page.locator('span[class*="我头像"]').first() },
+      { 名称: '主项 看在线简历', 定位: page.getByRole('button', { name: '看在线简历' }) },
+    ];
+  },
+});
+
+// chat-recommend-frontend-recruiter-resume-paper：招聘端在线简历纸身（Task 4 统一纸身）。
+const 修复招聘纸身场景: 视觉场景 = {
+  id: 'chat-recommend-frontend-recruiter-resume-paper',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开稳定页面(page, '/#/hr/chat/A-01', '招聘端已注册');
+    await page.getByRole('button', { name: '看在线简历' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('个人优势').first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '纸身姓名 沈亦舟', 定位: page.getByText('沈亦舟', { exact: true }).first() },
+      { 名称: '联系方式占位 手机', 定位: page.getByText('手机：—', { exact: true }) },
+      { 名称: '段标 工作经历', 定位: page.getByText('工作经历', { exact: true }).first() },
+      { 名称: '段标 教育经历', 定位: page.getByText('教育经历', { exact: true }).first() },
+      { 名称: '段标 个人优势', 定位: page.getByText('个人优势', { exact: true }).first() },
+      { 名称: '继续沟通按钮', 定位: page.getByRole('button', { name: '继续沟通' }) },
+    ];
+  },
+};
+
 export const 视觉场景们: 视觉场景[] = [
   登录场景,
   身份场景,
@@ -449,4 +562,9 @@ export const 视觉场景们: 视觉场景[] = [
   账号安全场景,
   反馈场景,
   企业公开页场景,
+  修复候选消息场景,
+  修复候选聊天场景,
+  修复招聘消息场景,
+  修复招聘聊天场景,
+  修复招聘纸身场景,
 ];

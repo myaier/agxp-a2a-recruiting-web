@@ -38,7 +38,7 @@ import type {
   BFFOnboarding角色状态,
   BFFOnboarding状态,
 } from '../../数据/BFF契约';
-import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询 } from '../../数据/招聘数据源类型';
+import type { 页面简历写入, 页面意向快照, 意向草稿型, 首次意向输入, 组织搜索查询, 页面隐私快照 } from '../../数据/招聘数据源类型';
 import type { P5角色, P5历史生命周期 } from '../../数据/BFF契约';
 import type {
   P5列表项,
@@ -862,6 +862,11 @@ export interface 隐私操作 {
   添加组织屏蔽(organizationId: string, source: 屏蔽来源): Promise<void>;
   /** 解除带完整 屏蔽项：组织编号来自 item.组织编号，risk_acknowledged 由 来源 推导。 */
   解除组织屏蔽(item: 屏蔽项): Promise<void>;
+  /** 契约B（2026-09-17 聊天与推荐展示修复）：企业屏蔽表单入口的权威重读 —— 成功经
+   *  既有 水合后端隐私 通道提交并返回快照（保存链逐项核对「是否真的达成」用返回值，
+   *  不依赖渲染时序）；失败原样抛出，调用方保持未读态，不把空快照视为无屏蔽。
+   *  Mock 无后端隐私，返回 null。 */
+  重读隐私(): Promise<页面隐私快照 | null>;
 }
 
 /**

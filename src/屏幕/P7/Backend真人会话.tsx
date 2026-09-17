@@ -11,9 +11,10 @@
 //     「重新确认发送结果 /（可放弃时）放弃本次发送」—— 放弃只清不可变待定正文
 //     对应的意图键，保留当前编辑中的草稿；in_progress 只允许稍后同键重试。
 //   · 上下文动作遵守后端事实边界：候选端「看职位」只在 context available 且
-//     job_ref 在场时进入既有权威岗位详情路由（不猜岗位）；招聘端「看简历」只在
-//     context available 且 resume_ref 在场时按 case_id 调 读取简历PDF('recruiter',
-//     caseId)（绝不把 resume_ref 拼成 URL），租约只活在弹层生命周期；
+//     job_ref 在场时进入既有权威岗位详情路由（不猜岗位）；招聘端「看在线简历」
+//     （Task 4，Spec §4）打开同 Case candidate_identity + candidate_resume 的纯展示
+//     纸身（组件/真人在线简历正文），本入口零 PDF lease 请求，也不以 resume_ref
+//     缺失判定结构化资料不可读；加载/失败/重试在本页管理（重试走 P5 定向重读）；
 //     context 不可用只降级展示并保留「重新加载会话信息」，消息仍可读写。
 //     Backend 不渲染电话/微信 —— P7 context 不提供这些字段，绝不显示 Mock 值。
 
@@ -21,9 +22,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import 共用样式 from '../直聊会话.module.css';
 import 真人会话样式 from '../真人会话.module.css';
 import 真人会话操作栏 from '../真人会话操作栏';
-import { 原始PDF正文 } from '../../组件/原始PDF层';
 import { 聊天正文, 聊天气泡 } from '../../组件/聊天气泡';
 import { 职位资料 } from '../../组件/在谈详情/职位资料';
+import { 真人在线简历正文 } from '../../组件/真人在线简历正文';
 import type { 详情按钮 } from '../../组件/在谈详情/类型';
 import 举报层 from '../../组件/举报层';
 import { 次级页外壳, 返回栏, 滚动区, 真输入条 } from '../../组件/通用';
@@ -33,10 +34,13 @@ import { use导航 } from '../../路由/导航钩子';
 import { 路径 } from '../../路由/路径表';
 import { use应用状态 } from '../../状态/应用状态';
 import { P7范围键, 取P7错误文案 } from '../../状态/后端/真人会话操作';
+import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { use真人会话资料 } from './use真人会话资料';
+import { 取姓名首字, 非空 } from '../消息列表展示/会话资料映射';
+import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { P7角色, P7消息 } from '../../数据/招聘数据源/真人会话';
 import type { P7发送结果, P7分页快照, P7详情快照 } from '../../状态/后端/类型';
-import type { PDF对象租约 } from '../../数据/PDF对象租约';
+import type { BFF招聘方档案 } from '../../数据/BFF契约';
 
 /** conversation_started 的固定中性系统行文案（spec §5.3，不伪造用户或未读）。 */
 const 系统行文案 = '双方已确认意向，现在可以直接沟通';
@@ -67,6 +71,60 @@ const 重试键样式: CSSProperties = {
   background: 'var(--浅灰底)', color: 'var(--正文)', fontSize: 12.5,
 };
 
+/** 招聘方档案头像的展示地址：avatar_url 拼当前 revision 作缓存戳（与候选账号头像
+ *  commit 时的 ?v= 同一机制）—— 替换头像后 revision 前进 → URL 变化 → 重新加载，
+ *  不命中旧图缓存；缺 URL 恒 null（回退首字字标，不造图）。 */
+function 招聘档案头像地址(档案: BFF招聘方档案 | null): string | null {
+  if (档案 === null) return null;
+  const 地址 = 非空(档案.avatar_url);
+  return 地址 === null ? null : `${地址}?v=${档案.revision}`;
+}
+
+/** 年月展示：'YYYY-MM' → 'YYYY.MM'；空段按位置给占位（起 — / 止 至今）。 */
+function 显示年月(值: string | null, 空文: string): string {
+  return 值 === null ? 空文 : 值.replace('-', '.');
+}
+
+/** 起止展示串；两端全缺为 null（不渲染日期槽，不编造「至今」）。 */
+function 组起止(起: string | null, 止: string | null): string | null {
+  if (起 === null && 止 === null) return null;
+  return `${显示年月(起, '—')} — ${显示年月(止, '至今')}`;
+}
+
+/** 纯映射（Task 4，Spec §4）：同 Case 冻结 candidate_resume + candidate_identity →
+ *  在线简历纸身。只消费既有 wire 字段，不新增/不重算；candidate_resume = null（无
+ *  冻结简历或授权拒绝）按各区段「暂未提供」打开纸身，绝不以附件坐标缺失判定不可读；
+ *  联系方式不进纸身（组件恒「—」）；姓名 = disclosed 真名，否则回落 Case 代号
+ *  （与页头同一授权展示口径），不拿代号冒充真名。 */
+function 映射招聘在线简历(明细: Extract<P5详情, { role: 'recruiter' }>) {
+  const 简历 = 明细.candidateResume;
+  const 身份 = 明细.candidateIdentity;
+  return {
+    姓名: (身份.state === 'disclosed' ? 非空(身份.name) : null)
+      ?? 非空(明细.context.candidateAlias)
+      ?? '候选人',
+    最近职位: 非空(简历?.summary?.latest_experience?.title ?? null)
+      ?? 非空(简历?.experiences?.[0]?.title ?? null),
+    经验年限: 简历?.summary?.experience_years != null
+      ? `${简历.summary.experience_years} 年经验`
+      : null,
+    工作经历: 简历?.experiences == null ? null : 简历.experiences.map((段) => ({
+      公司: 段.company,
+      职位: 段.title,
+      起止: 组起止(段.start_month, 段.end_month),
+      描述: 段.description,
+    })),
+    教育经历: 简历?.educations == null ? null : 简历.educations.map((条) => ({
+      学校: 条.institution,
+      学历专业: [条.degree, 条.major]
+        .filter((段): 段 is string => 段 !== null && 段.trim() !== '')
+        .join(' · ') || null,
+      起止: 组起止(条.start_month, 条.end_month),
+    })),
+    个人优势: 简历?.self_description ?? null,
+  };
+}
+
 /** Backend 访问无参 Mock 路由时的 fail-closed 视图：不读默认 J-01/A-01。 */
 export function 会话不可用() {
   const { 返回 } = use导航();
@@ -85,11 +143,18 @@ export function 会话不可用() {
 export default function Backend真人会话({ 角色: role, conversationId }: { 角色: P7角色; conversationId: string }) {
   const { 返回, 跳转 } = use导航();
   const { 后端状态, 操作, 状态 } = use应用状态();
-  // 我方头像只复用当前登录身份已有资料（候选 = 基本信息真名，招聘 = 档案公开名），
-  // 缺失用中性占位 —— 绝不用对方名字，也不把「会」当双方已知姓名（Spec §11.2）。
-  const 我首字 = (
-    role === 'candidate' ? 状态?.基本信息?.真名 : 状态?.招聘方档案?.public_name
-  )?.trim().charAt(0) || '·';
+  // 我方头像（Spec §3）：只复用当前登录身份已有资料 —— 候选 = 账号头像（commit 时已带
+  // ?v=revision 缓存戳；mount 水合与入口无关，直达会话同样可用），招聘 = 档案 avatar_url
+  // 按当前 revision 组同样的缓存戳（替换头像后 revision 前进 → URL 变化 → 重新加载）。
+  // 图片缺失/加载失败回退本人真实姓名首字（取姓名首字：trim 后首个 Unicode 码点，缺名
+  // 「·」）—— 绝不用对方名字、占位文案或 Mock 演示人像（Spec §11.2 + §3）。
+  const 招聘档案: BFF招聘方档案 | null = 状态?.招聘方档案 ?? null;
+  const 我方头像URL = role === 'candidate'
+    ? 状态?.求职头像 ?? null
+    : 招聘档案头像地址(招聘档案);
+  const 我首字 = 取姓名首字(
+    (role === 'candidate' ? 状态?.基本信息?.真名 : 招聘档案?.public_name) ?? null,
+  );
   const 详情键 = P7范围键.详情(role, conversationId);
   const 消息键 = P7范围键.消息(role, conversationId);
   const 详情快照: P7详情快照 | undefined = 后端状态.P7会话详情[详情键];
@@ -187,70 +252,12 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
     设未知结果(null);
   };
 
-  // 招聘端「看简历」的 PDF 租约：全屏层打开才取件，租约只活在层生命周期
-  //（Spec §11.3：开层 → 加载 → 授权原件正文；失败给本层重试；关层/切会话/卸载回收）。
-  const [PDF预览, 设PDF预览] = useState<{ 文件名: string; 地址: string } | null>(null);
-  const [PDF失败, 设PDF失败] = useState(false);
-  const PDF租约引用 = useRef<PDF对象租约 | null>(null);
-  // review-r2 R2-4：在飞锁按代际归属（-1 = 空闲，≥0 = 该代际在飞）—— 旧会话的
-  // 在飞取件不挡新会话取件；只有属主代际的结算才释放自己的锁。
-  const PDF在飞 = useRef(-1);
-  // review-r1 F7：取件代际 —— 卸载/换会话都作废在飞取件；迟到的租约当场回收，
-  // 绝不悬挂到会话边界才回收。
-  const PDF代际 = useRef(0);
-  const 回收租约 = () => {
-    PDF租约引用.current?.revoke();
-    PDF租约引用.current = null;
-  };
-  // review-r1（异构 F1）：失效 PDF 会话 —— 递增代际作废在飞取件、回收已挂租约并复位
-  // 预览/失败态。关层、换会话/换角色、卸载、授权失权都走这一个入口：层关闭后才到达
-  // 的租约在代际检查处即刻回收，绝不落进预览或遗留到下一次开层（Spec §11.3）。
-  const 失效PDF会话 = () => {
-    PDF代际.current += 1;
-    PDF在飞.current = -1; // 旧代际的锁随代际一起作废，新取件不被旧在飞挡住
-    回收租约();
-    设PDF预览(null);
-    设PDF失败(false);
-  };
-  // review-r3：卸载/换会话/换角色敏感的失效用 useLayoutEffect —— 与提交同步
-  //（先于绘制），迟到的取件结算在该窗口内即被作废。
+  // review-r3：换会话/换角色时同步收掉旧会话的举报层（与提交同步，先于绘制）。
+  // Task 4：简历纸身没有在飞取件与租约 —— 层的开/关与「失权/换会话关闭旧层」
+  // 全部由操作栏的授权 key（role:会话:主项可用）重挂承担，本页不再持有 PDF 会话。
   useLayoutEffect(() => {
     设举报层开(false); // 旧会话的举报层同样不跨会话存活
-    return () => {
-      失效PDF会话();
-    };
   }, [conversationId, role]);
-  const 开PDF = async (caseId: string) => {
-    if (caseId === '' || PDF预览 !== null || PDF在飞.current === PDF代际.current) return;
-    PDF在飞.current = PDF代际.current;
-    const 起始代际 = PDF代际.current;
-    try {
-      const 租约 = await 操作.读取简历PDF('recruiter', caseId);
-      if (PDF代际.current !== 起始代际) {
-        // 迟到：会话已换/已卸载/层已关/授权已失效 —— 租约即刻回收，不挂不渲染
-        租约.revoke();
-        return;
-      }
-      回收租约(); // 防御：上一张（理论上不存在）先回收再挂新的
-      PDF租约引用.current = 租约;
-      设PDF失败(false);
-      设PDF预览({ 文件名: '简历原件.pdf', 地址: 租约.url });
-    } catch {
-      // review-r2 R2-4：迟到的失败对新状态是无关错误 —— 不提示、不落失败态
-      if (PDF代际.current !== 起始代际) return;
-      设PDF失败(true);
-    } finally {
-      if (PDF代际.current === 起始代际) PDF在飞.current = -1; // 只有属主代际释放锁
-    }
-  };
-  // 全屏层的开/关时机（Spec §11.3）：开层才取件；继续沟通 / Escape / 遮罩关层
-  // 一律作废整个 PDF 会话 —— 下次开层重新取件，迟到回执不得重开层。
-  const 层打开 = () => {
-    if (role === 'recruiter' && 详情 !== null) void 开PDF(详情.caseId);
-  };
-  const 层关闭 = () => {
-    失效PDF会话();
-  };
 
   // 页头与资料（Spec §11.2）：按已授权 caseId 读同一 Case —— 招聘看 candidateIdentity，
   // 候选看 jobDetail 发布人档案 + 发布方公司；补读失败只降级资料，不阻断消息。
@@ -260,20 +267,24 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
 
   // 上下文在场（§8.3 口径）：资料操作的可执行前提；缺坐标 → 主项占位禁用。
   const 上下文在场 = 详情 !== null && 详情.contextStatus === 'available' && 详情.context !== null;
-  const 招聘可看简历 = role === 'recruiter' && 上下文在场 && 详情!.context!.resumeRef !== null
-    && 详情!.caseId !== '';
-  // 主项可用（双端统一口径）：授权失权（同会话内 context 变 unavailable / resume_ref
-  // 消失）时关闭资料弹层并作废 PDF（Spec §11.3「context 失效时关闭资料弹层、清理 PDF」）。
+  // Task 4（Spec §4）：招聘端「看在线简历」来自同 Case 冻结 candidate_resume ——
+  // 只要求授权在场，不再以 resume_ref（附件坐标）为打开前提；授权失权（context 变
+  // unavailable）时操作栏按 key 重挂关层，旧纸身不跨授权残留。
+  const 招聘可看简历 = role === 'recruiter' && 上下文在场;
   const 主项可用 = role === 'candidate' ? 上下文在场 : 招聘可看简历;
-  const 主项可用引用 = useRef(主项可用);
-  useEffect(() => {
-    const 失权 = 主项可用引用.current && !主项可用;
-    主项可用引用.current = 主项可用;
-    if (失权) 失效PDF会话();
-  }, [主项可用]);
+
+  // 招聘纸身数据：同一份 P5 详情快照（use真人会话资料 的授权读取门槛同样约束它 ——
+  // 资料状态 available 才消费，见主项层正文）。纯映射，无请求、无缓存。
+  const 招聘纸身 = (() => {
+    if (role !== 'recruiter' || !上下文在场 || 详情 === null) return null;
+    const 快照 = 后端状态.P5详情[P5范围键.detail('recruiter', 详情.caseId)];
+    const 明细 = 快照 !== undefined ? 快照.detail : null;
+    return 明细 !== null && 明细.role === 'recruiter' ? 映射招聘在线简历(明细) : null;
+  })();
 
   // 主项全屏层正文（Spec §11.3）：候选 = Case 冻结职位资料（复用在谈详情同一组件，
-  // 公司导航沿用可信组织坐标门控）；招聘 = 授权 PDF 正文（加载/失败/重试都留在层内）。
+  // 公司导航沿用可信组织坐标门控）；招聘 = 同 Case 在线简历纸身（Task 4：加载/失败/
+  // 重试在消费页面管理，重试走 use真人会话资料 的 P5 定向重读）。
   const 公司入口 = (编号: string | null | undefined): 详情按钮 =>
     编号 != null && 编号 !== ''
       ? { 键: '公司详情', 文案: '公司详情', 外观: '次要', 禁用说明: null, 执行: () => 跳转(路径.企业详情(编号)) }
@@ -295,21 +306,21 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
         </button>
       </资料提示行>
     )
-  ) : PDF预览 !== null ? (
-    <原始PDF正文 地址={PDF预览.地址} 类名={真人会话样式.PDF全高} />
-  ) : PDF失败 ? (
+  ) : 会话资料.资料状态 === 'available' && 招聘纸身 !== null ? (
+    <真人在线简历正文 {...招聘纸身} />
+  ) : 会话资料.资料状态 === 'unavailable' ? (
     <资料提示行>
-      简历原件暂时打不开
+      在线简历暂不可用
       <button
         className="可点"
         style={重试键样式}
-        onClick={() => 详情 !== null && void 开PDF(详情.caseId)}
+        onClick={会话资料.重读资料}
       >
         重试
       </button>
     </资料提示行>
   ) : (
-    <资料提示行>正在读取简历原件…</资料提示行>
+    <资料提示行>正在读取在线简历…</资料提示行>
   );
 
   const 详情失败 = 详情快照 !== undefined && 详情快照.阶段 === '失败' && 详情快照.detail === null;
@@ -343,13 +354,13 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
       />
 
       {/* 操作栏（Spec §11.3）：恢复 Mock 同款三项排列 —— 主项盖全屏层（候选 = Case
-          冻结职位资料、招聘 = 授权 PDF），电话/微信诚实缺失占位（§11.4）。
+          冻结职位资料、招聘 = 同 Case 在线简历纸身），电话/微信诚实缺失占位（§11.4）。
           缺授权坐标时主项占位禁用；key 随会话/角色/授权态重挂：换会话、换角色或
-          授权失权都会关闭层并复位展开，不把旧会话的层与取件带进新状态。 */}
+          授权失权都会关闭层并复位展开，不把旧会话的层与纸身带进新状态。 */}
       {详情 !== null ? (
         <真人会话操作栏
           key={`${role}:${conversationId}:${主项可用 ? 'on' : 'off'}`}
-          主项名={role === 'candidate' ? '看职位' : '看简历'}
+          主项名={role === 'candidate' ? '看职位' : '看在线简历'}
           主项图标={
             role === 'candidate'
               ? <公文包图标 尺寸={18} 色="#3f7a1f" />
@@ -357,8 +368,6 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
           }
           主项内容={主项层正文}
           主项禁用={!主项可用}
-          主项打开={层打开}
-          主项关闭={层关闭}
           联系方式占位
         />
       ) : null}
@@ -435,6 +444,7 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
               role={role}
               对方头像URL={会话资料.对方头像URL}
               对方首字={会话资料.对方首字}
+              我方头像URL={我方头像URL}
               我首字={我首字}
             />
           ))}
@@ -502,19 +512,22 @@ export default function Backend真人会话({ 角色: role, conversationId }: { 
 /** 单条消息行（Spec §11.5）：user_text 按 senderRole 对齐（本端右 / 对端左，
  *  data-侧 供回归断言），共用 聊天气泡（短气泡贴合内容、长文不撑破）+ 安全
  *  markdown 聊天正文；时间取该条 createdAt 本地时区格式化，两条消息各用各的时间。
- *  conversation_started 渲染固定中性系统胶囊。头像：对方用已授权身份资料
- *  （无图中性占位），我方只复用当前登录身份已有资料 —— 绝不从 Mock 姓名取首字。 */
+ *  conversation_started 渲染固定中性系统胶囊。头像（Spec §3）：双方 32px 同一套
+ *  真人头像类 —— 有授权图先渲染图（有图无名仍图），缺失/加载失败回退各自真实姓名
+ *  首字；我方只复用当前登录身份已有资料，绝不从 Mock 姓名取首字。 */
 function 消息行({
   行,
   role,
   对方头像URL,
   对方首字,
+  我方头像URL,
   我首字,
 }: {
   行: P7消息;
   role: P7角色;
   对方头像URL: string | null;
   对方首字: string;
+  我方头像URL: string | null;
   我首字: string;
 }) {
   if (行.kind === 'conversation_started') {
@@ -534,22 +547,34 @@ function 消息行({
         气泡类名={真人会话样式.对侧留白}
         头像={
           我方 ? (
-            <span className={共用样式.我头像}>{我首字}</span>
-          ) : 对方头像URL !== null ? (
-            <span className={共用样式.对方头像}>
-              <img
-                src={对方头像URL}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
-              />
-            </span>
+            <消息头像 key={我方头像URL ?? '我方'} URL={我方头像URL} 首字={我首字} 类名={共用样式.我头像} />
           ) : (
-            <span className={共用样式.对方头像}>{对方首字}</span>
+            <消息头像 key={对方头像URL ?? '对方'} URL={对方头像URL} 首字={对方首字} 类名={共用样式.对方头像} />
           )
         }
       >
         <聊天正文 内容={行.content} 格式="markdown" 类名={共用样式.气泡文字} />
       </聊天气泡>
     </div>
+  );
+}
+
+/** 32px 会话消息头像（Spec §3）：URL 在场先渲染授权图（objectFit cover、继承圆形），
+ *  加载失败回退真实姓名首字字标。调用方以 URL 为 key 挂载 —— 换图/删图/换账号/
+ *  换会话即整点重挂：失败状态与旧图不跨身份残留，新 URL 必然重新尝试加载。 */
+function 消息头像({ URL, 首字, 类名 }: { URL: string | null; 首字: string; 类名: string }) {
+  const [加载失败, 设加载失败] = useState(false);
+  if (URL === null || 加载失败) {
+    return <span className={类名}>{首字}</span>;
+  }
+  return (
+    <span className={类名}>
+      <img
+        src={URL}
+        alt=""
+        onError={() => 设加载失败(true)}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
+      />
+    </span>
   );
 }

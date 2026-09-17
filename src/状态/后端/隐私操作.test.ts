@@ -414,3 +414,144 @@ describe('创建隐私操作 · 401 统一清理', () => {
     expect(deps.会话代际.current).toBe(2);
   });
 });
+
+// ── 契约B（2026-09-17 聊天与推荐展示修复 Task 1）：企业屏蔽表单入口的权威重读 ──
+// 经历编辑页进入时先读权威隐私；读取未成功不能把空快照视为无屏蔽 —— 失败原样抛出、
+// 零提交，调用方保持未读态；成功经既有 水合后端隐私 通道提交并返回快照供逐项核对。
+describe('创建隐私操作 · 重读隐私（企业屏蔽表单入口）', () => {
+  it('成功：提交权威水合（派发 水合后端隐私 + 写 隐私快照）并返回快照', async () => {
+    const 读取隐私 = vi.fn().mockResolvedValue(从BFF隐私({ ...BFF隐私快照样本, revision: 11 }));
+    const deps = 创建隐私测试依赖(
+      { 读取隐私 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 快照 = await 创建隐私操作(deps).重读隐私();
+    expect(读取隐私).toHaveBeenCalledTimes(1);
+    expect(快照?.服务端.revision).toBe(11);
+    expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '水合后端隐私' }));
+    expect(更新后的隐私快照(deps)?.revision).toBe(11);
+  });
+
+  it('读取失败原样抛出且零提交：调用方保持未读态，不把空快照当无屏蔽', async () => {
+    const 读取隐私 = vi.fn().mockRejectedValue(new Error('网络断了'));
+    const deps = 创建隐私测试依赖(
+      { 读取隐私 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    await expect(创建隐私操作(deps).重读隐私()).rejects.toThrow('网络断了');
+    expect(deps.派发).not.toHaveBeenCalled();
+    expect(deps.设后端状态).not.toHaveBeenCalled();
+  });
+
+  it('重读遇 401 走统一清账号后原样抛出', async () => {
+    const 读取隐私 = vi.fn().mockRejectedValue(new BFF错误(401, 'invalid_session', 'expired'));
+    const deps = 创建隐私测试依赖(
+      { 读取隐私, 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    await expect(创建隐私操作(deps).重读隐私()).rejects.toMatchObject({ status: 401 });
+    expect(deps.派发).toHaveBeenCalledWith(expect.objectContaining({ 型: '清后端隐私' }));
+    expect(deps.主体标识引用.current).toBeNull();
+  });
+});
+
+// ── 契约B：Mock 拉黑携带组织编号 —— 经历企业屏蔽开关保存走已有隐私 reducer，
+//    组织编号是同企业各入口（隐私页 / 经历卡 / 编辑页开关）共用的同步键 ──
+describe('归约隐私设置 · 拉黑携带组织编号（Mock 同组织同步）', () => {
+  /** 空名单的 Backend 水合基底（屏蔽名单只认权威视图，不进 Mock 种子） */
+  const 空名单状态 = () => 归约(初始状态, {
+    型: '水合后端隐私',
+    快照: 从BFF隐私({ ...BFF隐私快照样本, organization_blocks: [] }),
+  });
+
+  it('组织编号在场时用它落行（manual 一直有效）并按组织去重', () => {
+    let 状态 = 空名单状态();
+    状态 = 归约(状态, { 型: '拉黑', 名称: '字节跳动', 组织编号: 'mock_org_bytedance' });
+    expect(状态.屏蔽名单).toHaveLength(1);
+    expect(状态.屏蔽名单[0]).toMatchObject({ 名称: '字节跳动', 组织编号: 'mock_org_bytedance', 来源: '手动添加' });
+    // 同组织重复拉黑：按组织编号去重，不追加第二行
+    状态 = 归约(状态, { 型: '拉黑', 名称: '字节跳动（别名）', 组织编号: 'mock_org_bytedance' });
+    expect(状态.屏蔽名单).toHaveLength(1);
+    expect(状态.屏蔽名单[0].名称).toBe('字节跳动');
+  });
+
+  it('组织编号缺席沿用既有路径：本地合成编号与名称去重不变', () => {
+    let 状态 = 空名单状态();
+    状态 = 归约(状态, { 型: '拉黑', 名称: '恒达外包' });
+    expect(状态.屏蔽名单).toHaveLength(1);
+    expect(状态.屏蔽名单[0].组织编号).toMatch(/^org_local_/);
+    状态 = 归约(状态, { 型: '拉黑', 名称: '恒达外包' });
+    expect(状态.屏蔽名单).toHaveLength(1);
+  });
+});
+
+describe('创建隐私操作 · 重读隐私 迟到回执栅栏（review-r1）', () => {
+  function 门<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+
+  it('写后权威回读不被更早发起的迟到读取覆盖：旧快照回包被丢弃', async () => {
+    const R0 = 门<ReturnType<typeof 从BFF隐私>>();
+    const 写后快照: BFF隐私快照 = {
+      ...BFF隐私快照样本,
+      organization_blocks: [
+        ...BFF隐私快照样本.organization_blocks,
+        { organization_id: 'org_9', organization_display_name: '星桥乙', organization_status: 'active', source: 'manual', created_at: '2026-09-17T00:00:00Z' },
+      ],
+      revision: BFF隐私快照样本.revision + 1,
+    };
+    const 读取隐私 = vi.fn()
+      .mockReturnValueOnce(R0.promise)                       // 挂载读取 R0（未决）
+      .mockReturnValueOnce(Promise.resolve(从BFF隐私(写后快照)));  // 写后权威回读 R1
+    const 添加组织屏蔽 = vi.fn().mockResolvedValue(BFF屏蔽回执样本);
+    const deps = 创建隐私测试依赖(
+      { 添加组织屏蔽, 读取隐私 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 操作 = 创建隐私操作(deps);
+    const R0调用 = 操作.重读隐私();          // 发起 R0，先不兑现
+    await 操作.添加组织屏蔽('org_9', '手动添加');  // 写成功，回执先行提交
+    const R1 = await 操作.重读隐私();        // 写后权威回读先落地
+    expect(R1?.服务端.revision).toBe(写后快照.revision);
+    R0.resolve(从BFF隐私(BFF隐私快照样本));   // 迟到的旧快照最后回包
+    await R0调用;
+    expect(更新后的隐私快照(deps)?.revision).toBe(写后快照.revision);
+    expect(更新后的隐私快照(deps)?.organization_blocks).toHaveLength(写后快照.organization_blocks.length);
+  });
+
+  it('重读隐私 的迟到 401 不清理新账号状态（主体/会话已切换）', async () => {
+    const R0 = 门<ReturnType<typeof 从BFF隐私>>();
+    const 读取隐私 = vi.fn().mockReturnValueOnce(R0.promise);
+    const deps = 创建隐私测试依赖(
+      { 读取隐私 } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 操作 = 创建隐私操作(deps);
+    const R0调用 = 操作.重读隐私();
+    deps.主体标识引用.current = 'sub_2';   // 会话切换：旧读取属于上一个主体
+    deps.会话代际.current = 2;
+    R0.reject(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(R0调用).resolves.toBeNull();   // 失效回执按未采用收口，不清新账号
+    expect(deps.主体标识引用.current).toBe('sub_2');
+    expect(更新后的隐私快照(deps)?.revision).toBe(BFF隐私快照样本.revision);
+    expect(deps.设后端状态).not.toHaveBeenCalled();
+  });
+});
+
+describe('创建隐私操作 · 被写超越的迟到 401 不清当前会话（review-r2）', () => {
+  it('R0 被写超越后以 401 失败：按 null 收口，不清账号、不抛错', async () => {
+    let 拒绝R0!: (e: unknown) => void;
+    const R0 = new Promise<ReturnType<typeof 从BFF隐私>>((_res, rej) => { 拒绝R0 = rej; });
+    const 读取隐私 = vi.fn().mockReturnValueOnce(R0);
+    const 添加组织屏蔽 = vi.fn().mockResolvedValue(BFF屏蔽回执样本);
+    const deps = 创建隐私测试依赖(
+      { 添加组织屏蔽, 读取隐私, 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 操作 = 创建隐私操作(deps);
+    const R0调用 = 操作.重读隐私();
+    await 操作.添加组织屏蔽('org_9', '手动添加');   // 写开始即超越 R0 的快照代际
+    拒绝R0(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(R0调用).resolves.toBeNull();        // 未采用收口
+    expect(deps.主体标识引用.current).toBe('sub_1'); // 未被迟到 401 清会话
+    expect(deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '切换身份' }));
+    expect(更新后的隐私快照(deps)?.revision).toBe(BFF屏蔽回执样本.privacy_revision);
+  });
+});

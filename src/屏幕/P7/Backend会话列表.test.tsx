@@ -1,18 +1,27 @@
-// P7 Task 3：Backend 收件箱（双角色共用）的行为测试 —— 角色专属字段映射（候选 =
-// 职位名/地点，招聘 = 候选代号/职位名）、context 不可用降级、last_message=null 摘要、
-// 服务端顺序、本地搜索、空/加载/失败重试/加载更多、unreadCount=0 无红点、
-// 参数路由导航且绝不派发 读消息/企业读消息、进入 force 刷新与可见范围登记/卸载注销。
+// P7 Task 3 + 展示修复 Task 2：Backend 收件箱（双角色共用）的行为测试 —— 角色专属字段
+// 映射（候选 = 招聘者姓名/发布方·职务，招聘 = 候选姓名/用人企业·岗位）、context 不可用
+// 降级、last_message=null 摘要、服务端顺序、本地搜索、空/加载/失败重试/加载更多、
+// unreadCount=0 无红点、参数路由导航且绝不派发 读消息/企业读消息、进入 force 刷新与
+// 可见范围登记/卸载注销。
+//
+// Task 2 起列表行消费 use会话列表资料 的本地资料：测试环境为每个 available 会话预置
+// P5详情/岗位/公开企业快照（招聘披露「陈屿」、候选发布人「林澈」），断言资料落地后的
+// 姓名/副标题/首字头像、匿名缺名文案（不显 P7 代号）、补读失败「会话资料暂不可用」、
+// 失败重试提示与姓名搜索随加载更新；未落地窗口沿用 P7 viewer-safe 标签。
 //
 // 固定 AI 动态入口行（展示层组装，零 P7 数据写入）：双角色字段合同（标题/副标题/
 // 摘要/时间空/代理头像/无未读标记）、点击只导航代理参数路由、页签分类（全部=最前 +
 // 真人行、仅会话=隐藏、通知=只有它）、搜索 trim 包含匹配、空/首读/失败/错误带缓存
 // 下的提示共存规则、rerender 空页→有数据→追加页唯一入口、角色重挂跟随角色。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { P7会话项 } from '../../数据/招聘数据源/真人会话';
-import type { P7分页快照 } from '../../状态/后端/类型';
+import type { P5详情快照, P7分页快照 } from '../../状态/后端/类型';
+import { P5范围键 } from '../../状态/后端/MatchCase操作';
+import { 候选详情DTO, 招聘详情DTO, 状态 } from '../P5/MatchCase详情.测试辅助';
+import { BFF安全职位资料样本, BFF公司摘要样本 } from '../../测试/展示资料样本';
 import 样式 from '../消息列表.module.css';
 import Backend会话列表 from './Backend会话列表';
 
@@ -46,18 +55,93 @@ function 收件箱快照(覆盖: Partial<P7分页快照<P7会话项>> = {}): P7�
   };
 }
 
-function 环境(role: 'candidate' | 'recruiter', items: P7会话项[], 覆盖快照: Partial<P7分页快照<P7会话项>> = {}) {
+const P5快照 = (detail: unknown): P5详情快照 => ({
+  阶段: '成功', 刷新中: false, detail: detail as P5详情快照['detail'], error: null, generation: 1,
+});
+
+function 招聘资料详情(覆盖: { 身份?: unknown; 企业?: string | null } = {}): Parameters<typeof P5快照>[0] {
+  return {
+    ...招聘详情DTO({ 别名: '上海·浦东' }),
+    state: 状态({ caseId: 'mc_3003' }),
+    jobDetail: {
+      ...BFF安全职位资料样本,
+      organization: 覆盖.企业 === undefined
+        ? { ...BFF公司摘要样本, display_name: '云衢科技' }
+        : (覆盖.企业 === null ? null : { ...BFF公司摘要样本, display_name: 覆盖.企业 }),
+    },
+    candidateIdentity: (覆盖.身份 ?? {
+      state: 'disclosed' as const, name: '陈屿',
+      avatar_url: null, disclosed_at: null,
+    }) as never,
+  } as never;
+}
+
+function 候选资料详情(): Parameters<typeof P5快照>[0] {
+  return {
+    ...候选详情DTO(),
+    state: 状态({ caseId: 'mc_3003' }),
+    jobDetail: BFF安全职位资料样本,
+  };
+}
+
+/** 操作覆盖：默认全成功（测试可换成受控 promise / reject 钉失败时序）。 */
+interface 操作覆盖 {
+  读取详情?: unknown;
+  读取候选岗位详情?: unknown;
+  读取公开企业?: unknown;
+}
+
+function 环境(
+  role: 'candidate' | 'recruiter',
+  items: P7会话项[],
+  覆盖快照: Partial<P7分页快照<P7会话项>> = {},
+  覆盖: { 详情?: '失败' | '缺席'; 身份?: unknown; 操作?: 操作覆盖 } = {},
+) {
+  const P5详情: Record<string, P5详情快照> = {};
+  const 候选岗位详情: Record<string, unknown> = {};
+  const 公开企业表: Record<string, unknown> = {};
+  for (const 条 of items) {
+    if (条.contextStatus !== 'available' || 条.context === null) continue;
+    if (覆盖.详情 === '失败') {
+      P5详情[P5范围键.detail(role, 条.caseId)] = {
+        阶段: '失败', 刷新中: false, detail: null, error: '服务暂时不可用', generation: 2,
+      };
+      continue;
+    }
+    if (覆盖.详情 === '缺席') continue;
+    if (role === 'recruiter') {
+      P5详情[P5范围键.detail('recruiter', 条.caseId)] = P5快照(招聘资料详情({ 身份: 覆盖.身份 }));
+    } else {
+      P5详情[P5范围键.detail('candidate', 条.caseId)] = P5快照(候选资料详情());
+      const jobRef = 条.context.jobRef;
+      if (jobRef !== null) {
+        候选岗位详情[jobRef] = { organization: null, publisher_organization_ref: 'org_pub' };
+        公开企业表.org_pub = {
+          organization_id: 'org_pub', legal_name: null, display_name: '星桥发布方',
+          verified_at: null, profile: null, active_verified_job_count: 0,
+        };
+      }
+    }
+  }
   mock应用状态 = {
     后端状态: {
+      主体: { subject_id: 'sub_1', last_used_role: role },
       P7收件箱: {
         candidate: role === 'candidate' ? 收件箱快照({ items, ...覆盖快照 }) : 收件箱快照(),
         recruiter: role === 'recruiter' ? 收件箱快照({ items, ...覆盖快照 }) : 收件箱快照(),
       },
+      P5详情,
+      候选岗位详情,
+      候选岗位不可用: [],
     },
+    状态: { 公开企业表, 不可用公开企业编号: [] },
     操作: {
       设置P7收件箱范围: vi.fn(),
       加载会话列表: vi.fn().mockResolvedValue(undefined),
       追加会话列表: vi.fn().mockResolvedValue(undefined),
+      读取详情: (覆盖.操作?.读取详情 as never) ?? vi.fn().mockResolvedValue(undefined),
+      读取候选岗位详情: (覆盖.操作?.读取候选岗位详情 as never) ?? vi.fn().mockResolvedValue(undefined),
+      读取公开企业: (覆盖.操作?.读取公开企业 as never) ?? vi.fn().mockResolvedValue(undefined),
     },
     派发: vi.fn(),
   };
@@ -80,37 +164,41 @@ function 无空态含(片段: string) {
 }
 
 describe('Backend会话列表', () => {
-  it('候选端行映射：标题=职位名、副标题=地点；点击走参数路由且绝不派发读消息', async () => {
+  it('候选端行映射：资料落地后标题=招聘者姓名、副标题=发布方公司 · 职务；点击走参数路由且绝不派发读消息', async () => {
     环境('candidate', [
-      会话项(),
+      会话项({ context: { primaryLabel: '后端工程师', secondaryLabel: '上海·浦东', jobRef: 'job_1', resumeRef: null } }),
       会话项({
-        conversationId: '3001',
+        conversationId: '3001', caseId: 'mc_3001',
         context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null },
         lastMessage: { messageId: '4003', senderRole: 'recruiter', preview: '简历已收到', createdAt: '2026-08-30T00:30:00Z' },
       }),
     ]);
     render(<Backend会话列表 角色="candidate" />);
-    expect(screen.getByText('后端工程师')).toBeTruthy();
-    expect(screen.getByText('上海·浦东')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText('林澈')).toHaveLength(2));
+    expect(screen.getByText('星桥发布方 · 招聘负责人')).toBeTruthy();
     expect(screen.getByText('收到！明天下午聊')).toBeTruthy();
+    // 无 jobRef 的会话没有发布方坐标：副标题只剩职务，姓名照常
+    expect(screen.getByText('招聘负责人')).toBeTruthy();
     expect(screen.queryByTestId('unread-3003')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: /后端工程师/ }));
+    await userEvent.click(screen.getAllByRole('button', { name: /林澈/ })[0]!);
     expect(导航.跳转).toHaveBeenCalledWith('/chat/human/3003');
     expect(mock应用状态.派发).not.toHaveBeenCalled();
   });
 
-  it('招聘端行映射：标题=候选代号、副标题=职位名，导航走企业参数路由', async () => {
+  it('招聘端行映射：标题=披露候选真名、副标题=用人企业 · 投递岗位，导航走企业参数路由', async () => {
     环境('recruiter', [会话项()]);
     render(<Backend会话列表 角色="recruiter" />);
-    expect(screen.getByText('上海·浦东')).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: /上海·浦东/ }));
+    await waitFor(() => expect(screen.getByText('陈屿')).toBeTruthy());
+    expect(screen.getByText('云衢科技 · 平台工程师')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: /陈屿/ }));
     expect(导航.跳转).toHaveBeenCalledWith('/hr/chat/3003');
     expect(mock应用状态.派发).not.toHaveBeenCalled();
   });
 
-  it('unreadCount>0 显示数字胶囊，=0 无任何红点', () => {
-    环境('candidate', [会话项({ unreadCount: 2 }), 会话项({ conversationId: '3001', unreadCount: 0 })]);
-    render(<Backend会话列表 角色="candidate" />);
+  it('unreadCount>0 显示数字胶囊，=0 无任何红点（资料在场不影响未读）', async () => {
+    环境('recruiter', [会话项({ unreadCount: 2 }), 会话项({ conversationId: '3001', unreadCount: 0 })]);
+    render(<Backend会话列表 角色="recruiter" />);
+    await waitFor(() => expect(screen.getAllByText('陈屿')).toHaveLength(2));
     expect(screen.getByTestId('unread-3003').textContent).toBe('2');
     expect(screen.queryByTestId('unread-3001')).toBeNull();
   });
@@ -128,20 +216,22 @@ describe('Backend会话列表', () => {
     expect(screen.getByText('已建立真人会话')).toBeTruthy();
   });
 
-  it('本地搜索只过滤已加载项，服务端顺序原样呈现', async () => {
+  it('本地搜索匹配已映射的姓名/副标题/摘要；清空恢复全量，顺序保持服务端顺序', async () => {
     环境('candidate', [
-      会话项(),
-      会话项({ conversationId: '3001', context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null } }),
+      会话项({ context: { primaryLabel: '后端工程师', secondaryLabel: '上海·浦东', jobRef: 'job_1', resumeRef: null } }),
+      会话项({
+        conversationId: '3001', caseId: 'mc_3001',
+        context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null },
+      }),
     ]);
     render(<Backend会话列表 角色="candidate" />);
-    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '后端');
-    expect(screen.getByText('后端工程师')).toBeTruthy();
-    expect(screen.queryByText('前端工程师')).toBeNull();
-    // 清空搜索恢复全量；顺序保持服务端顺序
+    await waitFor(() => expect(screen.getAllByText('林澈')).toHaveLength(2));
+    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '星桥');
+    expect(screen.getAllByText('林澈')).toHaveLength(1);
     await userEvent.clear(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'));
-    const 行 = screen.getAllByRole('button', { name: /工程师/ });
-    expect(行[0].textContent).toContain('后端工程师');
-    expect(行[1].textContent).toContain('前端工程师');
+    const 行 = screen.getAllByRole('button', { name: /林澈/ });
+    expect(行).toHaveLength(2);
+    expect(行[0].textContent).toContain('收到！明天下午聊'); // 摘要仍是服务端顺序的判别位
   });
 
   it('「通知」页签 = 固定 AI 入口行，真人会话行不出现，也没有「还没有通知」', async () => {
@@ -150,11 +240,11 @@ describe('Backend会话列表', () => {
     await userEvent.click(screen.getByRole('button', { name: '通知' }));
     expect(screen.getByText('AI代理动态')).toBeTruthy();
     expect(screen.getByText('你的求职AI代理')).toBeTruthy();
-    expect(screen.queryByText('后端工程师')).toBeNull();
+    expect(screen.queryByText('林澈')).toBeNull();
     expect(screen.queryByText('还没有通知')).toBeNull();
   });
 
-  it('固定 AI 入口行字段合同：代理头像、摘要、时间空、无未读标记，双角色副标题跟随角色', () => {
+  it('固定 AI 入口行字段合同：代理头像、摘要、时间空、无未读标记，双角色副标题跟随角色', async () => {
     环境('candidate', [会话项()]);
     const 候选视图 = render(<Backend会话列表 角色="candidate" />);
     const AI行 = screen.getByRole('button', { name: /AI代理动态/ });
@@ -197,30 +287,37 @@ describe('Backend会话列表', () => {
   it('「全部」= AI 行在最前 + 服务端顺序真人行；「仅会话」隐藏 AI 行', async () => {
     环境('candidate', [
       会话项(),
-      会话项({ conversationId: '3001', context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null } }),
+      会话项({
+        conversationId: '3001', caseId: 'mc_3001',
+        context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null },
+        lastMessage: { messageId: '4003', senderRole: 'recruiter', preview: '简历已收到', createdAt: '2026-08-30T00:30:00Z' },
+      }),
     ]);
     const 视图 = render(<Backend会话列表 角色="candidate" />);
-    const 行 = screen.getAllByRole('button', { name: /AI代理动态|工程师/ });
+    await waitFor(() => expect(screen.getAllByText('林澈')).toHaveLength(2));
+    const 行 = screen.getAllByRole('button', { name: /AI代理动态|林澈/ });
     expect(行).toHaveLength(3);
     expect(行[0].textContent).toContain('AI代理动态');
-    expect(行[1].textContent).toContain('后端工程师');
-    expect(行[2].textContent).toContain('前端工程师');
+    expect(行[1].textContent).toContain('收到！明天下午聊');
+    expect(行[2].textContent).toContain('简历已收到');
     视图.unmount();
 
     环境('candidate', [会话项()]);
     render(<Backend会话列表 角色="candidate" />);
+    await waitFor(() => expect(screen.getByText('林澈')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '仅会话' }));
     expect(screen.queryByText('AI代理动态')).toBeNull();
-    expect(screen.getByText('后端工程师')).toBeTruthy();
+    expect(screen.getByText('林澈')).toBeTruthy();
   });
 
   it('搜索按 trim 包含匹配 AI 行三字段；命中时全部不出无匹配，仅会话真人零命中才出', async () => {
     环境('candidate', [会话项()]);
     render(<Backend会话列表 角色="candidate" />);
+    await waitFor(() => expect(screen.getByText('林澈')).toBeTruthy());
     // 前后空格走 trim 后仍命中副标题
     await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), ' 求职AI代理 ');
     expect(screen.getByText('AI代理动态')).toBeTruthy();
-    expect(screen.queryByText('后端工程师')).toBeNull();
+    expect(screen.queryByText('林澈')).toBeNull();
     无空态含('没有匹配的会话。');
     await userEvent.click(screen.getByRole('button', { name: '仅会话' }));
     expect(screen.queryByText('AI代理动态')).toBeNull();
@@ -295,7 +392,7 @@ describe('Backend会话列表', () => {
     await userEvent.clear(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'));
     await userEvent.type(screen.getByPlaceholderText('搜索会话 / 公司 / 职位'), '在谈进展');
     expect(screen.getByText('AI代理动态')).toBeTruthy();
-    expect(screen.queryByText('后端工程师')).toBeNull();
+    expect(screen.queryByText('林澈')).toBeNull();
     无空态含('没有匹配的会话。');
     expect(screen.getByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
   });
@@ -310,11 +407,14 @@ describe('Backend会话列表', () => {
     视图.rerender(<Backend会话列表 角色="candidate" />);
     expect(screen.getAllByText('AI代理动态')).toHaveLength(1);
     expect(screen.queryByText('还没有真人会话')).toBeNull();
-    expect(screen.getByText('后端工程师')).toBeTruthy();
+    expect(screen.getByText('后端工程师')).toBeTruthy(); // 补读未落地窗口沿用 P7 标签
 
     环境('candidate', [
       会话项(),
-      会话项({ conversationId: '3001', context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null } }),
+      会话项({
+        conversationId: '3001', caseId: 'mc_3001',
+        context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: null, resumeRef: null },
+      }),
     ], { 已加载页数: 2, nextCursor: 'Pg2_9' });
     视图.rerender(<Backend会话列表 角色="candidate" />);
     expect(screen.getAllByText('AI代理动态')).toHaveLength(1);
@@ -349,9 +449,8 @@ describe('Backend会话列表', () => {
     await userEvent.click(screen.getByRole('button', { name: '全部' }));
     expect(screen.getByText('后端服务暂时不可用，请稍后重试')).toBeTruthy();
     expect(screen.getByRole('button', { name: '加载更多' })).toBeTruthy();
-    const 行 = screen.getAllByRole('button', { name: /AI代理动态|工程师/ });
+    const 行 = screen.getAllByRole('button', { name: /AI代理动态|林澈|工程师/ });
     expect(行[0].textContent).toContain('AI代理动态');
-    expect(行[1].textContent).toContain('后端工程师');
   });
 
   it('首读进行中显示正在读入，成功空页显示还没有真人会话，失败显示重试', async () => {
@@ -389,25 +488,76 @@ describe('Backend会话列表', () => {
     expect(mock应用状态.操作.设置P7收件箱范围).toHaveBeenCalledWith('candidate', false);
   });
 
-  it('行真实消费共享展示：原 46px 字标头像「会」+ 共享行/页签 class（P1 Task 4）', async () => {
-    环境('candidate', [会话项({ unreadCount: 2 })]);
+  it('行真实消费共享展示：资料落地后首字头像与共享行/页签 class（P1 Task 4 + Task 2）', async () => {
+    环境('candidate', [会话项({ unreadCount: 2, context: { primaryLabel: '后端工程师', secondaryLabel: '上海·浦东', jobRef: 'job_1', resumeRef: null } })]);
     render(<Backend会话列表 角色="candidate" />);
-    const 行 = screen.getByRole('button', { name: /后端工程师/ });
+    await waitFor(() => expect(screen.getByText('林澈')).toBeTruthy());
+    const 行 = screen.getByRole('button', { name: /林澈/ });
     expect(行.className).toContain(样式.会话行);
-    // 头像继续是中性「会」字标（不从姓名或 Mock fixture 派生），落在共享 46px 容器
-    expect(行.querySelector(`.${样式.头像}`)!.textContent).toBe('会');
+    // 头像 = 真实姓名首个 Unicode 字符（不再用中性「会」），落在共享 46px 容器
+    expect(行.querySelector(`.${样式.头像}`)!.textContent).toBe('林');
     expect(行.querySelector(`.${样式.未读徽标}`)!.textContent).toBe('2');
     expect(行.querySelector(`.${样式.代理头像}`)).toBeNull();
     // 页签行/标题行都来自共享外壳
     const 全部签 = screen.getByRole('button', { name: '全部' });
     expect(全部签.className).toContain(样式.页签选中);
     expect(screen.getByText('消息')).toBeTruthy();
-    // 错误与缓存行共存：错误提示在前、会话行在后
-    环境('candidate', [会话项()], { error: '后端服务暂时不可用，请稍后重试' });
-    const 错误视图 = render(<Backend会话列表 角色="candidate" />);
-    expect(错误视图.container.textContent).toContain('后端服务暂时不可用，请稍后重试');
-    expect(错误视图.container.textContent).toContain('后端工程师');
+  });
+
+  it('进入收件箱触发资料补读（每 available 会话一笔 force 详情；候选端补岗位/企业）', async () => {
+    环境('candidate', [
+      会话项({ context: { primaryLabel: '后端工程师', secondaryLabel: '上海·浦东', jobRef: 'job_1', resumeRef: null } }),
+      会话项({
+        conversationId: '3001', caseId: 'mc_3001',
+        context: { primaryLabel: '前端工程师', secondaryLabel: '杭州', jobRef: 'job_1', resumeRef: null },
+      }),
+    ]);
+    render(<Backend会话列表 角色="candidate" />);
+    await waitFor(() => expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(2));
+    expect(mock应用状态.操作.读取详情).toHaveBeenCalledWith('candidate', 'mc_3003', true);
+    expect(mock应用状态.操作.读取详情).toHaveBeenCalledWith('candidate', 'mc_3001', true);
+    // 同 jobRef 只一笔岗位、同发布方只一笔企业
+    await waitFor(() => expect(mock应用状态.操作.读取候选岗位详情).toHaveBeenCalledTimes(1));
+    expect(mock应用状态.操作.读取候选岗位详情).toHaveBeenCalledWith('job_1', true);
+    await waitFor(() => expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledTimes(1));
+    expect(mock应用状态.操作.读取公开企业).toHaveBeenCalledWith('org_pub');
+  });
+});
+
+// ── Task 2：列表行的本地资料消费（匿名/失败/搜索随加载更新）──
+describe('Backend会话列表 · 会话资料（Task 2）', () => {
+  it('匿名 candidateIdentity：缺名文案顶标题，不拿 P7 代号冒充真名；副标题仍给企业 · 岗位', async () => {
+    环境('recruiter', [会话项()], {}, { 身份: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null } });
+    render(<Backend会话列表 角色="recruiter" />);
+    await waitFor(() => expect(screen.getByText('候选人姓名暂未提供')).toBeTruthy());
+    expect(screen.getByText('云衢科技 · 平台工程师')).toBeTruthy();
+    expect(screen.queryByText('上海·浦东')).toBeNull(); // P7 secondaryLabel（代号位）不冒充姓名
+    const 行 = screen.getByRole('button', { name: /候选人姓名暂未提供/ });
+    expect(行.querySelector(`.${样式.头像}`)!.textContent).toBe('·');
+  });
+
+  it('补读失败：行显示「会话资料暂不可用」仍可点击导航，且给出定向重试提示', async () => {
+    环境('recruiter', [会话项(), 会话项({ conversationId: '3001', caseId: 'mc_3001' })], {}, { 详情: '失败' });
+    render(<Backend会话列表 角色="recruiter" />);
+    await waitFor(() => expect(screen.getAllByText('会话资料暂不可用')).toHaveLength(2));
+    await userEvent.click(screen.getAllByRole('button', { name: /会话资料暂不可用/ })[0]!);
+    expect(导航.跳转).toHaveBeenCalledWith('/hr/chat/3003');
+    // 局部失败提示 + 显式重试（不自动重试）
+    有空态含('部分会话资料暂不可用');
     await userEvent.click(screen.getByRole('button', { name: '重试' }));
-    expect(mock应用状态.操作.加载会话列表).toHaveBeenCalledWith('candidate', true);
+    await waitFor(() => expect(mock应用状态.操作.读取详情).toHaveBeenCalledTimes(4)); // 2 + 重试 2
+  });
+
+  it('姓名搜索随加载结果更新：在飞窗口搜无命中，资料落地后同一关键词命中', async () => {
+    let 落地!: () => void;
+    const 读取详情 = vi.fn(() => new Promise<void>((完成) => { 落地 = 完成; }));
+    环境('recruiter', [会话项()], {}, { 操作: { 读取详情 } });
+    render(<Backend会话列表 角色="recruiter" />);
+    expect(screen.getByText('后端工程师')).toBeTruthy(); // 在飞窗口沿用 P7 标签
+    await userEvent.type(screen.getByPlaceholderText('搜索会话 / 候选 / 岗位'), '陈屿');
+    有空态含('没有匹配的会话。');
+    落地();
+    await waitFor(() => expect(screen.getByText('陈屿')).toBeTruthy());
+    无空态含('没有匹配的会话。');
   });
 });

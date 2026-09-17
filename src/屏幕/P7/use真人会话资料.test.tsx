@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { use真人会话资料 } from './use真人会话资料';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 候选详情DTO, 招聘详情DTO, 状态 } from '../P5/MatchCase详情.测试辅助';
-import { BFF安全职位资料样本 } from '../../测试/展示资料样本';
+import { BFF安全职位资料样本, BFF公司摘要样本 } from '../../测试/展示资料样本';
 import type { P5详情快照 } from '../../状态/后端/类型';
 import type { P7会话项 } from '../../数据/招聘数据源/真人会话';
 
@@ -104,6 +104,27 @@ describe('use真人会话资料 · 招聘页头（Case candidateIdentity）', ()
     const 匿名 = renderHook(() => use真人会话资料('recruiter', 会话()));
     await waitFor(() => expect(匿名.result.current.标题).toBe('C-07'));
     expect(匿名.result.current.对方头像URL).toBeNull();
+    expect(匿名.result.current.对方首字).toBe('·'); // 匿名无真名：不从代号/文案取首字
+  });
+
+  it('副标题 = 投递企业 · 投递岗位（企业来自 jobDetail 用人企业，代招不取发布方）；缺企业只显示岗位', async () => {
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] = 快照({
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      candidateIdentity: { state: 'disclosed', name: '陈屿', avatar_url: null, disclosed_at: null },
+      jobDetail: { ...BFF安全职位资料样本, organization: { ...BFF公司摘要样本, display_name: '云衢科技' } },
+    });
+    const { result } = renderHook(() => use真人会话资料('recruiter', 会话()));
+    await waitFor(() => expect(result.current.副标题).toBe('云衢科技 · 平台工程师'));
+
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] = 快照({
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      candidateIdentity: { state: 'disclosed', name: '陈屿', avatar_url: null, disclosed_at: null },
+      jobDetail: { ...BFF安全职位资料样本, organization: null },
+    });
+    const 缺企业 = renderHook(() => use真人会话资料('recruiter', 会话()));
+    await waitFor(() => expect(缺企业.result.current.副标题).toBe('平台工程师'));
   });
 });
 
@@ -166,7 +187,8 @@ describe('use真人会话资料 · 候选页头（发布人档案 + 发布方公
     await waitFor(() => expect(result.current.标题).toBe('招聘者姓名暂未提供'));
     expect(result.current.副标题).toBe('公司暂未提供 · 角色暂未提供');
     expect(result.current.对方头像URL).toBeNull();
-    expect(result.current.对方首字).toBe('招');
+    // Task 2 契约A：首字只从真实姓名取，缺名为「·」，不从占位文案/alias 推导
+    expect(result.current.对方首字).toBe('·');
   });
 });
 

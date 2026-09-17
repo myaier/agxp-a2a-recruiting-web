@@ -210,7 +210,9 @@ function 写作品集链接(文本: string): string {
 }
 
 /** 页面经历段 → 后端经历写入 body（合同 C）：organization_id 是唯一企业坐标；
- *  行业引用.id 直接作 industry_id，不再按显示名反查目录；company 键退役，wire 不收。 */
+ *  行业引用.id 直接作 industry_id，不再按显示名反查目录；company 键退役，wire 不收。
+ *  契约B（2026-09-17）：hidden 是既有 wire 字段，读写两侧都按段原值透传 —— 新经历
+ *  默认 false、旧经历原值保留；企业屏蔽 UI 不再改写它（改走组织屏蔽 API）。 */
 export function 转经历写入(段: 简历经历段): BFF经历写入 {
   // 校验顺序与表单一致：缺行业引用与缺企业 ID 各有明确提示；body 键序仍以 organization_id 起头
   // （槽重放的 同一命令 比较按字面键序，重建槽体时同序）。

@@ -21,7 +21,16 @@ function 已知文(值: string | null): string | null {
   return 值 !== null && 值.trim() !== '' ? 值 : null;
 }
 
-export default function 候选信息主体({ 信息 }: { 信息: 候选卡信息 }) {
+export default function 候选信息主体({
+  信息,
+  亮点空文案 = '亮点信息未知',
+}: {
+  信息: 候选卡信息;
+  /** 亮点标签行的空态文案：两卡口径不同（Spec §6）—— 推荐卡的 personal_highlights
+   *  合法空是「暂无可展示亮点」（不声称未生成/解析失败）；在谈卡等既有消费者默认
+   *  「亮点信息未知」逐字不变。只换文案，不换判空规则。 */
+  亮点空文案?: string;
+}) {
   const 亮点们 = 有效项们(信息.亮点);
   const 年限 = 已知文(信息.年限);
   const 学历 = 已知文(信息.学历);
@@ -77,7 +86,7 @@ export default function 候选信息主体({ 信息 }: { 信息: 候选卡信息
             </span>
           ))
         ) : (
-          <span className={样式.未知文}>亮点信息未知</span>
+          <span className={样式.未知文}>{亮点空文案}</span>
         )}
       </div>
     </>
