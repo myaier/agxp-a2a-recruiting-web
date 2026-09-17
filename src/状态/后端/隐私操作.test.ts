@@ -535,3 +535,23 @@ describe('创建隐私操作 · 重读隐私 迟到回执栅栏（review-r1）',
     expect(deps.设后端状态).not.toHaveBeenCalled();
   });
 });
+
+describe('创建隐私操作 · 被写超越的迟到 401 不清当前会话（review-r2）', () => {
+  it('R0 被写超越后以 401 失败：按 null 收口，不清账号、不抛错', async () => {
+    let 拒绝R0!: (e: unknown) => void;
+    const R0 = new Promise<ReturnType<typeof 从BFF隐私>>((_res, rej) => { 拒绝R0 = rej; });
+    const 读取隐私 = vi.fn().mockReturnValueOnce(R0);
+    const 添加组织屏蔽 = vi.fn().mockResolvedValue(BFF屏蔽回执样本);
+    const deps = 创建隐私测试依赖(
+      { 添加组织屏蔽, 读取隐私, 清空目录缓存: vi.fn() } as unknown as HTTP招聘数据源, BFF隐私快照样本,
+    );
+    const 操作 = 创建隐私操作(deps);
+    const R0调用 = 操作.重读隐私();
+    await 操作.添加组织屏蔽('org_9', '手动添加');   // 写开始即超越 R0 的快照代际
+    拒绝R0(new BFF错误(401, 'invalid_session', 'expired'));
+    await expect(R0调用).resolves.toBeNull();        // 未采用收口
+    expect(deps.主体标识引用.current).toBe('sub_1'); // 未被迟到 401 清会话
+    expect(deps.派发).not.toHaveBeenCalledWith(expect.objectContaining({ 型: '切换身份' }));
+    expect(更新后的隐私快照(deps)?.revision).toBe(BFF屏蔽回执样本.privacy_revision);
+  });
+});
