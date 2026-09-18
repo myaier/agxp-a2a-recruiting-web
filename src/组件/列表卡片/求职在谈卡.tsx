@@ -7,8 +7,8 @@
 // 也就不会按未知名称命中静态公司标、不发空 URL 或外部占位图请求；匹配分 null → 卡片分数
 // 的未知占位（说明在 40px 容器内，不把薪资挤出右列）；标签 trim 后无有效项 → 「标签信息未知」。
 // Backend 的冻结职位/薪资/城市/技能由连接层原样传入，卡内不写 mock/backend 判断。
-// 不 import Context/fixture/HTTP/路由/持久化，不派发、不请求、不算分（Mock 的 use适配分
-// 留在在谈首页连接层）。
+// 不 import Context/fixture/HTTP/路由/持久化，不派发、不请求、不算分（Mock 的快照分由
+// 在谈首页连接层查 Mock匹配快照 表传入，Backend 的 wire 分由映射带来）。
 import { 白卡, 公司字标 } from '../通用';
 import 卡片分数 from './卡片分数';
 import 样式 from './求职在谈卡.module.css';

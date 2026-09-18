@@ -86,7 +86,7 @@ export interface 求职在谈卡属性 {
 
 /** 求职推荐卡（Plan 合同 D）：看市场 原市场卡 JSX 的共享提取签名，求职端 Backend
  *  推荐列表与助手查询结果共用的同一张原生卡面。纯展示 props：真实/Mock 匹配分由
- *  看市场 薄包装经 use适配分 算好后传入，卡内不算分、不请求。合法 null ≠ 空串 ≠ 0
+ *  调用方（看市场 薄包装：Backend = wire 分，Mock = 快照分）算好传入，卡内不算分、不请求。合法 null ≠ 空串 ≠ 0
  *  —— 占位只由显式 null 控制（Mock 页面既有空段渲染不变），非空分含 0 不误判未知。 */
 export interface 求职推荐卡属性 {
   公司: string | null;

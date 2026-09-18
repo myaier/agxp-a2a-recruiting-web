@@ -1,7 +1,7 @@
 // 求职推荐卡：市场卡（原 看市场.tsx 内 市场卡 JSX）的共享提取（Plan 合同 D）。
 // 视觉基准 = 原市场卡一比一：公司头行[公司字标 + 公司名/简介 + 右列(分 + 薪资)]
 // → 职位名 → 标签行 → 底行[发布人头像 + 发布人 + › + 去谈键/已委托状态标]。
-// 纯展示 props：分由调用方（看市场 薄包装经 use适配分）算好传入，本组只验卡面与
+// 纯展示 props：分由调用方（看市场 薄包装：Backend wire 分 / Mock 快照分）算好传入，本组只验卡面与
 // null/0 区分、禁用委托、头像失败回退等卡层自身行为。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null；
 // 适配环的 svg 是 role=img，而 alt="" 的 <img> 在 role 计算里是 presentation ——
