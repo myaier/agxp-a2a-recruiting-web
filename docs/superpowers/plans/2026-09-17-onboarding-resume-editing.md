@@ -439,3 +439,23 @@ R1 的3条均已在 Plan 修正，批准 Spec 未改。R2 使用同一 Claude �
   - **视觉**：`ui:capture` 7 场景 7/7 回执（`fc409445`）——review 修复均为逻辑层（失败重读、ID 回写、可选参数、路径限定），不改 DOM/样式，视觉回执按 INCREMENTAL_EVIDENCE 复用；场景 ID 唯一性测试含于全仓单测。
   - **清单**：`test:list --write` 后 `--check` 一致（第一层 6113 / 第二层 368），提交 `d3648955`。
 - fallback_reason：无——全部所选责任在最终候选上实跑，无缺选择粒度或依赖证明项。正式 STG/L3 全 NOT_RUN，归 final gate 确认后的步骤 5。
+
+### 正式 development L3 记录（收尾步骤 5，2026-09-18，用户已批准 final gate 方案）
+
+**环境插曲与处置**（全部如实记录）：
+- `stg-env preflight` 首跑 `fixture_contract_drift` BLOCKED（部署字段合同指纹 ≠ 本地 checkout 合同）。用户先选 (a) 授权部署：`agxp-release-recruitment-stg deploy` 在 `stage=start` 失败（新 recruitment 容器 schema 版本校验不过、BFF 停），按 skill RECOVERY 指引回滚 `2e5-dialogue-r1` 成功（四服务 healthy、healthz 200、数据未动）。归因：本地 backend checkout 落后 `origin/release/0.2.5` 40 commits（对部署版本 `75a318a01` 零本地独有提交），该次部署实为**降级尝试**。
+- 用户改选 (b)：backend checkout 纯 fast-forward 至 `origin/release/0.2.5`@`75a318a01`（=已部署版本）→ preflight `result: OK`，全程未再部署、未触碰远端数据。前端独占 STG 代理实例（5173，上游 https://recruitment-stg.agxp.ai）实跑验证。
+- 安全登录输入：agent-browser auth vault（`--password-stdin`，电话经 stdin 管道直入）+ `eval --stdin`（OTP 由 SSH 受限通道落 0600 文件后经管道注入），号码/验证码全程不入 argv/终端/聊天/报告/截图；登录页禁截图、snapshot 回显规避（结构性 eval）。
+
+**L3 逐项结果**（运行记录与证据在 `dogfood-output/<run-id>/`，gitignored 惯例）：
+1. `stg-onboarding-candidate/manual`（required）：**PASS 9/9**（run `l3-onbcand-manual-20260917T220925Z-694e20`；ephemeral-empty 空账号；新主序全链路：首屏薪资三态〔未确认拦截/面议默认/区间确认/取消遮罩不回写〕、状态收口、目录教育、资料页优势保存链、补充偏好单题、首次意向唯一创建（POST 恰一次）、完成 200、completed_at 唯一、刷新持久化、回访直达主页；journey verify OK；cleanup `CLEANED`）。
+2. `stg-onboarding-recruiter/manual`（required）：**PASS 6/6**（run `l3-onbrec-manual-20260917T223302Z-8cebe5`；注册流名片无「公司主页资料」维护行、日常名片有（§4.1 断言过）；run 唯一公司搜索无结果→创建→回填；完成 200 落首岗；三级目录发布；回访直达；cleanup `CLEANED`）。**关键取证关闭 Task 4 遗留风险**：真实目录 13 个一级全部自动出现二级 h3 分组标题+三级可选叶子，**全目录无任何「二级 selectable」节点**——行为替代语义完整覆盖真实目录。
+3. `candidate/parsed`、`recruiter/parsed`（conditional）：**NOT_RUN**（能力前提未正式开放：后端 skill 支持范围明确 B02 附件验收「拿到真实 PDF 证据才开放」、JD 导入/终态保留未声明开放；按指南不转手填冒充 parsed）。四变体未全验收已在结果中如实声明。
+4. `STG 基础试点` 两轮（required）：**PASS**。R1b `l3-pilot-r1b-20260917T231608Z-49c0f0`（complete.yaml）候选端 N1–N3 全 PASS（Task 5 扩展的日常编辑逐项节点 a–g：基本字段/工作经历/教育/技能/证书/优势/三态，每项写入后各自刷新回读全部一致；取消/顶部返回零写入；意向 CRUD 基准保留）+ N4b 岗位全生命周期（发布/编辑/归档/重开/删除+基准保留）+ N5 交叉会话；R2 `l3-pilot-r2-20260918T000201Z-bca9a4` 全 PASS（意向 CRUD+两轮隔离零泄漏：候选/招聘两侧均无首轮资源、组织显示名/岗位/意向均只含本 run 基准；owner 列表无旧资料）。两轮 cleanup 均 `CLEANED`、零残留、占用释放；首轮退休凭据有界正常认证 API 反证 **403 拒绝**。
+- N4a（名片保存）初判 FAIL 经主会话根因诊断推翻为 PASS：必填公司规则命中（complete.yaml profile `organization_ref`=null、组织经 affiliation 在场），轻提示「请选择公司」确有渲染但瞬时易错过；按产品流程（抽屉选择公司）补验保存成功（revision 1→2、坐标落位、职务持久化）。非产品缺陷（既有规则、本分支未触碰该路径、fixture e2e 本就先选公司）。
+
+**试点指南缺陷修复（批准范围内自主恢复，随本记录提交）**：`docs/dogfood/真实后端行为验收.md` §6.1 试点改用 `complete.yaml`（原 default 样本不落 onboarding 完成标记，与产品「未完成→引导」门禁矛盾——2026-09-18 实测确认，招聘端岗位管理与「保存后返回我」节点在 default 下不可达）；§6.2 名片节点补必填公司说明。
+
+**产品观察清单（非 FAIL，供后续定夺）**：①薪资格子 12 以上只有偶数，25-35K 不可表达（本轮以 24-35K 贯穿）；②硬性排除 chip 落 `private_preferences` 而结构化 `exclusions.*` 全 unspecified——硬性排除 vs AI 软偏好口径待产品确认；③瞬时校验轻提示易被错过（「请选择公司」「请选择办公方式」两处复现，建议提高可见性）；④「我」页名片摘要「任职：无」与名片详情不一致；⑤工作经历/岗位发布的客户端必填校验走 console.error 无用户可见提示（两处）；⑥「开始工作年份」缺省显示当前年，不主动改会误存；⑦工作经历空态卡无添加入口（须从完整度检查绕行）；⑧删除意向无二次确认；⑨R2 观察口径提醒：桌面视口截图 3 张（结构性结论不受影响）。
+
+**L3 后对账（收尾步骤 6 前半）**：L3 全部运行只触 STG 远端与浏览器，未改任何产品/测试代码；本分支收尾期新增 diff 仅 docs（指南修复 + 本记录）。L0–L2 证据按 INCREMENTAL_EVIDENCE 复核：全仓单测 6113/`--check` 一致/typecheck/lint/build 清的回执源候选到当前 HEAD 仅 docs 提交，代码树与测试 fixture 未变，全部 L0–L2 与 Playwright 证据保持有效，零补跑。
