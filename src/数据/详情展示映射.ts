@@ -17,6 +17,7 @@ import type { P5详情 } from './招聘数据源/MatchCase';
 import type { BFF安全职位资料, BFF匹配解释 } from './BFF契约';
 import type { 公开初评托盘视图 } from './连续代谈展示映射';
 import { 公司规模文案, 融资阶段文案, 福利文案 } from './组织映射';
+import { 格式化薪资, 规范薪资文本, 薪资未知 } from './薪资展示';
 import type { 顶栏信息, 职位资料信息, 在线简历展示资料 } from '../组件/在谈详情/类型';
 import type { 分段项, 段内记录 } from '../组件/阶段对话流';
 import type { 阶段 } from './类型';
@@ -53,23 +54,18 @@ function 拆行(文本: string): string[] {
 }
 
 /**
- * 冻结结构化薪资三元组 → 既有简洁薪资带文本（A.6：只认本记录已授权冻结值，不改单位
- * 合同）：三员齐、两界都是合法数字且 lower<=upper 才格式化（0 是合法界值）；缺成员、
- * 非法数字、倒置或缺周期一律缺失 —— 不补默认上下限、不猜周期、不做年薪乘月数。
- * month 沿用既有 K（'20-30K'），day/hour 前留一个空格（'300-500 元/天'，同 后端映射/
- * 发现推荐映射 口径）；单值上下限相等沿用既有简洁单值（'20K'，同 添加意向 回填格式）。
+ * 冻结结构化薪资三元组 → §8A.1 统一显示文本（Task 9：只认本记录已授权冻结值，不改单位
+ * 合同，不为格式化补读当前岗位）。缺成员、非法数字、倒置或缺周期一律「薪资未知」——
+ * 不补默认上下限、不猜周期、不做年薪折算；同源年薪月数只对月薪并入 ` x N` 后缀。
  */
-function 冻结薪资带(冻结: BFF安全职位资料): string | null {
-  const 下 = 冻结.salary_lower;
-  const 上 = 冻结.salary_upper;
-  if (下 === null || 上 === null || !Number.isFinite(下) || !Number.isFinite(上) || 下 > 上) {
-    return null;
-  }
-  const 单位 = 冻结.salary_period === 'month' ? 'K'
-    : 冻结.salary_period === 'day' ? ' 元/天'
-    : 冻结.salary_period === 'hour' ? ' 元/时' : null;
-  if (单位 === null) return null;
-  return 下 === 上 ? `${下}${单位}` : `${下}-${上}${单位}`;
+function 冻结薪资带(冻结: BFF安全职位资料): string {
+  if (冻结.salary_period === null) return 薪资未知;
+  return 格式化薪资({
+    下限: 冻结.salary_lower,
+    上限: 冻结.salary_upper,
+    周期: 冻结.salary_period,
+    年薪月数: 冻结.annual_salary_months,
+  });
 }
 
 /**
@@ -78,7 +74,9 @@ function 冻结薪资带(冻结: BFF安全职位资料): string | null {
  * 都吃它，一处有值处处有值。
  *   · 职位/城市：原摘要有效非空优先；缺失才用同一冻结 job_detail.title/location 补位；
  *     两头都缺原样带回缺口，由调用方决定占位；
- *   · 薪资：原摘要非空优先 → 完整合法的冻结结构化三元组（冻结薪资带）→ 缺失；
+ *   · 薪资（Task 9 / Spec §8A.3）：原摘要串先按有限识别规范化；不可识别（含空白与
+ *     K/day 这类单位矛盾串）不透传不猜单位 —— 同一记录有冻结结构化薪资就用其明确单位，
+ *     否则统一「薪资未知」缺失占位；
  *   · 技能：只认摘要原值（required_skills），keywords/benefits 不冒充技能。
  * 纯函数、无缓存：两条记录异值各算各的，不串。
  */
@@ -86,10 +84,11 @@ export function 投影冻结职位摘要(
   摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null },
   冻结: BFF安全职位资料 | null,
 ): { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null } {
+  const 识别薪资 = 规范薪资文本(摘要.薪资);
   return {
     职位: 非空文本(摘要.职位) ?? 非空文本(冻结?.title ?? null) ?? 摘要.职位,
     城市: 非空文本(摘要.城市) ?? 非空文本(冻结?.location?.display_name ?? null) ?? 摘要.城市,
-    薪资: 非空文本(摘要.薪资) ?? (冻结 === null ? null : 冻结薪资带(冻结)) ?? 摘要.薪资,
+    薪资: 识别薪资 !== 薪资未知 ? 识别薪资 : 冻结 === null ? 薪资未知 : 冻结薪资带(冻结),
     技能: 摘要.技能,
   };
 }

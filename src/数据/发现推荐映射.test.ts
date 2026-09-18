@@ -38,7 +38,6 @@ import {
   映射推荐依据,
   P4已开案,
   助手匹配理由,
-  薪资文案,
 } from './发现推荐映射';
 
 describe('从P4候选岗位 / 从P4CandidateJob', () => {
@@ -96,7 +95,7 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
     expect(从P4候选岗位(带引用).公司.organizationId).toBe('org_pub_1');
   });
 
-  it('薪资带按 period 闭合单位表格式化（K 无空格，元/天、元/时 前留空格）', () => {
+  it('薪资带按 §8A.1 显示合同格式化：K 无空格、en dash 区间，元/天、元/时 前留空格', () => {
     const 月薪: BFF候选岗位推荐 = {
       ...BFF候选岗位推荐样本,
       job: { ...BFFCandidateJob样本, salary_period: 'month', salary_lower: 20, salary_upper: 35 },
@@ -105,9 +104,41 @@ describe('从P4候选岗位 / 从P4CandidateJob', () => {
       ...BFF候选岗位推荐样本,
       job: { ...BFFCandidateJob样本, salary_period: 'hour', salary_lower: 40, salary_upper: 60 },
     };
-    expect(从P4候选岗位(月薪).卡.薪资).toBe('20-35K');
-    expect(从P4候选岗位(BFF候选岗位推荐样本).卡.薪资).toBe('300-500 元/天');
-    expect(从P4候选岗位(时薪).卡.薪资).toBe('40-60 元/时');
+    expect(从P4候选岗位(月薪).卡.薪资).toBe('20–35K');
+    expect(从P4候选岗位(BFF候选岗位推荐样本).卡.薪资).toBe('300–500 元/天');
+    expect(从P4候选岗位(时薪).卡.薪资).toBe('40–60 元/时');
+  });
+
+  // ── Task 9 / Spec §8A：市场卡薪资走 §8A.1 显示合同，独立 N 薪 标签退场 ──
+
+  it('§8A：市场卡月薪带同源年薪月数并入 x N 后缀；en dash 区间；单值不造区间', () => {
+    const 月薪14: BFF候选岗位推荐 = {
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, salary_period: 'month', salary_lower: 20, salary_upper: 35, annual_salary_months: 14 },
+    };
+    const 卡 = 从P4候选岗位(月薪14).卡;
+    expect(卡.薪资).toBe('20–35K x 14');
+    // 后缀只出现一次：标签里没有第二个「14 薪」
+    expect(卡.标签).not.toContain('14 薪');
+    expect(JSON.stringify(卡.标签)).not.toContain('14 薪');
+    expect(卡.薪资.match(/x 14/g)).toHaveLength(1);
+    // 未填月数不造后缀；日/时薪永不追加（样本 300-500 元/天、annual_salary_months=null）
+    expect(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, salary_period: 'month', salary_lower: 30, salary_upper: 30, annual_salary_months: null },
+    }).卡.薪资).toBe('30K');
+    expect(从P4候选岗位(BFF候选岗位推荐样本).卡.标签).not.toContain('12 薪');
+  });
+
+  it('§8A：非法/缺失的结构化薪资降级「薪资未知」，不造 0、不猜单位', () => {
+    expect(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, salary_lower: Number.NaN, salary_upper: 30 },
+    }).卡.薪资).toBe('薪资未知');
+    expect(从P4候选岗位({
+      ...BFF候选岗位推荐样本,
+      job: { ...BFFCandidateJob样本, salary_lower: 45, salary_upper: 30 },
+    }).卡.薪资).toBe('薪资未知');
   });
 
   it('办公方式 / 招聘类型标签与硬性要求（经验/学历）按闭合文案表投影', () => {
@@ -770,14 +801,6 @@ describe('P4委托状态文案', () => {
     expect(P4委托状态文案('accepted')).toBe('已提交给 AI，等待处理');
     expect(P4委托状态文案('failed')).toBe('本次处理未完成');
     expect(P4拒绝原因文案('active_case_quota_reached')).toBe('当前在谈已达到上限，请先处理已有在谈');
-  });
-});
-
-describe('薪资文案（既有格式；助手查询结果卡共用同一导出，不另写格式化）', () => {
-  it('月/日/时薪三档格式保持：K 无空格，元/天、元/时 前留一个空格', () => {
-    expect(薪资文案(20, 35, 'month')).toBe('20-35K');
-    expect(薪资文案(300, 500, 'day')).toBe('300-500 元/天');
-    expect(薪资文案(80, 120, 'hour')).toBe('80-120 元/时');
   });
 });
 

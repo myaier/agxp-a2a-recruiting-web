@@ -59,7 +59,7 @@ function 连续卡(选项: {
       job_id: 职位ID,
       title: 选项.职位名 === undefined ? 'AI 产品实习生' : 选项.职位名,
       location: 选项.城市 === undefined ? '上海' : 选项.城市,
-      public_salary_range: 选项.薪资 === undefined ? '300-500 元/天' : 选项.薪资,
+      public_salary_range: 选项.薪资 === undefined ? '300–500 元/天' : 选项.薪资,
       availability: 'available',
       organization: 选项.组织 ?? null,
       required_skills: 选项.技能 ?? null,
@@ -163,7 +163,7 @@ describe('映射连续列表项 · 五阶段投影', () => {
       intentionId: 意向ID,
       职位名: 'AI 产品实习生',
       城市: '上海',
-      薪资带: '300-500 元/天',
+      薪资带: '300–500 元/天',
       公司: null,
       公司简介: null,
       公司字标: null,
@@ -290,6 +290,58 @@ describe('映射连续列表项 · 五阶段投影', () => {
     expect(卡.薪资带).toBe('薪资未知');
     expect(卡.城市).toBeNull();
   });
+
+  // ── Task 9 / Spec §8A：在谈列表卡的薪资带走同一个小格式化器，独立 N 薪 标签退场 ──
+
+  it('§8A：public_salary_range 按有限识别规范化，同源年薪月数并入后缀且只出现一次', () => {
+    // 紧凑串 + 同源月数 → en dash 区间 + 单个 x N 后缀
+    const 合并 = 映射连续列表项(连续卡({
+      recordId: 'dlg_s1', phase: 'accepted', 薪资: '30-45K', 薪资月数: 14,
+    }));
+    expect(合并.薪资带).toBe('30–45K x 14');
+    expect(合并.薪资带.match(/x 14/g)).toHaveLength(1);
+    // 串内自带 Mock 月数且与同源月数一致：同样只留一个后缀
+    const 自带 = 映射连续列表项(连续卡({
+      recordId: 'dlg_s2', phase: 'accepted', 薪资: '30-45K · 14 薪', 薪资月数: 14,
+    }));
+    expect(自带.薪资带).toBe('30–45K x 14');
+    // 月薪未填月数：只统一破折号，不造后缀
+    const 无月数 = 映射连续列表项(连续卡({
+      recordId: 'dlg_s3', phase: 'accepted', 薪资: '30-45K', 薪资月数: null,
+    }));
+    expect(无月数.薪资带).toBe('30–45K');
+    // 日薪：识别后永不追加月数
+    const 日薪 = 映射连续列表项(连续卡({
+      recordId: 'dlg_s4', phase: 'accepted', 薪资: '300–500 元/天', 薪资月数: 14,
+    }));
+    expect(日薪.薪资带).toBe('300–500 元/天');
+  });
+
+  it('§8A：标签行不再有独立「N 薪」段（非 12 月薪已由后缀表达，日/时薪与未知也不补标签）', () => {
+    const 月薪 = 映射连续列表项(连续卡({
+      recordId: 'dlg_t1', phase: 'accepted', 薪资: '30-45K', 薪资月数: 14,
+      技能: ['Go'],
+    }));
+    expect(月薪.标签们).not.toContain('14 薪');
+    // 月数缺席/为 12 同样不补标签；未知薪资也不出「N 薪」
+    expect(映射连续列表项(连续卡({
+      recordId: 'dlg_t2', phase: 'accepted', 薪资月数: null,
+    })).标签们).not.toContain('12 薪');
+    expect(映射连续列表项(连续卡({
+      recordId: 'dlg_t3', phase: 'accepted', 薪资: null, 薪资月数: 14,
+    })).标签们).not.toContain('14 薪');
+  });
+
+  it('§8A：单位矛盾/不可识别的薪资串不猜单位，降级「薪资未知」', () => {
+    // RenderPublicSalaryRange 的 K/hour 风险串：不得解释成元，也不原样上屏
+    expect(映射连续列表项(连续卡({
+      recordId: 'dlg_u1', phase: 'accepted', 薪资: '300-500K/hour',
+    })).薪资带).toBe('薪资未知');
+    // 带前后缀的自然语言串同样不识别
+    expect(映射连续列表项(连续卡({
+      recordId: 'dlg_u2', phase: 'accepted', 薪资: '月薪 30-45K，14 薪',
+    })).薪资带).toBe('薪资未知');
+  });
 });
 
 describe('从连续到阶段 · 阶段区信息', () => {
@@ -371,7 +423,7 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     expect(从连续到详情顶栏(连续详情({ phase: 'accepted' }))).toEqual({
       端: '求职',
       标题: 'AI 产品实习生 · 公司信息缺失',
-      副标题: '上海 · 300-500 元/天',
+      副标题: '上海 · 300–500 元/天',
       画像: null,
       右侧: { kind: '分数', 值: null },
       岗位上下文: null,
@@ -398,7 +450,7 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
   it('职位资料：negotiation.job 只给实际字段，其余全缺失，缺口说明沿用约定句；技能 null/[]/有值三态如实区分', () => {
     // required_skills=null 是「未知」，不得折算成「已知为空」
     const 资料 = 从连续到职位资料(连续详情({ phase: 'accepted' }));
-    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: null });
+    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300–500 元/天', 技能: null });
     expect(从连续到职位资料(连续详情({ phase: 'accepted', 技能: ['Go', '高并发'] })).摘要?.技能)
       .toEqual(['Go', '高并发']);
     expect(从连续到职位资料(连续详情({ phase: 'accepted', 技能: [] })).摘要?.技能).toEqual([]);
@@ -428,7 +480,7 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     expect(资料.公司.编号).toBe('org_1');
     expect(资料.对接人.姓名).toBe('林澈');
     expect(资料.接口缺口说明).toBeNull();
-    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300-500 元/天', 技能: null });
+    expect(资料.摘要).toEqual({ 职位: 'AI 产品实习生', 城市: '上海', 薪资: '300–500 元/天', 技能: null });
   });
 
   // review-r1：job_detail 缺组织/缺席时，顶栏公司名回退到同一响应外层 job.organization（同语义，
@@ -451,7 +503,7 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
 
   // ── S0–S3 展示统一 Task 5：pre-Case 顶栏与资料 Tab 同吃一份冻结投影（D1 顶栏一致）──
 
-  it('摘要薪资缺失由同记录 job_detail 三元组补位：顶栏副标题与资料 Tab 摘要同一份 20-30K', () => {
+  it('摘要薪资缺失由同记录 job_detail 三元组补位：顶栏副标题与资料 Tab 摘要同一份 20–30K', () => {
     const 冻结 = {
       ...BFF安全职位资料样本,
       salary_lower: 20,
@@ -459,9 +511,9 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
       salary_period: 'month' as const,
     };
     expect(从连续到详情顶栏(连续详情({ phase: 'accepted', 薪资: null, jobDetail: 冻结 })).副标题)
-      .toBe('上海 · 20-30K');
+      .toBe('上海 · 20–30K');
     expect(从连续到职位资料(连续详情({ phase: 'accepted', 薪资: null, jobDetail: 冻结 })).摘要?.薪资)
-      .toBe('20-30K');
+      .toBe('20–30K');
   });
 
   it('摘要 title/location 缺失由冻结补位，投影仍缺才落既有占位（占位不顶替冻结值）', () => {
@@ -771,13 +823,13 @@ describe('映射连续列表项 · 组织摘要与匹配分落位（Spec §5.2�
     expect(无Logo.公司字标).toBeNull(); // 无真实媒体不出字标，保留中性空位
   });
 
-  it('标签行沿 Mock 岗位属性顺序：地点 → N 薪 → 办公方式 → 技能；未知成员不补默认', () => {
+  it('标签行沿 Mock 岗位属性顺序：地点 → 办公方式 → 技能（§8A 起无独立 N 薪 段）；未知成员不补默认', () => {
     const 完整 = 映射连续列表项(连续卡({
       recordId: 'dlg_t1', phase: 'accepted',
       城市: '徐汇区漕河泾', 办公方式: 'hybrid', 薪资月数: 15, 技能: ['Go', '高并发'],
     }));
-    expect(完整.标签们).toEqual(['徐汇区漕河泾', '15 薪', '混合', 'Go', '高并发']);
-    // 未知成员不补默认：无薪资月数/办公方式/技能时只留地点
+    expect(完整.标签们).toEqual(['徐汇区漕河泾', '混合', 'Go', '高并发']);
+    // 未知成员不补默认：无办公方式/技能时只留地点
     const 只有地点 = 映射连续列表项(连续卡({ recordId: 'dlg_t2', phase: 'accepted' }));
     expect(只有地点.标签们).toEqual(['上海']);
     const 全缺 = 映射连续列表项(连续卡({

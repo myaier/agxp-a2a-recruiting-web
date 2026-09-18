@@ -22,6 +22,7 @@ import type { 市场职位 } from './类型';
 import type { P4候选岗位页面, P4招聘候选页面 } from './招聘数据源类型';
 import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 import { 公司规模文案, 融资阶段文案 } from './组织映射';
+import { 格式化薪资 } from './薪资展示';
 
 // ── 闭合文案表：契约内枚举 → 展示文案，无表外键、无默认兜底 ──
 // 薪资关系 / 招聘类型 / 办公方式 三表同时被 在线简历展示映射 复用（同一份文案，Task 5）。
@@ -34,7 +35,6 @@ const 淘汰文案 = {
   primary_stack_mismatch: '主栈不符', other: '其他',
 } as const;
 export const 办公方式文案 = { onsite: '现场', hybrid: '混合', remote: '全远程' } as const;
-const 薪资单位 = { month: 'K', day: '元/天', hour: '元/时' } as const;
 
 // 与 后端映射 的岗位展示同口径的三组展示文案（那些表未导出，这里按同一份文案重申闭合表）
 export const 招聘类型文案 = { social_full_time: '社招全职', campus: '校园招聘', internship: '实习生', part_time: '兼职' } as const;
@@ -75,12 +75,9 @@ function 拆行(文本: string): string[] {
   return 文本.split(/\r?\n/).map((行) => 行.trim()).filter((行) => 行 !== '');
 }
 
-/** 薪资带文案：K 无空格（'20-35K'），元/天、元/时 前留一个空格（'300-500 元/天'），与 后端映射 同口径。
- *  导出给 助手查询结果卡 复用（Plan Task 3：同一份格式化，不另写第二套）。 */
-export function 薪资文案(下: number, 上: number, 周期: 'month' | 'day' | 'hour'): string {
-  const 单位 = 薪资单位[周期];
-  return `${下}-${上}${单位 === 'K' ? 单位 : ` ${单位}`}`;
-}
+/** 薪资带文案（Task 9 / Spec §8A.1）：统一走 薪资展示.格式化薪资 —— en dash 区间、
+ *  月薪可带 ` x N` 后缀、日/时薪一个空格、非法降级「薪资未知」。助手查询结果卡
+ *  （查询结果展示）用同一函数，不另写第二套格式化。 */
 
 /** 助手岗位卡 safe_reasons → 卡内匹配理由（Spec §10.3，复用 亮点文案 闭表）：
  *  已知码译中文并带肯定勾；未命中的机器码（完整匹配 ^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$）
@@ -166,13 +163,18 @@ function 建卡(job: BFFCandidateJob, 适配分: number, 意向: string, 理由:
     公司,
     公司首字: 首字(公司),
     公司简介: 公司短行(job.organization ?? null),
-    薪资: 薪资文案(job.salary_lower, job.salary_upper, job.salary_period),
+    // §8A.1：月薪的年薪月数由 x N 后缀表达；标签行不再出现独立「N 薪」段
+    薪资: 格式化薪资({
+      下限: job.salary_lower,
+      上限: job.salary_upper,
+      周期: job.salary_period,
+      年薪月数: job.annual_salary_months,
+    }),
     适配分,
     标签: [
       招聘类型文案[job.recruitment_type],
       job.location.display_name,
       办公方式文案[job.workplace_mode],
-      ...(job.annual_salary_months !== null ? [`${job.annual_salary_months} 薪`] : []),
     ],
     办公方式: 办公方式文案[job.workplace_mode],
     城市: job.location.display_name,

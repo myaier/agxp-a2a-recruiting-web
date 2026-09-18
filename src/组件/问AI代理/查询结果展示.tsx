@@ -8,7 +8,7 @@
 // 映射纪律（Spec §4）：真实字段原样映射；DTO 合法缺失（null）出既有占位，空白文本按缺失，
 // 数组真实为空出空态；不补后端没给的招聘类型/办公方式/公司/分数/Logo/发布人，
 // 不用前端生成评语，内部标识 ID（evaluation_id/case_id/summary id）不作正文结论。
-// 薪资带复用 发现推荐映射 导出的既有 薪资文案，匹配理由复用同一表的 助手匹配理由。
+// 薪资带复用 薪资展示 的同一格式化（§8A.1），匹配理由复用 发现推荐映射 的 助手匹配理由。
 // 导航与解读全走 props 回调，不读 Provider、不发请求、无状态副作用；
 // 整个回复不是点击区，可点元素都在卡/键自身。
 import type { ReactElement } from 'react';
@@ -22,7 +22,8 @@ import type {
   AssistantNegotiationItem,
   AssistantReply,
 } from '../../数据/招聘数据源/助手会话';
-import { 助手匹配理由, 薪资文案 } from '../../数据/发现推荐映射';
+import { 助手匹配理由 } from '../../数据/发现推荐映射';
+import { 格式化薪资, 规范薪资文本 } from '../../数据/薪资展示';
 import { 聊天正文 } from '../聊天气泡';
 import { 代理气泡, 代理气泡框 } from './对话展示';
 import 对话样式 from './对话展示.module.css';
@@ -189,13 +190,10 @@ function 结果区({
 
 // ── 岗位推荐项：原市场卡 + 附属区（safe_reasons + 委托说明）──
 
-/** 标签 = [office_location, annual_salary_months !== null 时的 "n 薪"]：空地点显式「地点未知」，
- *  年薪月数缺席不假设薪数；招聘类型/办公方式 wire 未提供，不制造事实。 */
+/** 标签 = [office_location]：空地点显式「地点未知」；§8A.1 起年薪月数由薪资后缀表达，
+ *  不再出独立「n 薪」标签；招聘类型/办公方式 wire 未提供，不制造事实。 */
 function 岗位标签(项: AssistantJobItem): string[] {
-  return [
-    已知文(项.office_location) ?? '地点未知',
-    ...(项.annual_salary_months !== null ? [`${项.annual_salary_months} 薪`] : []),
-  ];
+  return [已知文(项.office_location) ?? '地点未知'];
 }
 
 function 岗位项({
@@ -216,7 +214,12 @@ function 岗位项({
         公司首字={null}
         公司图片URL={null}
         职位={已知文(项.title) ?? '职位信息未知'}
-        薪资={薪资文案(项.salary_lower, 项.salary_upper, 项.salary_period)}
+        薪资={格式化薪资({
+          下限: 项.salary_lower,
+          上限: 项.salary_upper,
+          周期: 项.salary_period,
+          年薪月数: 项.annual_salary_months,
+        })}
         标签={岗位标签(项)}
         匹配分={null}
         发布人={null}
@@ -254,7 +257,7 @@ function 在谈卡面({
       公司字标={null}
       公司图片URL={null}
       匹配分={null}
-      薪资={已知文(项.job.public_salary_range) ?? '薪资未知'}
+      薪资={规范薪资文本(项.job.public_salary_range)}
       职位={已知文(项.job.title) ?? '职位信息未知'}
       标签={地点 !== null ? [地点] : []}
       阶段={{

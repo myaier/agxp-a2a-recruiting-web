@@ -17,6 +17,7 @@ import type { P5阶段, P5状态, BFF匹配解释 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
+import { 规范薪资文本 } from './薪资展示';
 import { 初评证据文案, 公开初评决定文案, 公开初评过程文案 } from './代谈结果文案';
 import type { 核对结果 } from './代谈结果文案';
 import { 从冻结职位到资料, 投影冻结职位摘要 } from './详情展示映射';
@@ -54,7 +55,8 @@ export interface 连续列表视图 {
    * 缺席=未展开读取、null=已展开无溯源；不从分数/理由文字重造。
    */
   匹配解释?: BFF匹配解释 | null;
-  /** 在谈卡标签行：地点 → N 薪 → 办公方式 → 技能，未知成员不补默认（Mock 岗位属性顺序）。 */
+  /** 在谈卡标签行：地点 → 办公方式 → 技能，未知成员不补默认（Mock 岗位属性顺序；
+   *  §8A.1：年薪月数已由薪资后缀表达，不再有独立「N 薪」段）。 */
   标签们: readonly string[];
   阶段标题: string;
   状态文案: string;
@@ -165,7 +167,8 @@ export function 映射连续列表项(card: NegotiationCard): 连续列表视图
     intentionId: card.intention_id,
     职位名: 非空段(card.job.title) ?? '职位信息未知',
     城市: 非空段(card.job.location),
-    薪资带: 非空段(card.job.public_salary_range) ?? '薪资未知',
+    // §8A.3：显示字符串在映射边界按有限识别规范化（同源月数并入后缀、单位矛盾串降级）
+    薪资带: 规范薪资文本(card.job.public_salary_range, card.job.annual_salary_months),
     公司: 公司名,
     公司简介: 组织 === null || 公司名 === null ? null : 公司短行(组织),
     公司字标: 公司名 !== null && 公司图片URL !== null
@@ -177,7 +180,6 @@ export function 映射连续列表项(card: NegotiationCard): 连续列表视图
     ...(card.匹配解释 === undefined ? {} : { 匹配解释: card.匹配解释 }),
     标签们: [
       非空段(card.job.location),
-      card.job.annual_salary_months !== null ? `${card.job.annual_salary_months} 薪` : null,
       card.job.workplace_mode === null ? null : 办公方式文案[card.job.workplace_mode],
       ...(card.job.required_skills ?? []),
     ].flatMap((段) => {

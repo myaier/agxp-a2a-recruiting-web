@@ -92,7 +92,7 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(await screen.findByText('平台工程师 · 公司信息缺失')).toBeTruthy(); // 冻结职位名 · 公司槽缺失占位（F3）
     // Task 4：内部意向 ID 不再出现在可见内容里（业务上下文靠冻结职位/城市/薪资承载）
     expect(document.body.textContent).not.toContain(意向ID);
-    expect(screen.getByText('上海 · 25-40K·16薪')).toBeTruthy(); // 城市 · 薪资带
+    expect(screen.getByText('上海 · 25–40K x 16')).toBeTruthy(); // 城市 · 薪资带
     // 列表记忆零读取：不碰任何工作区/列表操作
     expect(mock加载工作区).not.toHaveBeenCalled();
     expect(mock刷新工作区).not.toHaveBeenCalled();
@@ -119,7 +119,7 @@ describe('MatchCase详情 · 直达刷新与隐私（Backend）', () => {
     expect(screen.getByText('求职状态缺失')).toBeTruthy();
     expect(screen.getByRole('img', { name: '性别未知' })).toBeTruthy();
     // 冻结职位随岗位上下文行在场（职位名 · 城市 · 薪资带）
-    expect(screen.getByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
+    expect(screen.getByText('平台工程师 · 上海 · 25–40K x 16')).toBeTruthy();
     // 姓名与结构化身份是 P5.1 依赖：一个都不渲染
     expect(screen.queryByText('沈亦舟')).toBeNull();
     expect(document.body.textContent).not.toContain(意向ID); // 对端（候选端）字段进不了视图
@@ -525,7 +525,7 @@ describe('MatchCase详情 · 招聘端在线简历 Tab（Task 4）', () => {
   it('recruiter 资料 Tab：九区标题原位保留并逐区缺失，缺口说明与页尾说明在场', async () => {
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
     渲染详情('recruiter', 'mc_hr');
-    expect(await screen.findByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
+    expect(await screen.findByText('平台工程师 · 上海 · 25–40K x 16')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '在线简历' }));
     const 标题们 = [
       '匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能',
@@ -545,7 +545,7 @@ describe('MatchCase详情 · 招聘端在线简历 Tab（Task 4）', () => {
   it('recruiter 资料 Tab 不给无依据承诺与身份信息：无假薪资结论、无一致性 ✓、别名不上屏', async () => {
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
     渲染详情('recruiter', 'mc_hr');
-    await screen.findByText('平台工程师 · 上海 · 25-40K·16薪');
+    await screen.findByText('平台工程师 · 上海 · 25–40K x 16');
     fireEvent.click(screen.getByRole('button', { name: '在线简历' }));
     expect(screen.queryByText('薪资带已进入初筛')).toBeNull();
     expect(screen.queryByText('✓')).toBeNull();
@@ -570,7 +570,7 @@ describe('MatchCase详情 · 招聘端在线简历 Tab（Task 4）', () => {
   it('招聘端切 Tab 零新增请求：所有操作在切换前后调用数不变', async () => {
     置详情状态({ role: 'recruiter', caseId: 'mc_hr', 快照: 详情快照({ detail: 招聘详情DTO() }) });
     渲染详情('recruiter', 'mc_hr');
-    await screen.findByText('平台工程师 · 上海 · 25-40K·16薪');
+    await screen.findByText('平台工程师 · 上海 · 25–40K x 16');
     const 操作调用数 = () => Object.values(mock操作).map((fn) => fn.mock.calls.length);
     const 切换前 = 操作调用数();
     fireEvent.click(screen.getByRole('button', { name: '在线简历' }));
