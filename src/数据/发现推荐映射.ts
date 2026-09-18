@@ -200,6 +200,8 @@ function 建候选岗位视图(
     /** 匹配依据是否确认：推荐卡取卡顶层 basis；详情直取无推荐批次 → null */
     匹配依据已确认: boolean | null;
     委托: BFF候选岗位推荐['delegation'];
+    /** 推荐卡携带的已展开批次解释（C1 两态原样透传）；详情直取无推荐批次 → 缺席 */
+    匹配解释?: BFF候选岗位推荐['match_explanation'];
   },
 ): P4候选岗位页面 {
   // 岗位事实只取已解码 BFFCandidateJob 字段；办公地点 blank（含纯空白）→ null。
@@ -250,6 +252,8 @@ function 建候选岗位视图(
         }
       : null,
     委托: 建议.委托,
+    // 已展开解释两态原样透传（缺席=未展开读取、null=已展开无溯源），不从分数/理由重造
+    ...(建议.匹配解释 === undefined ? {} : { 匹配解释: 建议.匹配解释 }),
   };
 }
 
@@ -262,6 +266,7 @@ export function 从P4候选岗位(card: BFF候选岗位推荐): P4候选岗位�
     理由: card.match_reasons,
     匹配依据已确认: card.structured_requirements_confirmed,
     委托: card.delegation,
+    ...(card.match_explanation === undefined ? {} : { 匹配解释: card.match_explanation }),
   });
 }
 
@@ -326,6 +331,8 @@ export function 从P4招聘候选(card: BFF招聘候选推荐 | BFF招聘推荐�
       ? { 候选摘要: 映射招聘候选摘要(card.candidate_resume === null ? null : card.candidate_resume.summary) }
       // 摘要只在展开请求的卡上有键：默认详情/历史没有该键，视图不得伪造出 候选摘要: null
       : (card.candidate_summary === undefined ? {} : { 候选摘要: 映射招聘候选摘要(card.candidate_summary) })),
+    // 已展开批次解释两态原样透传（C1：缺席=未展开读取、null=已展开无溯源，不互相伪装）
+    ...(card.match_explanation === undefined ? {} : { 匹配解释: card.match_explanation }),
   };
 }
 

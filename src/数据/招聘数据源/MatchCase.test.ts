@@ -19,6 +19,8 @@ import {
   P5终局摘要Wire,
   P5工作区职位Wire,
   P5对话进度Wire,
+  BFF匹配解释87分样本,
+  BFF匹配解释92分样本,
   招聘候选摘要样本,
 } from '../../测试/BFF样本';
 import { 创建MatchCase数据源, 解MatchCaseSummary, 解P5详情, 解P5状态视图, type MatchCase数据源 } from './MatchCase';
@@ -47,14 +49,27 @@ const 职位ID = 'job_0123456789abcdef0123456789abcdef';
 const 协同问题ID = 'cdi_0123456789abcdef0123456789abcdef';
 const 契约漂移 = '服务返回了不符合契约的 MatchCase 数据';
 
-/** recruiter open 展开样本：工作区查询携带 include，每个 item 必带 candidate_summary。 */
-const 招聘展开工作区项 = { ...P5招聘工作区项Wire, candidate_summary: 招聘候选摘要样本 };
+/**
+ * recruiter open 展开样本（C2）：工作区查询携带 include=candidate_summary,match_explanation，
+ * 每个 item 必带两键；展开解释与 match_score=87 同分（解匹配解释 校验分项和=总分=同分）。
+ */
+const 招聘展开工作区项 = {
+  ...P5招聘工作区项Wire,
+  candidate_summary: 招聘候选摘要样本,
+  match_explanation: BFF匹配解释87分样本,
+};
+/** recruiter 历史行展开样本：历史查询仅携带 match_explanation（candidate_summary 仍是禁键）。 */
+const 招聘展开历史行 = (覆盖: Record<string, unknown> = {}) => ({
+  ...P5招聘工作区项Wire,
+  match_explanation: BFF匹配解释87分样本,
+  ...覆盖,
+});
 
 const 候选Open路径 = '/api/v1/me/match-cases?limit=50';
 const 候选过滤Open路径 = `/api/v1/me/match-cases?intention_id=${意向ID}&limit=50`;
-const 招聘过滤Open路径 = `/api/v1/recruiter/match-cases?job_id=${职位ID}&limit=50&include=candidate_summary`;
+const 招聘过滤Open路径 = `/api/v1/recruiter/match-cases?job_id=${职位ID}&limit=50&include=candidate_summary,match_explanation`;
 const 候选已终止历史路径 = '/api/v1/me/match-cases/history?lifecycle=ended&limit=50';
-const 招聘已完成历史路径 = `/api/v1/recruiter/match-cases/history?lifecycle=completed&job_id=${职位ID}&limit=50`;
+const 招聘已完成历史路径 = `/api/v1/recruiter/match-cases/history?lifecycle=completed&job_id=${职位ID}&limit=50&include=match_explanation`;
 
 // ── S0 展开块样本构造（include=screening_records）：共享块以对象展开放进唯一 S0，state.round=1 ──
 
@@ -225,7 +240,7 @@ describe('MatchCase数据源', () => {
         items: [{ ...P5候选工作区项Wire, state: P5已终止状态Wire, needs_action: false }],
         next_cursor: null,
       }))
-      .mockResolvedValueOnce(响应({ items: [{ ...P5招聘工作区项Wire, state: P5已完成状态Wire }], next_cursor: null }))
+      .mockResolvedValueOnce(响应({ items: [招聘展开历史行({ state: P5已完成状态Wire })], next_cursor: null }))
       .mockResolvedValueOnce(响应({ items: [], next_cursor: null }));
     const ended页 = await source.读取P5历史('candidate', 'ended', null, null);
     const completed页 = await source.读取P5历史('recruiter', 'completed', 职位ID, null);
@@ -315,11 +330,11 @@ describe('MatchCase数据源', () => {
         next_cursor: null,
       }))
       .mockResolvedValueOnce(响应({
-        items: [{ ...P5招聘工作区项Wire, state: P5已完成状态Wire, job: 空技能Job }],
+        items: [招聘展开历史行({ state: P5已完成状态Wire, job: 空技能Job })],
         next_cursor: null,
       }))
-      .mockResolvedValueOnce(响应({ ...P5候选详情Wire, job: 空技能Job }))
-      .mockResolvedValueOnce(响应({ ...P5招聘详情Wire, job: 空技能Job }));
+      .mockResolvedValueOnce(响应({ ...P5候选详情Wire, job: 空技能Job, match_explanation: BFF匹配解释92分样本 }))
+      .mockResolvedValueOnce(响应({ ...P5招聘详情Wire, job: 空技能Job, match_explanation: BFF匹配解释87分样本 }));
     const 候选Open页 = await source.读取P5Open列表('candidate', 意向ID, null);
     const 招聘Open页 = await source.读取P5Open列表('recruiter', 职位ID, null);
     const 候选Ended页 = await source.读取P5历史('candidate', 'ended', null, null);
@@ -355,13 +370,13 @@ describe('MatchCase数据源', () => {
     expect(() => 解P5详情({ ...P5候选详情Wire, job: 职位 }, 'candidate')).toThrow(契约漂移);
   });
 
-  // ── candidate_summary 展开合同：仅 recruiter open 携带 include 且 item 必带摘要键 ──
+  // ── candidate_summary + match_explanation 展开合同：仅 recruiter 行携带 include 且必带键 ──
 
-  it('仅 recruiter open 工作区查询附加一次 include（首页/带 job_id/cursor），candidate open 与历史不携带', async () => {
+  it('recruiter open 带 include=candidate_summary,match_explanation 一次、历史仅 match_explanation，candidate 两架子不携带', async () => {
     请求Mock
       .mockResolvedValueOnce(响应({ items: [招聘展开工作区项], next_cursor: 'Pg2_-1' }))
       .mockResolvedValueOnce(响应({ items: [P5候选工作区项Wire], next_cursor: null }))
-      .mockResolvedValueOnce(响应({ items: [{ ...P5招聘工作区项Wire, state: P5已完成状态Wire }], next_cursor: null }))
+      .mockResolvedValueOnce(响应({ items: [招聘展开历史行({ state: P5已完成状态Wire })], next_cursor: null }))
       .mockResolvedValueOnce(响应({ items: [], next_cursor: null }));
     await source.读取P5Open列表('recruiter', 职位ID, null);
     await source.读取P5Open列表('candidate', 意向ID, null);
@@ -373,23 +388,43 @@ describe('MatchCase数据源', () => {
       `${招聘已完成历史路径}`,
       候选Open路径,
     ]);
-    for (const 路径 of 请求Mock.mock.calls.map(([选项]) => 选项.path as string).slice(0, 1)) {
-      expect(路径.match(/include=candidate_summary/g)).toHaveLength(1);
-    }
-    for (const 路径 of [候选过滤Open路径, 招聘已完成历史路径, 候选Open路径]) {
+    const 路径们 = 请求Mock.mock.calls.map(([选项]) => 选项.path as string);
+    // recruiter open：include 双键恰好一次
+    expect(路径们[0].match(/include=candidate_summary,match_explanation/g)).toHaveLength(1);
+    // recruiter 历史：仅 match_explanation，禁止列表专用 candidate_summary
+    expect(路径们[2].match(/include=match_explanation/g)).toHaveLength(1);
+    expect(路径们[2]).not.toContain('candidate_summary');
+    // candidate open 两页：无任何 include（底层 Case 列表不增加评分展开）
+    for (const 路径 of [候选过滤Open路径, 候选Open路径]) {
       expect(路径).not.toContain('include=');
     }
   });
 
-  it('recruiter open 每项缺 candidate_summary 拒绝，显式 null 成功，非法摘要拒绝', async () => {
+  it('recruiter open 每项缺 candidate_summary / 缺 match_explanation 拒绝，两键显式 null 成功，坏解释拒绝', async () => {
     const { candidate_summary: _缺, ...缺摘要 } = 招聘展开工作区项;
     请求Mock.mockResolvedValueOnce(响应({ items: [缺摘要], next_cursor: null }));
     await expect(source.读取P5Open列表('recruiter', 职位ID, null))
       .rejects.toMatchObject({ code: 'invalid_response' });
 
-    请求Mock.mockResolvedValueOnce(响应({ items: [{ ...招聘展开工作区项, candidate_summary: null }], next_cursor: null }));
+    const { match_explanation: _缺解释, ...缺解释 } = 招聘展开工作区项;
+    请求Mock.mockResolvedValueOnce(响应({ items: [缺解释], next_cursor: null }));
     await expect(source.读取P5Open列表('recruiter', 职位ID, null))
-      .resolves.toMatchObject({ items: [{ candidateSummary: null }] });
+      .rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce(响应({
+      items: [{ ...招聘展开工作区项, candidate_summary: null, match_explanation: null }],
+      next_cursor: null,
+    }));
+    await expect(source.读取P5Open列表('recruiter', 职位ID, null))
+      .resolves.toMatchObject({ items: [{ candidateSummary: null, 匹配解释: null }] });
+
+    // 解释总分与同响应 match_score 不一致：fail closed（87 分卡配 92 分解释）
+    请求Mock.mockResolvedValueOnce(响应({
+      items: [{ ...招聘展开工作区项, match_explanation: BFF匹配解释92分样本 }],
+      next_cursor: null,
+    }));
+    await expect(source.读取P5Open列表('recruiter', 职位ID, null))
+      .rejects.toMatchObject({ code: 'invalid_response' });
 
     请求Mock.mockResolvedValueOnce(响应({ items: [{ ...招聘展开工作区项, candidate_summary: { gender: 'x' } }], next_cursor: null }));
     await expect(source.读取P5Open列表('recruiter', 职位ID, null))
@@ -408,6 +443,41 @@ describe('MatchCase数据源', () => {
     请求Mock.mockResolvedValueOnce(响应({ ...P5招聘详情Wire, candidate_summary: 招聘候选摘要样本 }));
     await expect(source.读取P5详情('recruiter', 'mc_1'))
       .rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('招聘历史行展开：缺 match_explanation 拒绝、显式 null 合法、candidate open 行携带解释键即拒绝', async () => {
+    // 真实缺键（键不在场）：历史查询带了 include，响应缺键即契约漂移
+    const { match_explanation: _缺解释, ...缺解释 } = 招聘展开历史行({ state: P5已完成状态Wire });
+    请求Mock.mockResolvedValueOnce(响应({ items: [缺解释], next_cursor: null }));
+    await expect(source.读取P5历史('recruiter', 'completed', 职位ID, null))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+
+    请求Mock.mockResolvedValueOnce(响应({ items: [招聘展开历史行({ state: P5已完成状态Wire, match_explanation: null })], next_cursor: null }));
+    const null页 = await source.读取P5历史('recruiter', 'completed', 职位ID, null);
+    expect(null页.items[0]).toMatchObject({ 匹配解释: null });
+    expect('candidateSummary' in null页.items[0]).toBe(false);
+
+    // candidate open 行是默认合同：携带 match_explanation 键即契约漂移（C1 不自动猜模式）
+    请求Mock.mockResolvedValueOnce(响应({ items: [{ ...P5候选工作区项Wire, match_explanation: BFF匹配解释92分样本 }], next_cursor: null }));
+    await expect(source.读取P5Open列表('candidate', 意向ID, null))
+      .rejects.toMatchObject({ code: 'invalid_response' });
+  });
+
+  it('解P5详情解码模式显式传递：展开缺键失败、null 成功、默认带键失败（外层与嵌套同参数）', () => {
+    // 展开模式：解释对象与同响应 match_score（92）同分 → 完整解码进 匹配解释
+    const 展开 = { ...P5候选详情Wire, match_explanation: BFF匹配解释92分样本 };
+    expect(解P5详情(展开, 'candidate', true).匹配解释).toEqual(BFF匹配解释92分样本);
+    // 展开模式：显式 null 是合法无溯源档
+    expect(解P5详情({ ...P5候选详情Wire, match_explanation: null }, 'candidate', true).匹配解释).toBeNull();
+    // 展开模式：缺键即契约漂移（请求带了 include 响应缺键）
+    expect(() => 解P5详情(P5候选详情Wire, 'candidate', true)).toThrow(契约漂移);
+    // 展开模式：解释与 match_score 异分拒绝（解匹配解释 的 C1 一致性校验）
+    expect(() => 解P5详情({ ...P5候选详情Wire, match_explanation: BFF匹配解释87分样本 }, 'candidate', true))
+      .toThrow();
+    // 默认模式：携带展开键即契约漂移；未带键合法且不产出 匹配解释 字段
+    expect(() => 解P5详情(展开, 'candidate')).toThrow(契约漂移);
+    const 默认 = 解P5详情(P5候选详情Wire, 'candidate');
+    expect('匹配解释' in 默认).toBe(false);
   });
 
   // ── 详情 decoder ──
@@ -839,10 +909,13 @@ describe('MatchCase数据源', () => {
   });
 
   it('详情路径编码 case ID 且 include 精确一次并保持 no-store', async () => {
-    请求Mock.mockResolvedValueOnce(响应(带S0记录(P5候选详情Wire, S0候选完整记录Wire)));
+    请求Mock.mockResolvedValueOnce(响应({
+      ...带S0记录(P5候选详情Wire, S0候选完整记录Wire),
+      match_explanation: BFF匹配解释92分样本,
+    }));
     await source.读取P5详情('candidate', 'mc/一?');
     expect(请求Mock).toHaveBeenCalledWith({
-      path: '/api/v1/me/match-cases/mc%2F%E4%B8%80%3F?include=screening_records',
+      path: '/api/v1/me/match-cases/mc%2F%E4%B8%80%3F?include=screening_records,match_explanation',
       不缓存: true,
     });
   });
@@ -1118,29 +1191,31 @@ describe('MatchCase数据源', () => {
     });
   });
 
-  it('招聘列表行与历史行解出 match_score/candidate_identity；0 分、null 评分与匿名身份合法', async () => {
+  it('招聘列表行与历史行解出 match_score/candidate_identity/匹配解释；0 分、null 评分与匿名身份合法', async () => {
     请求Mock
       .mockResolvedValueOnce(响应({ items: [招聘展开工作区项], next_cursor: null }))
       .mockResolvedValueOnce(响应({
-        items: [{ ...P5招聘工作区项Wire, state: P5已完成状态Wire, match_score: null }],
+        items: [招聘展开历史行({ state: P5已完成状态Wire, match_score: null, match_explanation: null })],
         next_cursor: null,
       }))
       .mockResolvedValueOnce(响应({
-        items: [{ ...招聘展开工作区项, match_score: 0 }],
+        items: [{ ...招聘展开工作区项, match_score: 0, match_explanation: null }],
         next_cursor: null,
       }));
     const 首页 = await source.读取P5Open列表('recruiter', 职位ID, null);
-    expect(首页.items[0]).toMatchObject({ matchScore: 87, candidateIdentity: BFF候选身份匿名样本 });
+    expect(首页.items[0]).toMatchObject({
+      matchScore: 87, candidateIdentity: BFF候选身份匿名样本, 匹配解释: BFF匹配解释87分样本,
+    });
     const 历史页 = await source.读取P5历史('recruiter', 'completed', 职位ID, null);
-    expect(历史页.items[0]).toMatchObject({ matchScore: null, candidateIdentity: BFF候选身份匿名样本 });
+    expect(历史页.items[0]).toMatchObject({ matchScore: null, candidateIdentity: BFF候选身份匿名样本, 匹配解释: null });
     const 零分页 = await source.读取P5Open列表('recruiter', null, null);
-    expect(零分页.items[0]).toMatchObject({ matchScore: 0 });
+    expect(零分页.items[0]).toMatchObject({ matchScore: 0, 匹配解释: null });
     expect(请求Mock).toHaveBeenCalledTimes(3);
   });
 
   it('招聘列表/历史行缺 match_score 或 candidate_identity 漂移；候选行携带招聘私有键漂移', async () => {
-    const { match_score: _评分, ...缺评分 } = P5招聘工作区项Wire;
-    const { candidate_identity: _身份, ...缺身份 } = P5招聘工作区项Wire;
+    const { match_score: _评分, ...缺评分 } = { ...P5招聘工作区项Wire, match_explanation: BFF匹配解释87分样本 };
+    const { candidate_identity: _身份, ...缺身份 } = { ...P5招聘工作区项Wire, match_explanation: BFF匹配解释87分样本 };
     for (const 破损行 of [缺评分, 缺身份]) {
       请求Mock.mockResolvedValueOnce(响应({ items: [破损行], next_cursor: null }));
       await expect(source.读取P5Open列表('recruiter', 职位ID, null))
@@ -1163,7 +1238,7 @@ describe('MatchCase数据源', () => {
 
   it('招聘列表行 candidate_identity 嵌套漂移按协议错误码拒绝', async () => {
     请求Mock.mockResolvedValueOnce(响应({
-      items: [{ ...P5招聘工作区项Wire, candidate_identity: { state: 'anonymous', name: '夹带', avatar_url: null, disclosed_at: null } }],
+      items: [{ ...招聘展开工作区项, candidate_identity: { state: 'anonymous', name: '夹带', avatar_url: null, disclosed_at: null } }],
       next_cursor: null,
     }));
     await expect(source.读取P5Open列表('recruiter', 职位ID, null))
@@ -1172,17 +1247,17 @@ describe('MatchCase数据源', () => {
 
   // ── 请求路径 / body ──
 
-  it('详情 GET 走角色前缀的 case 路径、恒带唯一 include 并解码 role 详情', async () => {
+  it('详情 GET 走角色前缀的 case 路径、恒带唯一 include（screening_records,match_explanation）并解码 role 详情', async () => {
     请求Mock
-      .mockResolvedValueOnce(响应(P5候选详情Wire))
-      .mockResolvedValueOnce(响应(P5招聘详情Wire));
+      .mockResolvedValueOnce(响应({ ...P5候选详情Wire, match_explanation: BFF匹配解释92分样本 }))
+      .mockResolvedValueOnce(响应({ ...P5招聘详情Wire, match_explanation: BFF匹配解释87分样本 }));
     await expect(source.读取P5详情('candidate', 'mc_1'))
-      .resolves.toMatchObject({ role: 'candidate', context: { intentionId: 意向ID } });
+      .resolves.toMatchObject({ role: 'candidate', context: { intentionId: 意向ID }, 匹配解释: BFF匹配解释92分样本 });
     await expect(source.读取P5详情('recruiter', 'mc_2'))
-      .resolves.toMatchObject({ role: 'recruiter', state: { caseId: 'mc_1' } });
+      .resolves.toMatchObject({ role: 'recruiter', state: { caseId: 'mc_1' }, 匹配解释: BFF匹配解释87分样本 });
     expect(请求Mock.mock.calls.map(([选项]) => 选项)).toEqual([
-      { path: '/api/v1/me/match-cases/mc_1?include=screening_records', 不缓存: true },
-      { path: '/api/v1/recruiter/match-cases/mc_2?include=screening_records', 不缓存: true },
+      { path: '/api/v1/me/match-cases/mc_1?include=screening_records,match_explanation', 不缓存: true },
+      { path: '/api/v1/recruiter/match-cases/mc_2?include=screening_records,match_explanation', 不缓存: true },
     ]);
   });
 

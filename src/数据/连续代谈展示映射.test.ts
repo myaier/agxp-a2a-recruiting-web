@@ -23,6 +23,7 @@ import {
 } from './连续代谈展示映射';
 import { 从连续到阶段 } from './列表卡片映射';
 import { BFF安全职位资料样本, BFF公司摘要样本 } from '../测试/展示资料样本';
+import { BFF匹配解释92分样本 } from '../测试/BFF样本';
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
@@ -45,6 +46,8 @@ function 连续卡(选项: {
   办公方式?: NegotiationCard['job']['workplace_mode'];
   薪资月数?: number | null;
   匹配分?: number | null;
+  /** include=match_explanation 展开读取时出现（对象或显式 null）；缺席=未展开。 */
+  匹配解释?: NegotiationCard['匹配解释'];
 }): NegotiationCard {
   const recordKind = 选项.recordId.startsWith('dlg_') ? 'delegation' : 'case';
   return {
@@ -78,6 +81,7 @@ function 连续卡(选项: {
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
     match_score: 选项.匹配分 ?? null,
+    ...(选项.匹配解释 === undefined ? {} : { 匹配解释: 选项.匹配解释 }),
   };
 }
 
@@ -790,5 +794,18 @@ describe('映射连续列表项 · 组织摘要与匹配分落位（Spec §5.2�
     expect(部分.公司简介).toBe('金融科技');
     const 无组织 = 映射连续列表项(连续卡({ recordId: 'dlg_s2', phase: 'accepted' }));
     expect(无组织.公司简介).toBeNull();
+  });
+});
+
+describe('匹配解释两态透传（C1：缺席=未展开读取、null=已展开无溯源，不互相伪装）', () => {
+  it('展开卡带解释对象或显式 null 原样进视图；未展开卡不带键，不从分数重造', () => {
+    expect(映射连续列表项(连续卡({ recordId: 'dlg_x1', phase: 'accepted', 匹配解释: BFF匹配解释92分样本 })).匹配解释)
+      .toEqual(BFF匹配解释92分样本);
+    expect(映射连续列表项(连续卡({ recordId: 'dlg_x2', phase: 'accepted', 匹配解释: null })).匹配解释).toBeNull();
+    expect('匹配解释' in 映射连续列表项(连续卡({ recordId: 'dlg_x3', phase: 'accepted' }))).toBe(false);
+    // 显式 null 不折算成 0 分或任何伪造行：分数槽与解释槽各自独立
+    const 无溯源 = 映射连续列表项(连续卡({ recordId: 'dlg_x4', phase: 'accepted', 匹配分: 0, 匹配解释: null }));
+    expect(无溯源.匹配分).toBe(0);
+    expect(无溯源.匹配解释).toBeNull();
   });
 });

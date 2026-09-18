@@ -13,7 +13,7 @@
 // 职位事实缺失（NegotiationJob 的 title/薪资/城市可空段）按既有缺失规则给占位；技能段
 // NegotiationJob 不提供，恒无。本模块不重排顺序（顺序权威在服务端）、不发请求、不 import React。
 
-import type { P5阶段, P5状态 } from './BFF契约';
+import type { P5阶段, P5状态, BFF匹配解释 } from './BFF契约';
 import type { P5Agent注意码, P5状态视图 } from './招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationDetail } from './招聘数据源/连续代谈';
 import { P4委托状态文案, P4失败原因文案, P4拒绝原因文案, 公司短行 } from './发现推荐映射';
@@ -49,6 +49,11 @@ export interface 连续列表视图 {
   公司图片URL: string | null;
   /** 当前查看者原推荐批次分（0 合法）；无溯源为 null，不造 0。 */
   匹配分: number | null;
+  /**
+   * include=match_explanation 展开时出现（C1 两态）：解释对象或显式 null——
+   * 缺席=未展开读取、null=已展开无溯源；不从分数/理由文字重造。
+   */
+  匹配解释?: BFF匹配解释 | null;
   /** 在谈卡标签行：地点 → N 薪 → 办公方式 → 技能，未知成员不补默认（Mock 岗位属性顺序）。 */
   标签们: readonly string[];
   阶段标题: string;
@@ -168,6 +173,8 @@ export function 映射连续列表项(card: NegotiationCard): 连续列表视图
       : null,
     公司图片URL,
     匹配分: card.match_score,
+    // 已展开解释两态原样透传（缺席=未展开读取、null=已展开无溯源），不从分数重造
+    ...(card.匹配解释 === undefined ? {} : { 匹配解释: card.匹配解释 }),
     标签们: [
       非空段(card.job.location),
       card.job.annual_salary_months !== null ? `${card.job.annual_salary_months} 薪` : null,

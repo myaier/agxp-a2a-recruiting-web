@@ -1,19 +1,22 @@
 // 连续代谈域数据源：BFF /api/v1 的 J-PILOT-01 protocol B —— 已验证候选人自己的连续代谈架子
 // （me/negotiations 列表 / 详情 / 重试 / 归档）。第十七个域 facade：协议代码（path / method /
 // body / 调用方幂等键 / GET 不缓存）按冻结 mobile-v1 契约实现：列表 limit=50、恒省略
-// intention_id、cursor 为 null 时省略；详情不带 include（case_detail 已含 screening_records）；
-// retry body 严格 {expected_retry_generation}＋Idempotency-Key，archive body 严格 {} 且无 key。
-// 每个响应先 strict decode（exact key set、闭合 enum、record_id pattern、history needs_action=false、
-// 条件可空块），不 `as` 直转；接口失败绝不回退 Mock。公开 DTO 保留 YAML 原字段名；
-// 嵌套 case_state/case_detail/promotion 复用 MatchCase 域既有 decoder，不复制实现。
+// intention_id、cursor 为 null 时省略；列表与详情各恰带一次 include=match_explanation（C2，
+// negotiations 禁止 screening_records——嵌套 case_detail 沿自身既有合同携带 S0）；
+// retry body 严格 {expected_retry_generation}＋Idempotency-Key，archive body 严格 {} 且无 key，
+// 写接口一律不加 include。每个响应先 strict decode（exact key set、闭合 enum、record_id pattern、
+// history needs_action=false、条件可空块），不 `as` 直转；接口失败绝不回退 Mock。
+// 公开 DTO 保留 YAML 原字段名；嵌套 case_state/case_detail/promotion 复用 MatchCase 域
+// 既有 decoder，不复制实现；解释解码模式（展开/默认）以参数显式传递并与嵌套同源校验。
 // 本模块不 import React 或 Mock。
 
 import { BFF错误 } from '../HTTP客户端';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import type { BFF安全职位资料, BFF公司摘要 } from '../BFF契约';
+import type { BFF安全职位资料, BFF公司摘要, BFF匹配解释 } from '../BFF契约';
 import { 解P5详情, 解P5状态视图, 解S0小结, 解下一游标, 校验调用方游标 } from './MatchCase';
 import type { P5S0筛选总结, P5状态视图, P5详情 } from './MatchCase';
 import { 解公司摘要, 解职位资料 } from './展示资料';
+import { 解匹配解释 } from './匹配解释';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -214,6 +217,11 @@ export interface NegotiationCard {
   archived_at: string | null;
   /** release/0.2.5：本查看者可溯源的原始推荐分（0 是合法真实分，无溯源为 null）。 */
   match_score: number | null;
+  /**
+   * include=match_explanation 展开时出现（C1 两态）：解释对象或显式 null——
+   * 缺席=未展开读取（默认模式），null=已展开但无溯源；二者不互相伪装。
+   */
+  匹配解释?: BFF匹配解释 | null;
 }
 
 export interface NegotiationPage {
@@ -370,14 +378,17 @@ const 卡片必需键 = [
   'evaluation_id', 'case_id', 'shelf', 'phase', 'case_state', 'failure', 'refusal_code',
   'actions', 'retry_generation', 'created_at', 'updated_at', 'archived_at', 'match_score',
 ] as const;
+/** include=match_explanation 展开读取才要求解释键；默认合同携带该键即契约漂移。 */
+const 卡片展开键 = ['match_explanation'] as const;
 const 详情附加键 = ['evaluation', 'case_detail', 'failure_history', 'agent_summary', 'job_detail'] as const;
 
 /** 卡片主体：列表行与详情共用的键集与规则（history 恒无待办），保证详情/列表一致。 */
-function 解卡片字段(raw: Record<string, unknown>): NegotiationCard {
+function 解卡片字段(raw: Record<string, unknown>, 展开: boolean): NegotiationCard {
   const shelf = 要求枚举(raw.shelf, ['active', 'history'] as const);
   const needsAction = 要求布尔(raw.needs_action);
   // 冻结条件分支：shelf=history 则 needs_action 恒 false（待办只属于 active）。
   if (shelf === 'history' && needsAction) throw 契约错误();
+  const matchScore = raw.match_score === null ? null : 要求范围整数(raw.match_score, 0, 100);
   return {
     needs_action: needsAction,
     record_id: 要求模式串(raw.record_id, 记录ID模式),
@@ -398,12 +409,22 @@ function 解卡片字段(raw: Record<string, unknown>): NegotiationCard {
     updated_at: 要求RFC3339(raw.updated_at),
     archived_at: 要求可空RFC3339(raw.archived_at),
     // release/0.2.5：可溯源原始推荐分（0..100）；0 是合法真实分，null 是无溯源，二者不互换。
-    match_score: raw.match_score === null ? null : 要求范围整数(raw.match_score, 0, 100),
+    match_score: matchScore,
+    // 解释与同响应 match_score 同源同分（C1）；显式 null 是合法无溯源档
+    ...(展开 ? { 匹配解释: 解匹配解释(raw.match_explanation, matchScore) } : {}),
   };
 }
 
-export function 解NegotiationCard(input: unknown): NegotiationCard {
-  return 解卡片字段(要求闭合对象(input, 卡片必需键));
+/**
+ * 解NegotiationCard（C1/C2）：解码模式以参数显式传递，不按对象有无字段猜——
+ * 展开=true（negotiations 列表读取带 include=match_explanation）时解释键必在
+ * （对象或显式 null）；默认模式携带该键即契约漂移。导出给测试锁定两种模式边界。
+ */
+export function 解NegotiationCard(input: unknown, 展开 = false): NegotiationCard {
+  return 解卡片字段(
+    要求闭合对象(input, 卡片必需键, 展开 ? 卡片展开键 : []),
+    展开,
+  );
 }
 
 function 解JobEvaluationInputs(input: unknown): JobEvaluationInputs {
@@ -527,12 +548,18 @@ export function 解NegotiationAgentSummary(input: unknown): NegotiationAgentSumm
   };
 }
 
-export function 解NegotiationDetail(input: unknown): NegotiationDetail {
-  const raw = 要求闭合对象(input, [...卡片必需键, ...详情附加键]);
-  const 卡片 = 解卡片字段(raw);
+/**
+ * 解NegotiationDetail（C1/C2）：外层与嵌套 case_detail 传同一解码模式——展开读取时
+ * 两者都必须携带并完整解码 match_explanation（不能独立寻找别条 Case 补解释）；
+ * 并复核当前候选视角评分同源：外层卡与嵌套 Case 的 match_score 都在场且不相等即漂移。
+ */
+export function 解NegotiationDetail(input: unknown, 展开 = false): NegotiationDetail {
+  const raw = 要求闭合对象(input, [...卡片必需键, ...详情附加键], 展开 ? 卡片展开键 : []);
+  const 卡片 = 解卡片字段(raw, 展开);
   const evaluation = raw.evaluation === null ? null : 解JobEvaluationView(raw.evaluation);
   // 聚合嵌套详情按候选角色解码：招聘端 Case 详情（含其专属动作/别名）不能充当候选聚合。
-  const case_detail = raw.case_detail === null ? null : 解P5详情(raw.case_detail, 'candidate');
+  // 与外层同模式（C2）：解释展开时嵌套 Case 也必须有键并完整解码。
+  const case_detail = raw.case_detail === null ? null : 解P5详情(raw.case_detail, 'candidate', 展开);
   // release/0.2.5：详情专属冻结岗位展示 —— Case-bound 与 case_detail.job_detail 是同一
   // 冻结区；null 是 legacy Case 的合法快照，绝不补读当前 Job。
   const job_detail = raw.job_detail === null ? null : 解职位资料(raw.job_detail);
@@ -556,6 +583,11 @@ export function 解NegotiationDetail(input: unknown): NegotiationDetail {
       agent_summary.condition_confirmation.case_id !== 卡片.case_id) {
       throw 契约错误();
     }
+    // 同一候选视角的评分同源（C2）：外层与嵌套都带分时不允许互相矛盾；legacy 双 null 合法。
+    if (case_detail !== null && 卡片.match_score !== null && case_detail.matchScore !== null
+      && case_detail.matchScore !== 卡片.match_score) {
+      throw 契约错误();
+    }
   }
   return {
     ...卡片,
@@ -567,10 +599,10 @@ export function 解NegotiationDetail(input: unknown): NegotiationDetail {
   };
 }
 
-export function 解NegotiationPage(input: unknown): NegotiationPage {
+export function 解NegotiationPage(input: unknown, 展开 = false): NegotiationPage {
   const raw = 要求闭合对象(input, ['items', 'next_cursor']);
   return {
-    items: 要求数组(raw.items).map(解NegotiationCard),
+    items: 要求数组(raw.items).map((项) => 解NegotiationCard(项, 展开)),
     next_cursor: 解下一游标(raw.next_cursor),
   };
 }
@@ -608,18 +640,20 @@ export function 创建连续代谈数据源(请求: 请求函数): 连续代谈�
   async function 读取候选连续列表(shelf: NegotiationShelf, cursor: string | null): Promise<NegotiationPage> {
     const 游标 = cursor === null ? null : 校验调用方游标(cursor);
     const { result } = await 请求<unknown>({
-      path: 连续路径(`?shelf=${shelf}&limit=${连续页上限}${游标 === null ? '' : `&cursor=${encodeURIComponent(游标)}`}`),
+      path: 连续路径(`?shelf=${shelf}&limit=${连续页上限}&include=match_explanation${游标 === null ? '' : `&cursor=${encodeURIComponent(游标)}`}`),
       不缓存: true,
     });
-    return 解NegotiationPage(result);
+    return 解NegotiationPage(result, true);
   }
 
   async function 读取候选连续详情(recordId: string): Promise<NegotiationDetail> {
     const { result } = await 请求<unknown>({
-      path: 连续路径(`/${encodeURIComponent(recordId)}`),
+      // C2：详情恰带一次 include=match_explanation；negotiations 禁止 screening_records
+      //（嵌套 case_detail 沿自身既有合同携带 S0）。
+      path: 连续路径(`/${encodeURIComponent(recordId)}?include=match_explanation`),
       不缓存: true,
     });
-    return 解NegotiationDetail(result);
+    return 解NegotiationDetail(result, true);
   }
 
   async function 重试候选连续记录(

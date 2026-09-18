@@ -39,6 +39,8 @@ import {
   BFF招聘发现批次样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
+  BFF匹配解释87分样本,
+  BFF匹配解释92分样本,
   招聘候选摘要样本,
 } from '../../测试/BFF样本';
 import {
@@ -2598,5 +2600,110 @@ describe('J-PILOT-01 Task 3：委托待核对命令（create）', () => {
       idempotencyKey: 'fresh-key-0003',
     });
     randomUUID.mockRestore();
+  });
+});
+
+// ── 匹配解释展开与写回执保真（C2：读取展开 → 快照透传；写回执不丢已展开信息；栅栏复用）──
+
+describe('匹配解释展开与写回执保真', () => {
+  const 候选展开卡 = { ...BFF候选岗位推荐样本, match_explanation: BFF匹配解释92分样本 };
+  const 招聘展开卡: BFF招聘候选推荐 = {
+    ...BFF招聘候选推荐样本,
+    candidate_summary: 招聘候选摘要样本,
+    match_explanation: BFF匹配解释87分样本,
+  };
+
+  it('求职推荐装载把已展开解释带进快照；权威刷新解释改 null 后旧解释不残留', async () => {
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValueOnce([候选展开卡]);
+    await env.操作.加载候选岗位('int_1');
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]?.match_explanation)
+      .toEqual(BFF匹配解释92分样本);
+    // 刷新的权威 GET 把解释改为 null：null 清旧解释，绝不保留旧对象与新分数拼接
+    vi.mocked(env.数据源.刷新候选岗位推荐).mockResolvedValueOnce(BFF发现批次样本);
+    vi.mocked(env.数据源.读取候选岗位推荐).mockResolvedValueOnce([
+      { ...候选展开卡, match_explanation: null },
+    ]);
+    await env.操作.刷新候选岗位('int_1');
+    expect(env.最新状态().候选岗位推荐.int_1?.items[0]?.match_explanation).toBeNull();
+  });
+
+  it('招聘列表装载带解释进快照；意向/主体切换后的迟到响应整包丢弃', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValueOnce([招聘展开卡]);
+    await env.操作.加载招聘候选('job_1');
+    expect(env.最新状态().招聘可用候选.job_1?.items[0]?.match_explanation)
+      .toEqual(BFF匹配解释87分样本);
+
+    // 迟到响应带着旧 scope 的已展开解释返回：整包丢弃，不得落进任何快照
+    const 门 = deferred<BFF招聘候选推荐[]>();
+    vi.mocked(env.数据源.读取招聘候选).mockReturnValue(门.promise);
+    const 运行 = env.操作.加载招聘候选('job_1', true);
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘列表('job_2'));
+    门.resolve([{ ...招聘展开卡, recommendation_id: 'rec_late' }]);
+    await 运行;
+    expect(env.最新状态().招聘可用候选.job_1).toMatchObject({ 阶段: '成功', items: [招聘展开卡] });
+    expect(env.最新状态().招聘可用候选.job_2).toBeUndefined();
+  });
+
+  it('二次淘汰整卡更新：权威详情重读的解释刷新 rejected 卡，已展开摘要原样保留', async () => {
+    设主体角色(招聘主体);
+    // rejected 快照是 include=candidate_summary,match_explanation 装载的：既有卡带摘要与旧解释
+    vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId, state) =>
+      state === 'rejected'
+        ? [{ ...招聘展开卡, candidate_summary: 招聘候选摘要样本, match_explanation: null }]
+        : []);
+    await env.操作.加载招聘候选('job_1');
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘已筛(['job_1']));
+    await env.操作.加载招聘已筛(['job_1']);
+    vi.mocked(env.数据源.设置招聘候选淘汰).mockResolvedValue({
+      ...BFF发现偏好样本, rejected: true, rejection_reason: 'direction_mismatch',
+    });
+    // 权威详情重读（include=match_explanation）：解释是最新的权威事实，candidate_summary 不在详情键集
+    const 已淘汰卡: BFF招聘推荐详情 = {
+      ...BFF招聘推荐详情样本,
+      rejected: true, rejection_reason: 'direction_mismatch', state: 'rejected',
+      match_explanation: BFF匹配解释87分样本,
+    };
+    vi.mocked(env.数据源.读取招聘候选详情).mockResolvedValue(已淘汰卡);
+
+    await env.操作.淘汰候选('job_1', 'rec_r1', 'direction_mismatch');
+
+    const jobKey = P4范围键.招聘已筛(['job_1']);
+    // rejected 卡：合并更新让权威解释刷新旧 null；已展开摘要不因整卡更新凭空消失
+    const rejected卡 = env.最新状态().招聘已筛候选[jobKey]?.items[0];
+    expect(rejected卡?.match_explanation).toEqual(BFF匹配解释87分样本);
+    expect(rejected卡?.candidate_summary).toEqual(招聘候选摘要样本);
+    expect(env.最新状态().招聘候选详情.rec_r1?.match_explanation).toEqual(BFF匹配解释87分样本);
+  });
+
+  it('收藏写回执只修补 favorite：已展开解释与摘要原样保留，不伪装成已展开 null', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockResolvedValue([招聘展开卡]);
+    await env.操作.加载招聘候选('job_1');
+    vi.mocked(env.数据源.设置招聘候选收藏).mockResolvedValue({
+      ...BFF发现偏好样本, favorite: true, rejected: false, rejection_reason: null,
+    });
+    await env.操作.设置候选收藏('job_1', 'rec_r1', true);
+    const 卡 = env.最新状态().招聘可用候选.job_1?.items[0];
+    expect(卡?.favorite).toBe(true);
+    expect(卡?.match_explanation).toEqual(BFF匹配解释87分样本);
+    expect(卡?.candidate_summary).toEqual(招聘候选摘要样本);
+  });
+
+  it('招聘已筛装载与详情缓存：解释随列表/详情各自的展开读取落位', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取招聘候选).mockImplementation(async (_jobId, state) =>
+      state === 'rejected' ? [招聘展开卡] : []);
+    await env.操作.加载招聘候选('job_1');
+    env.操作.设置发现推荐范围('recruiter', P4范围键.招聘已筛(['job_1']));
+    await env.操作.加载招聘已筛(['job_1']);
+    expect(env.最新状态().招聘已筛候选[P4范围键.招聘已筛(['job_1'])]?.items[0]?.match_explanation)
+      .toEqual(BFF匹配解释87分样本);
+    // 详情缓存只来自权威详情 GET（同样带 include）：展开解释原样落缓存
+    vi.mocked(env.数据源.读取招聘候选详情).mockResolvedValue({
+      ...BFF招聘推荐详情样本, match_explanation: BFF匹配解释87分样本,
+    });
+    await env.操作.读取招聘候选详情('job_1', 'rec_r1');
+    expect(env.最新状态().招聘候选详情.rec_r1?.match_explanation).toEqual(BFF匹配解释87分样本);
   });
 });

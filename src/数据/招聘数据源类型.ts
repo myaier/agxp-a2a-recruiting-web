@@ -7,7 +7,7 @@
 
 import type { 基本信息, 简历经历段, 简历教育段, 简历证书, 在招岗位, 求职意向, 披露项, 屏蔽项, 市场职位 } from './类型';
 import type { 求职初筛偏好, 求职薪资单位 } from '../流程/onboarding配置';
-import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF公司摘要, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库, BFF候选在线简历 } from './BFF契约';
+import type { BFF简历, BFF主体, BFF目录引用, BFFOwnerIntention, BFFOwnerJob, BFF公司摘要, BFF隐私快照, BFF委托摘要, BFF淘汰原因, BFF附件简历库, BFF候选在线简历, BFF匹配解释 } from './BFF契约';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
 
 // ── 分页目录查询（Task 1）：页面层只拿已选目录项的引用，不再全量预取 ──
@@ -284,6 +284,11 @@ export interface P4候选岗位页面 {
     验证状态: 'unverified' | 'verified';
   } | null;
   委托: BFF委托摘要 | null;
+  /**
+   * include=match_explanation 展开时出现：同一批次解释对象或显式 null（C1 两态——
+   * 缺席=未展开读取，null=已展开但无溯源）；默认详情直取（无推荐批次）没有该键。
+   */
+  匹配解释?: BFF匹配解释 | null;
 }
 
 /** P4 招聘端候选卡/详情页视图：匿名 allowlist 投影，淘汰原因保留 wire 码（文案经 P4淘汰原因文案 换取） */
@@ -314,4 +319,9 @@ export interface P4招聘候选页面 {
   /** include=candidate_summary 展开时出现：摘要视图或显式 null；默认列表没有该键。
    *  详情视图的该槽改取 candidate_resume.summary，不再依赖详情的 candidate_summary。 */
   候选摘要?: 招聘候选摘要视图 | null;
+  /**
+   * include=match_explanation 展开时出现：本查看者的批次解释对象或显式 null（C1 两态——
+   * 缺席与 null 不互换）；列表与详情展开读取都携带，写回执补丁不得伪装成已展开 null。
+   */
+  匹配解释?: BFF匹配解释 | null;
 }

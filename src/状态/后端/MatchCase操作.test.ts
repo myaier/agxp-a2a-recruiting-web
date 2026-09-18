@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 创建空Onboarding状态 } from './Onboarding操作';
 import type { BFF主体 } from '../../数据/BFF契约';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
+import type { BFF匹配解释 } from '../../数据/BFF契约';
 import type {
   MatchCaseSummary,
   P5列表项,
@@ -18,7 +19,14 @@ import type {
 import { 解P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { BFF二进制响应 } from '../../数据/HTTP客户端';
 import { BFF错误 } from '../../数据/HTTP客户端';
-import { BFF主体样本, P5候选详情Wire, P5招聘详情Wire, 招聘候选摘要样本 } from '../../测试/BFF样本';
+import {
+  BFF主体样本,
+  P5候选详情Wire,
+  P5招聘详情Wire,
+  BFF匹配解释87分样本,
+  BFF匹配解释92分样本,
+  招聘候选摘要样本,
+} from '../../测试/BFF样本';
 import type { BFFS0筛选记录 } from '../../数据/BFF契约';
 import { S0候选完整记录Wire, S0招聘完整记录Wire, S0仅问题记录Wire } from '../../测试/S0筛选记录样本';
 import type {
@@ -2396,5 +2404,107 @@ describe('J-PILOT-01 Task 3：连续失败动作 retry/archive', () => {
     await mockEnv.操作.重试连续记录(连续记录A);
     await mockEnv.操作.归档连续记录(连续记录A);
     expect(mockEnv.数据源.读取候选连续详情).not.toHaveBeenCalled();
+  });
+});
+
+// ── 匹配解释展开与快照保真（C2：读取展开 → 状态透传；写回执不丢已展开信息；栅栏复用）──
+
+describe('匹配解释展开与快照保真', () => {
+  /** 带已展开解释的招聘行：解释与 matchScore 同值约束同发现推荐域（87 分样本）。 */
+  const 招聘解释行 = (caseId: string, 解释: BFF匹配解释 | null, 覆盖: Partial<Extract<P5列表项, { role: 'recruiter' }>> = {}) =>
+    ({ ...招聘行(caseId), matchScore: 87, 匹配解释: 解释, ...覆盖 }) as Extract<P5列表项, { role: 'recruiter' }>;
+
+  it('recruiter 工作区装载把已展开解释带进快照；null 行保持 null（0 分不折算、无溯源不造）', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValue({
+      role: 'recruiter',
+      items: [
+        招聘解释行('mc_1', BFF匹配解释87分样本),
+        招聘解释行('mc_2', null, { matchScore: 0 }),
+      ],
+      nextCursor: null,
+    });
+    await env.操作.加载工作区('recruiter', 职位ID);
+    const items = env.最新状态().P5工作区[P5范围键.open('recruiter', 职位ID)]?.items as
+      Extract<P5列表项, { role: 'recruiter' }>[];
+    expect(items[0]).toMatchObject({ matchScore: 87, 匹配解释: BFF匹配解释87分样本 });
+    expect(items[1]).toMatchObject({ matchScore: 0, 匹配解释: null });
+  });
+
+  it('追加翻页：第二页行自带各自解释，第一页已展开解释原样保留', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取P5Open列表)
+      .mockResolvedValueOnce({
+        role: 'recruiter', items: [招聘解释行('mc_1', BFF匹配解释87分样本)], nextCursor: 'cur_2',
+      })
+      .mockResolvedValueOnce({
+        role: 'recruiter', items: [招聘解释行('mc_2', null)], nextCursor: null,
+      });
+    await env.操作.加载工作区('recruiter', 职位ID);
+    await env.操作.追加工作区('recruiter', 职位ID);
+    const items = env.最新状态().P5工作区[P5范围键.open('recruiter', 职位ID)]?.items as
+      Extract<P5列表项, { role: 'recruiter' }>[];
+    expect(items.map((行) => 行.state.caseId)).toEqual(['mc_1', 'mc_2']);
+    expect(items[0]).toMatchObject({ 匹配解释: BFF匹配解释87分样本 });
+    expect(items[1]).toMatchObject({ 匹配解释: null });
+  });
+
+  it('刷新整组替换 items：新页解释改 null 后旧解释不得残留（与摘要同一刷新纪律）', async () => {
+    设主体角色(招聘主体);
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValueOnce({
+      role: 'recruiter', items: [招聘解释行('mc_r', BFF匹配解释87分样本)], nextCursor: null,
+    });
+    await env.操作.加载工作区('recruiter', 职位ID);
+    // 权威刷新把解释改为 null：旧解释对象不得残留
+    vi.mocked(env.数据源.读取P5Open列表).mockResolvedValueOnce({
+      role: 'recruiter', items: [招聘解释行('mc_r', null)], nextCursor: null,
+    });
+    await env.操作.刷新工作区('recruiter', 职位ID);
+    expect((env.最新状态().P5工作区[P5范围键.open('recruiter', 职位ID)]?.items?.[0] as
+      { 匹配解释: unknown } | undefined)?.匹配解释).toBeNull();
+  });
+
+  it('账号切换后的迟到响应整包丢弃：带解释的旧会话行不得落进新主体快照', async () => {
+    设主体角色(招聘主体);
+    const 门 = deferred<P5列表页>();
+    vi.mocked(env.数据源.读取P5Open列表).mockReturnValue(门.promise);
+    const 运行 = env.操作.加载工作区('recruiter', 职位ID);
+    env.deps.主体标识引用.current = 'sub_new';
+    env.deps.会话代际.current += 1;
+    门.resolve({ role: 'recruiter', items: [招聘解释行('mc_迟到', BFF匹配解释87分样本)], nextCursor: null });
+    await 运行;
+    expect(env.最新状态().P5工作区[P5范围键.open('recruiter', 职位ID)]?.items ?? []).toEqual([]);
+  });
+
+  it('招聘详情装载带解释进快照；权威重读解释改 null 后旧解释不残留', async () => {
+    const 旧解释详情 = 解P5详情({ ...P5招聘详情Wire, match_explanation: BFF匹配解释87分样本 }, 'recruiter', true);
+    const null解释详情 = 解P5详情({ ...P5招聘详情Wire, match_explanation: null }, 'recruiter', true);
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(旧解释详情);
+    await env.操作.读取详情('recruiter', 'mc_1');
+    expect(env.最新状态().P5详情['p5:detail:recruiter:mc_1']?.detail?.匹配解释)
+      .toEqual(BFF匹配解释87分样本);
+    // 权威重读（mutation 后同一入口，force 重建）解释改为 null：null 清旧解释
+    vi.mocked(env.数据源.读取P5详情).mockResolvedValueOnce(null解释详情);
+    await env.操作.读取详情('recruiter', 'mc_1', true);
+    expect(env.最新状态().P5详情['p5:detail:recruiter:mc_1']?.detail?.匹配解释).toBeNull();
+  });
+
+  it('候选聚合详情：嵌套 case_detail 解释进 P5详情 槽、外层解释进连续槽；force 重读 null 清旧', async () => {
+    const 带解释嵌套 = 解P5详情({ ...P5候选详情Wire, match_explanation: BFF匹配解释92分样本 }, 'candidate', true);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合(连续记录A, 带解释嵌套, { 匹配解释: BFF匹配解释92分样本 }));
+    await env.操作.读取详情('candidate', 'mc_1');
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail?.匹配解释)
+      .toEqual(BFF匹配解释92分样本);
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail?.匹配解释)
+      .toEqual(BFF匹配解释92分样本);
+    // 权威重读（读取详情 的候选端经聚合 alias 读，重读后重新投影 P5详情 槽）：
+    // 嵌套与外层解释都改 null，两槽同步清旧，不留旧解释与新分数拼接
+    const null解释嵌套 = 解P5详情({ ...P5候选详情Wire, match_explanation: null }, 'candidate', true);
+    vi.mocked(env.数据源.读取候选连续详情)
+      .mockResolvedValueOnce(连续聚合(连续记录A, null解释嵌套, { 匹配解释: null }));
+    await env.操作.读取详情('candidate', 'mc_1', true);
+    expect(env.最新状态().P5详情['p5:detail:candidate:mc_1']?.detail?.匹配解释).toBeNull();
+    expect(env.最新状态().P5连续详情[P5范围键.negotiation(连续记录A)]?.detail?.匹配解释).toBeNull();
   });
 });

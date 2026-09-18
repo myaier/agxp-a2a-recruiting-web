@@ -1,13 +1,22 @@
 // 连续代谈域数据源测试：冻结 J-PILOT-01 protocol B 四个 browser call 的
 // method/path/query/body/幂等键（GET 不缓存、恒省略 intention_id、cursor 为 null 时省略、
-// 详情不带 include、retry body 严格 {expected_retry_generation}＋key、archive 严格 {} 无 key），
+// 列表/详情各携带一次 include=match_explanation、retry/archive 写接口不加 include 且
+// retry body 严格 {expected_retry_generation}＋key、archive 严格 {} 无 key），
 // 并锁定 strict decode（exact key set、闭合 enum、record_id pattern、history needs_action=false、
-// 嵌套 case_state/case_detail 复用既有 Case decoder 的权限栅栏、全量 evaluation/evidence 闭合、
-// S0 信息不足终局成对 outcome/code）。用受控请求桩记录参数，不连接后端。
+// 嵌套 case_state/case_detail 复用既有 Case decoder 的权限栅栏与同源校验、全量
+// evaluation/evidence 闭合、S0 信息不足终局成对 outcome/code、解释解码模式显式传递）。
+// 用受控请求桩记录参数，不连接后端。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import { P5候选详情Wire, P5阶段区组Wire, P5招聘详情Wire, P5状态视图Wire, P5工作区职位Wire } from '../../测试/BFF样本';
+import {
+  P5候选详情Wire,
+  P5阶段区组Wire,
+  P5招聘详情Wire,
+  P5状态视图Wire,
+  P5工作区职位Wire,
+  BFF匹配解释92分样本,
+} from '../../测试/BFF样本';
 import { BFF公司摘要样本, BFF安全职位资料样本 } from '../../测试/展示资料样本';
 import {
   创建连续代谈数据源,
@@ -102,6 +111,15 @@ const 失败卡片Wire = 连续卡片Wire({
   actions: { retry: true, archive: true, open_case: false },
 });
 
+/**
+ * facade 列表/详情响应的展开卡（C2：negotiations 读取恒带 include=match_explanation）：
+ * 连续卡片Wire 的 match_score=92 与解释总分同分；直连 decoder 反例用未展开的 连续卡片Wire。
+ */
+const 连续展开卡片Wire = (覆盖: Record<string, unknown> = {}) => ({
+  ...连续卡片Wire(覆盖),
+  match_explanation: BFF匹配解释92分样本,
+});
+
 /** 已开案的 active 卡：待办来自 Case 阶段动作，open_case 不计作待办。 */
 const 开案卡片Wire = 连续卡片Wire({
   needs_action: true,
@@ -181,6 +199,17 @@ function 连续详情Wire(覆盖: Record<string, unknown> = {}): Record<string, 
   };
 }
 
+/** facade 详情响应的展开底座：外层卡与嵌套 case_detail 都带解释键（与各自 match_score 同分）。 */
+const 开案展开详情Wire = () => ({
+  ...开案卡片Wire,
+  match_explanation: BFF匹配解释92分样本,
+  evaluation: null,
+  case_detail: { ...P5候选详情Wire, match_explanation: BFF匹配解释92分样本 },
+  failure_history: [],
+  agent_summary: { public_evaluation: null, condition_confirmation: 条件确认Wire },
+  job_detail: null,
+});
+
 const 开案详情Wire = {
   ...开案卡片Wire,
   evaluation: null,
@@ -218,21 +247,22 @@ describe('连续代谈数据源', () => {
 
   // ── 请求捕获：path / query / body / 幂等键 正反例 ──
 
-  it('active 首页请求恰为 shelf+limit=50，恒无 intention_id 且 cursor 为 null 时省略', async () => {
+  it('active 首页请求恰为 shelf+limit=50+include=match_explanation，恒无 intention_id 且 cursor 为 null 时省略', async () => {
     请求Mock.mockResolvedValueOnce(响应({ items: [], next_cursor: null }));
     await expect(source.读取候选连续列表('active', null)).resolves.toEqual({ items: [], next_cursor: null });
     expect(请求Mock.mock.calls.map(([选项]) => 选项)).toEqual([
-      { path: '/api/v1/me/negotiations?shelf=active&limit=50', 不缓存: true },
+      { path: '/api/v1/me/negotiations?shelf=active&limit=50&include=match_explanation', 不缓存: true },
     ]);
     expect(请求Mock.mock.calls[0][0].path).not.toContain('intention_id');
     expect(请求Mock.mock.calls[0][0].path).not.toContain('cursor');
+    expect(请求Mock.mock.calls[0][0].path).not.toContain('screening_records');
   });
 
-  it('history 带下一页 cursor 只编码一次，shelf 恒在场', async () => {
+  it('history 带下一页 cursor 只编码一次，shelf 与 include 恒在场', async () => {
     请求Mock.mockResolvedValueOnce(响应({ items: [], next_cursor: null }));
     await source.读取候选连续列表('history', 'Pg2_-1');
     expect(请求Mock).toHaveBeenCalledWith({
-      path: '/api/v1/me/negotiations?shelf=history&limit=50&cursor=Pg2_-1',
+      path: '/api/v1/me/negotiations?shelf=history&limit=50&include=match_explanation&cursor=Pg2_-1',
       不缓存: true,
     });
   });
@@ -247,19 +277,23 @@ describe('连续代谈数据源', () => {
     await expect(source.读取候选连续列表('active', 'a'.repeat(4096)))
       .resolves.toEqual({ items: [], next_cursor: null });
     expect(请求Mock.mock.calls[0][0].path)
-      .toBe(`/api/v1/me/negotiations?shelf=active&limit=50&cursor=${'a'.repeat(4096)}`);
+      .toBe(`/api/v1/me/negotiations?shelf=active&limit=50&include=match_explanation&cursor=${'a'.repeat(4096)}`);
   });
 
-  it('详情 GET 不带 include、恒不缓存，并按 candidate 解码嵌套 Case', async () => {
-    请求Mock.mockResolvedValueOnce(响应(开案详情Wire));
+  it('详情 GET 恰带一次 include=match_explanation（禁 screening_records）、恒不缓存，并按 candidate 解码嵌套 Case', async () => {
+    请求Mock.mockResolvedValueOnce(响应(开案展开详情Wire()));
     const 详情 = await source.读取候选连续详情(案件记录ID);
     expect(详情.record_id).toBe(案件记录ID);
     expect(详情.case_detail).toMatchObject({ role: 'candidate', context: { intentionId: 意向ID } });
+    // 展开读取：外层与嵌套 Case 都解出解释
+    expect(详情.匹配解释).toEqual(BFF匹配解释92分样本);
+    expect(详情.case_detail?.匹配解释).toEqual(BFF匹配解释92分样本);
     expect(请求Mock).toHaveBeenCalledWith({
-      path: `/api/v1/me/negotiations/${案件记录ID}`,
+      path: `/api/v1/me/negotiations/${案件记录ID}?include=match_explanation`,
       不缓存: true,
     });
-    expect(请求Mock.mock.calls[0][0].path).not.toContain('include');
+    expect(请求Mock.mock.calls[0][0].path.match(/include=match_explanation/g)).toHaveLength(1);
+    expect(请求Mock.mock.calls[0][0].path).not.toContain('screening_records');
   });
 
   it('嵌套 case_detail 复用 Case decoder：step 与 S1 问答引用同时在场整包解出（不复制解码器）', async () => {
@@ -301,7 +335,10 @@ describe('连续代谈数据源', () => {
       reconsideration: null,
       confirmation_summary: null,
     };
-    请求Mock.mockResolvedValueOnce(响应({ ...开案详情Wire, case_detail: v2嵌套详情 }));
+    请求Mock.mockResolvedValueOnce(响应({
+      ...开案展开详情Wire(),
+      case_detail: { ...v2嵌套详情, match_explanation: BFF匹配解释92分样本 },
+    }));
     const 详情 = await source.读取候选连续详情(案件记录ID);
     expect(详情.case_detail?.dialogueProgress).toMatchObject({
       stage: 'needs_coordination', step: 'assessing',
@@ -340,9 +377,9 @@ describe('连续代谈数据源', () => {
   });
 
   it('路径中的 record ID 逐字编码，不解析、不改写', async () => {
-    请求Mock.mockResolvedValue(响应(开案详情Wire));
+    请求Mock.mockResolvedValue(响应(开案展开详情Wire()));
     await source.读取候选连续详情(案件记录ID);
-    expect(请求Mock.mock.calls[0][0].path).toBe(`/api/v1/me/negotiations/${案件记录ID}`);
+    expect(请求Mock.mock.calls[0][0].path).toBe(`/api/v1/me/negotiations/${案件记录ID}?include=match_explanation`);
     请求Mock.mockClear();
     请求Mock.mockResolvedValue(响应({ record_id: 记录ID, retry_generation: 0 }));
     await source.重试候选连续记录(案件记录ID, 0, 'neg-retry-key-00000003');
@@ -351,9 +388,9 @@ describe('连续代谈数据源', () => {
 
   // ── 列表页解码 ──
 
-  it('active 页解出 pre-Case 卡片原字段名与失败块', async () => {
+  it('active 页解出 pre-Case 卡片原字段名与失败块（含已展开解释）', async () => {
     请求Mock
-      .mockResolvedValueOnce(响应({ items: [失败卡片Wire], next_cursor: 'Pg2_-1' }))
+      .mockResolvedValueOnce(响应({ items: [{ ...失败卡片Wire, match_explanation: BFF匹配解释92分样本 }], next_cursor: 'Pg2_-1' }))
       .mockResolvedValueOnce(响应({ items: [], next_cursor: null }));
     const 首页 = await source.读取候选连续列表('active', null);
     expect(首页).toMatchObject({
@@ -378,6 +415,7 @@ describe('连续代谈数据源', () => {
         actions: { retry: true, archive: true, open_case: false },
         retry_generation: 0,
         archived_at: null,
+        匹配解释: BFF匹配解释92分样本,
       }],
       next_cursor: 'Pg2_-1',
     });
@@ -388,8 +426,8 @@ describe('连续代谈数据源', () => {
 
   it('开案卡待办来自 Case 阶段动作；history 页解出信息不足终局卡', async () => {
     请求Mock
-      .mockResolvedValueOnce(响应({ items: [开案卡片Wire], next_cursor: null }))
-      .mockResolvedValueOnce(响应({ items: [历史卡片Wire], next_cursor: null }));
+      .mockResolvedValueOnce(响应({ items: [{ ...开案卡片Wire, match_explanation: BFF匹配解释92分样本 }], next_cursor: null }))
+      .mockResolvedValueOnce(响应({ items: [{ ...历史卡片Wire, match_explanation: BFF匹配解释92分样本 }], next_cursor: null }));
     const 开案页 = await source.读取候选连续列表('active', null);
     expect(开案页.items[0]).toMatchObject({
       needs_action: true,
@@ -717,6 +755,64 @@ describe('连续代谈数据源', () => {
     expect(() => 解NegotiationDetail(连续详情Wire())).not.toThrow();
   });
 
+  // ── match_explanation 展开合同（C1/C2）：解码模式显式传递 + 嵌套同源 + pre-Case 不制造 Case ──
+
+  it('解释解码模式显式传递：展开缺键失败、null 成功、默认携带展开键失败', () => {
+    // 展开模式：缺键即漂移（请求带了 include 响应缺键）
+    expect(() => 解NegotiationCard(连续卡片Wire(), true)).toThrow();
+    expect(() => 解NegotiationDetail(连续详情Wire(), true)).toThrow();
+    // 展开模式：显式 null 是合法无溯源档；对象与同响应 match_score（92）同分则完整解码
+    expect(解NegotiationCard(连续卡片Wire({ match_explanation: null }), true).匹配解释).toBeNull();
+    expect(解NegotiationCard(连续展开卡片Wire(), true).匹配解释).toEqual(BFF匹配解释92分样本);
+    // 展开模式：解释与 match_score 异分拒绝（92 分卡配 87 分解释样本）
+    expect(() => 解NegotiationCard(连续卡片Wire({ match_explanation: { ...BFF匹配解释92分样本, total_points: 87 } }), true))
+      .toThrow();
+    // 默认模式：携带展开键即漂移；未带键合法且不产出 匹配解释 字段
+    expect(() => 解NegotiationCard(连续展开卡片Wire())).toThrow();
+    expect(() => 解NegotiationDetail(连续详情Wire({ match_explanation: null }))).toThrow();
+    const 默认卡 = 解NegotiationCard(连续卡片Wire());
+    expect('匹配解释' in 默认卡).toBe(false);
+  });
+
+  it('嵌套 case_detail 与外层同模式：外层展开而嵌套缺解释键即漂移，嵌套解释与自身 match_score 同源解码', () => {
+    // 开案详情外层展开、嵌套 case_detail 缺 match_explanation → 整包拒绝
+    expect(() => 解NegotiationDetail({ ...开案详情Wire, match_explanation: BFF匹配解释92分样本 }, true)).toThrow();
+    // 嵌套解释与嵌套自身 match_score（92）异分 → 同漂移
+    expect(() => 解NegotiationDetail({
+      ...开案详情Wire,
+      match_explanation: BFF匹配解释92分样本,
+      case_detail: { ...P5候选详情Wire, match_explanation: { ...BFF匹配解释92分样本, total_points: 87 } },
+    }, true)).toThrow();
+    // 合法对照：外层与嵌套都带同分解释，双双解出
+    const 双展开 = 解NegotiationDetail(开案展开详情Wire(), true);
+    expect(双展开.匹配解释).toEqual(BFF匹配解释92分样本);
+    expect(双展开.case_detail?.匹配解释).toEqual(BFF匹配解释92分样本);
+    // 默认模式（未展开读取）下嵌套 case_detail 不要求解释键
+    expect(() => 解NegotiationDetail(开案详情Wire)).not.toThrow();
+  });
+
+  it('嵌套 case_detail 与外层卡评分同源：同记录两侧 match_score 都在场且不一致即整包拒绝', () => {
+    // 外层 92 分、嵌套 87 分：两值各自合法但来自同一候选视角存储读，不一致即漂移
+    expect(() => 解NegotiationDetail({
+      ...开案详情Wire,
+      case_detail: { ...P5候选详情Wire, match_score: 87 },
+    })).toThrow();
+    // 双 null（legacy）与同值都合法
+    expect(() => 解NegotiationDetail({
+      ...开案详情Wire,
+      match_score: null,
+      case_detail: { ...P5候选详情Wire, match_score: null },
+    })).not.toThrow();
+  });
+
+  it('pre-Case 卡不制造 Case 且解释仍属推荐本身：外层解释合法、Case 块缺席规则不受解释影响', () => {
+    const preCase = 解NegotiationDetail(连续详情Wire({ match_explanation: BFF匹配解释92分样本 }), true);
+    expect(preCase.case_id).toBeNull();
+    expect(preCase.case_state).toBeNull();
+    expect(preCase.case_detail).toBeNull();
+    expect(preCase.匹配解释).toEqual(BFF匹配解释92分样本);
+  });
+
   // ── release/0.2.5 展示字段：job 五成员 / match_score / job_detail ──
 
   it('卡片 job 解出五个 R1 展示成员；unavailable 全 null 与 Case 冻结 legacy 的 null 都原样保留', () => {
@@ -780,7 +876,8 @@ describe('连续代谈数据源', () => {
   });
 
   it('开案详情嵌套 case_detail 解出扩展展示字段，历史详情同样携带 job_detail', () => {
-    const 嵌套展示 = { ...P5候选详情Wire, match_score: 0, job_detail: BFF安全职位资料样本 };
+    // 嵌套 match_score 与外层卡（92）同源：0 分嵌套夹具改用与外层一致的分值
+    const 嵌套展示 = { ...P5候选详情Wire, match_score: 92, job_detail: BFF安全职位资料样本 };
     const 详情 = 解NegotiationDetail(连续详情Wire({
       record_id: 案件记录ID,
       record_kind: 'case',
@@ -794,7 +891,7 @@ describe('连续代谈数据源', () => {
       evaluation: null,
       job_detail: BFF安全职位资料样本,
     }));
-    expect(详情.case_detail).toMatchObject({ matchScore: 0, jobDetail: BFF安全职位资料样本 });
+    expect(详情.case_detail).toMatchObject({ matchScore: 92, jobDetail: BFF安全职位资料样本 });
     // 详情自身 job_detail 与嵌套 Case 冻结展示同源同形
     expect(详情.job_detail).toEqual(BFF安全职位资料样本);
     // history 聚合同样携带详情级 job_detail（合法 null 快照原样进历史）

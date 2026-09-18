@@ -11,6 +11,8 @@ import {
   BFF委托失败回执样本,
   BFF招聘候选推荐样本,
   BFF招聘委托回执样本,
+  BFF匹配解释87分样本,
+  BFF匹配解释92分样本,
   招聘候选摘要样本,
 } from '../测试/BFF样本';
 import type { BFFCandidateJob, BFF候选岗位推荐, BFF招聘候选推荐 } from './BFF契约';
@@ -408,6 +410,19 @@ describe('从P4招聘候选', () => {
     });
     expect('候选摘要' in 从P4招聘候选(BFF招聘候选推荐样本)).toBe(false);
     expect(从P4招聘候选({ ...BFF招聘候选推荐样本, candidate_summary: null }).候选摘要).toBeNull();
+  });
+
+  it('匹配解释两态透传：展开卡带对象或显式 null，未展开卡不带键（不伪造、不从分数重造）', () => {
+    // 展开对象原样透传（同一对象引用语义，映射层不改写、不重算）
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, match_explanation: BFF匹配解释87分样本 }).匹配解释)
+      .toEqual(BFF匹配解释87分样本);
+    // 显式 null 是「已展开但无溯源」，保留 null 不折算
+    expect(从P4招聘候选({ ...BFF招聘候选推荐样本, match_explanation: null }).匹配解释).toBeNull();
+    // 未展开卡（默认合同）：视图不带 匹配解释 键
+    expect('匹配解释' in 从P4招聘候选(BFF招聘候选推荐样本)).toBe(false);
+    // 详情卡同样透传
+    expect(从P4招聘候选({ ...BFF招聘推荐详情样本, match_explanation: BFF匹配解释87分样本 }).匹配解释)
+      .toEqual(BFF匹配解释87分样本);
   });
 
   it('旧字段仍在视图里供详情/已筛使用，冲突时卡片只取摘要', () => {
@@ -835,5 +850,16 @@ describe('助手匹配理由（Spec §10.3 卡内中文理由；与招聘卡亮�
 
   it('全被过滤后是空数组（卡面据此出「暂无推荐理由」）', () => {
     expect(助手匹配理由(['strategy_fit', ''])).toEqual([]);
+  });
+});
+
+describe('匹配解释两态透传（C1：缺席=未展开读取、null=已展开无溯源，不互相伪装）', () => {
+  it('求职推荐卡：展开对象与显式 null 原样进视图，详情直取（无推荐批次）不带键', () => {
+    expect(从P4候选岗位({ ...BFF候选岗位推荐样本, match_explanation: BFF匹配解释92分样本 }).匹配解释)
+      .toEqual(BFF匹配解释92分样本);
+    expect(从P4候选岗位({ ...BFF候选岗位推荐样本, match_explanation: null }).匹配解释).toBeNull();
+    expect('匹配解释' in 从P4候选岗位(BFF候选岗位推荐样本)).toBe(false);
+    // 详情直取不经推荐批次：即使误挂解释也不该有推荐侧槽位（建议源为空 → 缺席）
+    expect('匹配解释' in 从P4CandidateJob(BFFCandidateJob样本)).toBe(false);
   });
 });

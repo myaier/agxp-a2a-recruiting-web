@@ -6,7 +6,7 @@
 // completed + handoff_pending 一种：只给「正在创建会话」的文案，canChat 恒 false，绝不生成、
 // 缓存或推断任何会话标识。本模块不 import React / Mock / HTTP，不发请求，可被列表与详情共用。
 
-import type { P5生命周期, P5阶段, P5状态, BFF安全职位资料 } from './BFF契约';
+import type { P5生命周期, P5阶段, P5状态, BFF安全职位资料, BFF匹配解释 } from './BFF契约';
 import { 代谈终局文案 } from './代谈结果文案';
 import { 映射招聘候选摘要 } from './招聘候选摘要映射';
 import type { 招聘候选摘要视图 } from './招聘候选摘要映射';
@@ -438,6 +438,8 @@ export interface P5详情正常视图 {
   更新于: string;
   handoff: P5移交视图 | null;
   actions: readonly P5动作卡[];
+  /** include=match_explanation 展开读取时出现：本查看者对同一 match_score 的解释或显式 null。 */
+  匹配解释?: BFF匹配解释 | null;
   阶段区块: readonly P5阶段区块视图[];
   终局摘要: P5终局摘要视图 | null;
   /**
@@ -483,6 +485,8 @@ export interface P5列表正常视图 {
   注意说明: string | null;
   /** 仅已展开 recruiter open 行出现（摘要视图或显式 null）；candidate 行与历史行必缺席。 */
   候选摘要?: 招聘候选摘要视图 | null;
+  /** 仅已展开 recruiter 行出现（解释对象或显式 null）；candidate 行必缺席（未请求展开）。 */
+  匹配解释?: BFF匹配解释 | null;
 }
 
 export interface P5列表契约错误视图 {
@@ -894,6 +898,7 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
   let intentionId: string | null = null;
   let candidateAlias: string | null = null;
   let 候选摘要: 招聘候选摘要视图 | null | undefined;
+  let 匹配解释: BFF匹配解释 | null | undefined;
   if (item.role === 'candidate') {
     if (typeof item.intentionId !== 'string' || item.intentionId === '') return 契约错误列表();
     intentionId = item.intentionId;
@@ -902,6 +907,8 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
     candidateAlias = item.candidateAlias;
     // 仅已展开 recruiter open 行有键：视图区分「未请求」与「请求后显式 null」
     候选摘要 = item.candidateSummary === undefined ? undefined : 映射招聘候选摘要(item.candidateSummary);
+    // 解释两态原样透传（缺席=未展开读取、null=已展开无溯源），不从分数/文本重造
+    匹配解释 = item.匹配解释;
   } else {
     return 契约错误列表();
   }
@@ -921,6 +928,7 @@ export function 映射P5列表项(item: P5列表项): P5列表视图 {
     匹配分: item.role === 'recruiter' ? item.matchScore : null,
     注意说明: 映射Agent注意(state),
     ...(候选摘要 === undefined ? {} : { 候选摘要 }),
+    ...(匹配解释 === undefined ? {} : { 匹配解释 }),
   };
 }
 
@@ -1010,6 +1018,8 @@ export function 映射P5详情(detail: P5详情): P5详情视图 {
     // 同一响应的权威分与冻结岗位展示原样透传（顶栏分数与资料区同源；不外查）
     匹配分: detail.matchScore,
     冻结职位资料: detail.jobDetail,
+    // 展开读取的解释两态原样透传（缺席=未展开、null=无溯源），不从分数/正文重造
+    ...(detail.匹配解释 === undefined ? {} : { 匹配解释: detail.匹配解释 }),
     阶段标题: 阶段标题表[行.stage],
     状态文案: 状态文案表[行.status],
     步骤说明: 步骤说明表[state.step],

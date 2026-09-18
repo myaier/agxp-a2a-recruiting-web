@@ -718,6 +718,43 @@ export const BFF技能部分命中零分解释样本: BFF匹配解释 = {
   ],
 };
 
+// ── 与既有 wire 夹具 match_score（92/87）同分的合法解释：展开读取的响应夹具直接携带， ──
+// 总分 = 分项和 = 同响应 match_score（C1）；技能 32 分 = floor(35*11/12) 部分匹配。
+
+/** 总分 92 = 25+32+15+10+5+5（对齐 P5候选详情Wire / BFF候选岗位推荐样本 / 连续卡片的 92 分）。 */
+export const BFF匹配解释92分样本: BFF匹配解释 = {
+  schema_version: 'match-explanation.v1',
+  ranking_version: 'discovery-ranking.v2',
+  basis: 'batch_snapshot',
+  total_points: 92,
+  max_points: 100,
+  dimensions: [
+    { dimension: 'direction', status: 'matched', points: 25, max_points: 25, reason_code: 'category_matched' },
+    {
+      dimension: 'skills', status: 'partially_matched', points: 32, max_points: 35,
+      reason_code: 'partial_keyword_overlap', matched_count: 11, required_count: 12,
+    },
+    { dimension: 'experience', status: 'matched', points: 15, max_points: 15, reason_code: 'experience_met' },
+    { dimension: 'location', status: 'matched', points: 10, max_points: 10, reason_code: 'location_matched' },
+    { dimension: 'workplace_mode', status: 'matched', points: 5, max_points: 5, reason_code: 'workplace_mode_matched' },
+    { dimension: 'compensation', status: 'partially_matched', points: 5, max_points: 10, reason_code: 'compensation_near_miss' },
+  ],
+};
+
+/** 总分 87 = 25+32+15+10+5+0（对齐 P5招聘详情Wire / BFF招聘候选推荐样本 / 招聘工作区行的 87 分）。 */
+export const BFF匹配解释87分样本: BFF匹配解释 = {
+  ...BFF匹配解释92分样本,
+  total_points: 87,
+  dimensions: [
+    BFF匹配解释92分样本.dimensions[0],
+    BFF匹配解释92分样本.dimensions[1],
+    BFF匹配解释92分样本.dimensions[2],
+    BFF匹配解释92分样本.dimensions[3],
+    BFF匹配解释92分样本.dimensions[4],
+    { dimension: 'compensation', status: 'not_matched', points: 0, max_points: 10, reason_code: 'compensation_disjoint' },
+  ],
+};
+
 // ── Onboarding（stg 契约对齐 2026-09-14，Spec §4）──
 
 /** GET 未完成：查询允许 completed_at 为 null。 */

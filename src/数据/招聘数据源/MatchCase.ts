@@ -17,6 +17,7 @@ import type {
   BFF候选在线简历,
   BFF安全职位资料,
   BFF招聘候选摘要,
+  BFF匹配解释,
   P5动作,
   P5历史生命周期,
   P5生命周期,
@@ -27,6 +28,7 @@ import type {
 } from '../BFF契约';
 import { 解招聘候选摘要 } from './候选摘要';
 import { 解候选身份, 解候选在线简历, 解职位资料 } from './展示资料';
+import { 解匹配解释 } from './匹配解释';
 
 export type { P5角色, P5历史生命周期, P5步骤, P5动作 } from '../BFF契约';
 
@@ -484,6 +486,11 @@ interface P5详情主体 {
   matchScore: number | null;
   jobDetail: BFF安全职位资料 | null;
   /**
+   * include=match_explanation 展开时出现（C1 两态）：解释对象或显式 null——
+   * 缺席=未展开读取（默认模式），null=已展开但无溯源；二者不互相伪装。
+   */
+  匹配解释?: BFF匹配解释 | null;
+  /**
    * S0–S3 连续筛选块（冻结合同 §6.2）。continuityVersion 1 = 历史 Case：绝不发 v2 body，
    * 其余四个成员允许整组缺席（归一为 []/null）；v2 详情必须五员齐备（可空处才为 null）。
    */
@@ -521,6 +528,8 @@ export type P5列表项 =
       candidateIdentity: BFF候选身份;
       /** 仅 recruiter open 展开读取（include=candidate_summary）时出现；历史行必缺席。 */
       candidateSummary?: BFF招聘候选摘要 | null;
+      /** include=match_explanation 展开读取时出现（对象或显式 null）；candidate 行必缺席。 */
+      匹配解释?: BFF匹配解释 | null;
     });
 
 export interface P5列表页 {
@@ -1128,13 +1137,17 @@ function 解连续块(
  * 招聘端带 candidate_alias，对端上下文键即漂移；候选端携带招聘专属
  * candidate_resume/candidate_identity 同样漂移（不在白名单）。current_coordination /
  * terminal_summary 只接受缺席（公开 wire 不收显式 null），缺席解成内部 null。
+ * 解码模式（C1/C2）以参数显式传递、不按对象有无字段猜：展开=true（读取带
+ * include=match_explanation）时解释键必在（对象或显式 null）；默认模式携带该键即漂移。
+ * Negotiation 嵌套 case_detail 复用本函数并与外层传同一模式。
  */
-export function 解P5详情(input: unknown, role: P5角色): P5详情 {
+export function 解P5详情(input: unknown, role: P5角色, 展开 = false): P5详情 {
+  const 解释键 = 展开 ? ['match_explanation'] : [];
   const raw = role === 'candidate'
-    ? 要求闭合对象(input, [...详情共用必需键, 'intention_id'], 详情可选键)
+    ? 要求闭合对象(input, [...详情共用必需键, 'intention_id', ...解释键], 详情可选键)
     : 要求闭合对象(
         input,
-        [...详情共用必需键, 'candidate_alias', 'candidate_resume', 'candidate_identity'],
+        [...详情共用必需键, 'candidate_alias', 'candidate_resume', 'candidate_identity', ...解释键],
         详情可选键,
       );
   const state = 解P5状态视图(raw.state);
@@ -1149,6 +1162,8 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
   const intentConfirmations = 解意向确认(raw.intent_confirmations, state);
   const job = 解工作区职位(raw.job);
   const matchScore = 要求可空评分(raw.match_score);
+  // include=match_explanation 展开读取：解释必须与同响应 match_score 同源同分（C1）
+  const 匹配解释 = 展开 ? 解匹配解释(raw.match_explanation, matchScore) : undefined;
   // Case 创建时冻结的具体岗位展示：null 是 legacy Case 的合法快照，绝不补读当前 Job；
   // 非 null 整包过 展示资料 的 SafeJobDetail 闭合解码。
   const jobDetail = raw.job_detail === null ? null : 解职位资料(raw.job_detail);
@@ -1177,6 +1192,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
       conversationRef,
       matchScore,
       jobDetail,
+      ...(展开 ? { 匹配解释 } : {}),
       ...连续块,
     };
   }
@@ -1193,6 +1209,7 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
     conversationRef,
     matchScore,
     jobDetail,
+    ...(展开 ? { 匹配解释 } : {}),
     ...连续块,
     candidateResume: raw.candidate_resume === null ? null : 解候选在线简历(raw.candidate_resume),
     candidateIdentity: 解候选身份(raw.candidate_identity),
@@ -1201,14 +1218,19 @@ export function 解P5详情(input: unknown, role: P5角色): P5详情 {
 
 // ── 列表页 decoder：工作区与历史刻意共用 role item/page 形状，架子规则在 decode 内闭合 ──
 
-/** 仅 recruiter open 展开读取才要求 candidate_summary；candidate open / 历史 / 详情按原白名单。 */
+/**
+ * 列表行 decoder（C2 include 矩阵）：recruiter open 展开读取携带
+ * candidate_summary,match_explanation 两键；recruiter 历史仅 match_explanation；
+ * candidate open/history 是默认合同（底层 Case 列表不增加评分展开），携带解释键即漂移。
+ * candidate_summary 仅 recruiter open 展开读取才要求；candidate/历史/详情按原白名单。
+ */
 function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历史生命周期): P5列表项 {
   const 展开 = role === 'recruiter' && 架子 === 'open';
   const raw = role === 'candidate'
     ? 要求闭合对象(input, ['state', 'needs_action', 'intention_id', 'job'])
     : 要求闭合对象(input, 展开
-      ? ['state', 'needs_action', 'job', 'candidate_alias', 'match_score', 'candidate_identity', 'candidate_summary']
-      : ['state', 'needs_action', 'job', 'candidate_alias', 'match_score', 'candidate_identity']);
+      ? ['state', 'needs_action', 'job', 'candidate_alias', 'match_score', 'candidate_identity', 'candidate_summary', 'match_explanation']
+      : ['state', 'needs_action', 'job', 'candidate_alias', 'match_score', 'candidate_identity', 'match_explanation']);
   const state = 解P5状态视图(raw.state);
   const needsAction = 要求布尔(raw.needs_action);
   // 架子规则：open 列表只装 open 行、历史只装对应终态行，终态行永无 viewer 待办；
@@ -1225,6 +1247,7 @@ function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历�
       job,
     };
   }
+  const matchScore = 要求可空评分(raw.match_score);
   return {
     role,
     state,
@@ -1232,8 +1255,10 @@ function 解P5列表项(input: unknown, role: P5角色, 架子: 'open' | P5历�
     candidateAlias: 要求模式串(raw.candidate_alias, 候选别名模式),
     job,
     // release/0.2.5：招聘行恒在场的可溯源推荐分与 Case 作用域候选身份（默认页与展开页都带）。
-    matchScore: 要求可空评分(raw.match_score),
+    matchScore,
     candidateIdentity: 解候选身份(raw.candidate_identity),
+    // 解释展开读取（open 与历史都带 include）：与同响应 match_score 同源同分，显式 null 合法
+    匹配解释: 解匹配解释(raw.match_explanation, matchScore),
     ...(展开 ? { candidateSummary: 解招聘候选摘要(raw.candidate_summary, 契约错误) } : {}),
   };
 }
@@ -1304,7 +1329,8 @@ function 工作区查询(role: P5角色, filterRef: string | null, cursor: strin
     ...(filterRef === null ? [] : [`${角色过滤键[role]}=${encodeURIComponent(filterRef)}`]),
     `limit=${P5页上限}`,
     // 2026-09-09 摘要接线：仅 recruiter open 展开候选摘要；candidate open 与历史不携带。
-    ...(role === 'recruiter' ? ['include=candidate_summary'] : []),
+    // 2026-09-18 评分展开（C2）：recruiter open 追加 match_explanation；candidate 两架子不带。
+    ...(role === 'recruiter' ? ['include=candidate_summary,match_explanation'] : []),
     ...(cursor === null ? [] : [`cursor=${encodeURIComponent(cursor)}`]),
   ];
   return P5路径(role, `/match-cases?${片段.join('&')}`);
@@ -1320,6 +1346,8 @@ function 历史查询(
     `lifecycle=${lifecycle}`,
     ...(filterRef === null ? [] : [`${角色过滤键[role]}=${encodeURIComponent(filterRef)}`]),
     `limit=${P5页上限}`,
+    // C2：招聘历史仅 match_explanation（不擅加列表专用 candidate_summary）；candidate 历史不带。
+    ...(role === 'recruiter' ? ['include=match_explanation'] : []),
     ...(cursor === null ? [] : [`cursor=${encodeURIComponent(cursor)}`]),
   ];
   return P5路径(role, `/match-cases/history?${片段.join('&')}`);
@@ -1406,10 +1434,11 @@ export function 创建MatchCase数据源(client: Pick<BFF客户端, '请求' | '
 
   async function 读取P5详情(role: P5角色, caseId: string): Promise<P5详情> {
     const { result } = await 请求<unknown>({
-      path: P5路径(role, `/match-cases/${encodeURIComponent(caseId)}?include=screening_records`),
+      // C2：双端 Case 详情合并携带 S0 展开块与评分解释（基线 progress_details 未使用）
+      path: P5路径(role, `/match-cases/${encodeURIComponent(caseId)}?include=screening_records,match_explanation`),
       不缓存: true,
     });
-    return 解P5详情(result, role);
+    return 解P5详情(result, role, true);
   }
 
   async function 回答P5事实(

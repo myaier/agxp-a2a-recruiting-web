@@ -30,6 +30,7 @@ import type {
 } from '../BFF契约';
 import { 解招聘候选摘要 } from './候选摘要';
 import { 解候选在线简历, 解公司摘要 } from './展示资料';
+import { 解匹配解释 } from './匹配解释';
 
 type 请求函数 = <T>(options: BFF请求选项) => Promise<BFF响应<T>>;
 
@@ -325,22 +326,35 @@ function 解招聘候选教育(input: unknown): BFF招聘候选教育 {
   };
 }
 
-function 解候选岗位推荐(input: unknown): BFF候选岗位推荐 {
-  const raw = 要求闭合对象(input, [
-    'recommendation_id', 'batch_id', 'intention_id', 'rank', 'match_score',
-    'match_reasons', 'state', 'structured_requirements_confirmed', 'job', 'delegation',
-  ]);
+/**
+ * 候选岗位推荐卡（C1/C2）：解码模式以参数显式传递，不按对象有无字段猜 ——
+ * 展开=true（include=match_explanation 读取）时解释键必在（对象或显式 null，null 合法）；
+ * 展开=false（默认合同）时携带该键即契约漂移。导出给测试锁定两种模式的闭合边界。
+ */
+export function 解候选岗位推荐(input: unknown, 展开: boolean): BFF候选岗位推荐 {
+  const raw = 要求闭合对象(input, 展开
+    ? [
+        'recommendation_id', 'batch_id', 'intention_id', 'rank', 'match_score',
+        'match_reasons', 'state', 'structured_requirements_confirmed', 'job', 'delegation',
+        'match_explanation',
+      ]
+    : [
+        'recommendation_id', 'batch_id', 'intention_id', 'rank', 'match_score',
+        'match_reasons', 'state', 'structured_requirements_confirmed', 'job', 'delegation',
+      ]);
+  const match_score = 要求范围整数(raw.match_score, 0, 100);
   return {
     recommendation_id: 要求非空字符串(raw.recommendation_id),
     batch_id: 要求非空字符串(raw.batch_id),
     intention_id: 要求非空字符串(raw.intention_id),
     rank: 要求范围整数(raw.rank, 1, 3),
-    match_score: 要求范围整数(raw.match_score, 0, 100),
+    match_score,
     match_reasons: 要求数组(raw.match_reasons).map(要求字符串),
     state: 要求枚举(raw.state, ['available', 'delegating', 'delegated']),
     structured_requirements_confirmed: 要求布尔(raw.structured_requirements_confirmed),
     job: 解CandidateJob(raw.job),
     delegation: raw.delegation === null ? null : 解委托摘要(raw.delegation),
+    ...(展开 ? { match_explanation: 解匹配解释(raw.match_explanation, match_score) } : {}),
   };
 }
 
@@ -369,14 +383,18 @@ function 解招聘卡公共字段(raw: Record<string, unknown>): BFF招聘候选
   };
 }
 
-/** include=candidate_summary 展开页才要求摘要键；默认详情响应出现该键仍按契约漂移拒绝。 */
-function 解招聘候选推荐(input: unknown, 展开 = false): BFF招聘候选推荐 {
+/**
+ * 招聘候选推荐卡（C2）：include=candidate_summary,match_explanation 列表读取要求两键齐备
+ * （显式 null 合法）；默认合同两键都必须缺席。解码模式以参数显式传递。导出给测试。
+ */
+export function 解招聘候选推荐(input: unknown, 展开: boolean): BFF招聘候选推荐 {
   const raw = 要求闭合对象(input, 展开
     ? [
         'recommendation_id', 'batch_id', 'job_id', 'rank', 'match_score', 'highlights',
         'compensation_relationship', 'candidate_alias', 'experience_years', 'job_status',
         'summary', 'skills', 'educations', 'favorite', 'rejected', 'rejection_reason',
         'state', 'structured_requirements_confirmed', 'delegation', 'candidate_summary',
+        'match_explanation',
       ]
     : [
         'recommendation_id', 'batch_id', 'job_id', 'rank', 'match_score', 'highlights',
@@ -385,13 +403,17 @@ function 解招聘候选推荐(input: unknown, 展开 = false): BFF招聘候选�
         'state', 'structured_requirements_confirmed', 'delegation',
       ]);
   const 卡 = 解招聘卡公共字段(raw);
-  if (展开) 卡.candidate_summary = 解招聘候选摘要(raw.candidate_summary, 契约错误);
+  if (展开) {
+    卡.candidate_summary = 解招聘候选摘要(raw.candidate_summary, 契约错误);
+    卡.match_explanation = 解匹配解释(raw.match_explanation, 卡.match_score);
+  }
   return 卡;
 }
 
 /**
- * DiscoveryRecruiterDetail：列表卡字段 + 恒在场的 candidate_resume；candidate_summary
- * 不在详情键集合里（include 语法只属于列表），正文 null 是合法缺源档。
+ * DiscoveryRecruiterDetail：列表卡字段 + 恒在场的 candidate_resume + 恒在场的
+ * match_explanation（详情仅以 match_explanation 展开，candidate_summary 不在详情键集合里
+ * —— include 语法只属于列表）；解释显式 null 是合法无溯源档，缺键即契约漂移。
  */
 function 解招聘推荐详情(input: unknown): BFF招聘推荐详情 {
   const raw = 要求闭合对象(input, [
@@ -399,10 +421,13 @@ function 解招聘推荐详情(input: unknown): BFF招聘推荐详情 {
     'compensation_relationship', 'candidate_alias', 'experience_years', 'job_status',
     'summary', 'skills', 'educations', 'favorite', 'rejected', 'rejection_reason',
     'state', 'structured_requirements_confirmed', 'delegation', 'candidate_resume',
+    'match_explanation',
   ]);
+  const 卡 = 解招聘卡公共字段(raw);
   return {
-    ...解招聘卡公共字段(raw),
+    ...卡,
     candidate_resume: raw.candidate_resume === null ? null : 解候选在线简历(raw.candidate_resume),
+    match_explanation: 解匹配解释(raw.match_explanation, 卡.match_score),
   };
 }
 
@@ -436,7 +461,8 @@ function 解发现偏好(input: unknown): BFF发现偏好 {
 
 function 解候选页(input: unknown): { items: BFF候选岗位推荐[]; nextCursor: unknown } {
   const raw = 要求闭合对象(input, ['recommendations', 'next_cursor']);
-  return { items: 要求数组(raw.recommendations).map(解候选岗位推荐), nextCursor: raw.next_cursor };
+  // 求职推荐列表恒带 include=match_explanation（C2）：条目一律按展开模式解码
+  return { items: 要求数组(raw.recommendations).map((item) => 解候选岗位推荐(item, true)), nextCursor: raw.next_cursor };
 }
 
 function 解招聘页(input: unknown): { items: BFF招聘候选推荐[]; nextCursor: unknown } {
@@ -454,17 +480,19 @@ function 校验下一游标(value: unknown, seen: Set<string>): string | null {
   return value;
 }
 
-// ── 查询构造：查询键顺序固定（scope → state → limit → cursor），limit 首页与后续页都是 50 ──
+// ── 查询构造：查询键顺序固定（scope → state → limit → include → cursor），limit 首页与后续页都是 50 ──
+// C2 冻结 include 矩阵：求职推荐列表与招聘推荐列表/详情各按表传一个 include；
+// 通用岗位 GET 与全部写接口（刷新/收藏/淘汰/撤销/委托）不带 include。
 
 const candidatePath = (intentionId: string, cursor: string | null) =>
-  `/api/v1/me/job-recommendations?intention_id=${encodeURIComponent(intentionId)}&limit=50${
+  `/api/v1/me/job-recommendations?intention_id=${encodeURIComponent(intentionId)}&limit=50&include=match_explanation${
     cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`
   }` as `/api/v1/${string}`;
 
 const recruiterPath = (jobId: string, state: 'available' | 'rejected', cursor: string | null) =>
   `/api/v1/recruiter/jobs/${encodeURIComponent(jobId)}/candidate-recommendations?${
     state === 'rejected' ? 'state=rejected&' : ''
-  }limit=50&include=candidate_summary${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}` as `/api/v1/${string}`;
+  }limit=50&include=candidate_summary,match_explanation${cursor === null ? '' : `&cursor=${encodeURIComponent(cursor)}`}` as `/api/v1/${string}`;
 
 export interface 发现推荐数据源 {
   读取候选岗位推荐(intentionId: string): Promise<BFF候选岗位推荐[]>;
@@ -580,7 +608,7 @@ export function 创建发现推荐数据源(请求: 请求函数): 发现推荐�
 
   async function 读取招聘候选详情(jobId: string, recommendationId: string): Promise<BFF招聘推荐详情> {
     const { result } = await 请求<unknown>({
-      path: `${招聘前缀}/jobs/${encodeURIComponent(jobId)}/candidate-recommendations/${encodeURIComponent(recommendationId)}`,
+      path: `${招聘前缀}/jobs/${encodeURIComponent(jobId)}/candidate-recommendations/${encodeURIComponent(recommendationId)}?include=match_explanation`,
     });
     // 详情走独立的 DiscoveryRecruiterDetail 合同，绝不让详情再过列表断言
     return 解招聘推荐详情(result);
