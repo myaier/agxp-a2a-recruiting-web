@@ -914,6 +914,21 @@ describe('匿名在线简历 · Mock 匹配依据（review-r1 对齐六维）', 
     expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
   });
 
+  it('review-r3：未知编号不抛异常，缺档文案照常（栏匹配分计算安全）', () => {
+    置Mock详情状态('A-01');
+    // UNKNOWN 无简历档、也无快照键：栏匹配分 的无快照回退读 档.适配分 不得在守卫前抛
+    expect(() =>
+      render(<匿名在线简历 />, { wrapper: ({ children }) => (
+        <MemoryRouter initialEntries={['/hr/resume/UNKNOWN']}>
+          <Routes>
+            <Route path="/hr/resume/:id" element={children} />
+          </Routes>
+        </MemoryRouter>
+      ) }),
+    ).not.toThrow();
+    expect(screen.getByText('这位候选的简历还没同步过来。')).toBeTruthy();
+  });
+
   it('快照 null 条目（A-07）：缺失说明 + 有限依据行，不造六条假状态', () => {
     置Mock详情状态('A-07');
     render(<匿名在线简历 />, { wrapper: ({ children }) => (
