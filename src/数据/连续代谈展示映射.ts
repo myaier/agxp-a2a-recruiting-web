@@ -290,6 +290,9 @@ export function 从连续到职位资料(detail: NegotiationDetail): 职位资�
     摘要: 连续摘要输入(detail),
     冻结: detail.job_detail,
     分: detail.match_score,
+    // Task 6（Spec §3.4/§5.4）：pre-Case 也吃同一响应的展开解释（解释属于推荐本身，
+    // case_id 缺席不隐藏）；转 Case 后由 P5 侧 从P5到职位资料 整体切换，绝不拼接两源。
+    解释: detail.匹配解释,
   });
   if (资料.摘要 === null) return 资料;
   return {

@@ -54,6 +54,7 @@ import { 映射P5详情, 映射S0底栏说明, P5契约错误提示 } from '../.
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import type { 分段项 } from '../../组件/阶段对话流';
 import { 从BFF到在线简历展示 } from '../../数据/在线简历展示映射';
+import type { 匹配分析模型 } from '../../数据/匹配解释展示映射';
 import type { 在线简历展示资料 } from '../../组件/在谈详情/类型';
 import type {
   详情动作卡信息,
@@ -101,6 +102,12 @@ export interface 后端正常资源 {
    *  （不构造该资料，第二 Tab 走 职位资料）。身份（identity）不进这条映射 —— 去名不受
    *  S1 披露状态影响。顶栏画像与第二 Tab 正文同吃这一份安全投影。 */
   在线简历资料: 在线简历展示资料 | null;
+  /**
+   * Task 6（Spec §3.3）：招聘 Case 在线简历 Tab 的「匹配度分析」区输入 = C3 展示模型，
+   * 由同一响应的 match_score + match_explanation 构建（藏环：顶栏分数是唯一总分）。
+   * 候选角色恒 null（第二 Tab 是职位资料，解释从 职位资料.分析 走）。
+   */
+  在线简历分析: 匹配分析模型 | null;
   /** Task 6（Spec §7.3）：页尾「已确认」只来自双方意向确认完成事实（lifecycle completed，
    *  不是 stage===S3）；候选角色不消费（第二 Tab 是职位资料），恒 false。 */
   在线简历已确认: boolean;
@@ -421,6 +428,14 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
   // Task 6：这份安全投影同时进顶栏（画像/最近工作行与正文同源，禁止另拉 open/current
   // resume 补齐）与第二 Tab 正文。
   const 在线简历资料 = 原文.role === 'recruiter' ? 从BFF到在线简历展示(原文.candidateResume) : null;
+  // Task 6（Spec §3.3/§5.4）：在线简历 Tab 的分析区输入 = 同一响应的解释（对象/显式 null/
+  // 未展开缺席 → null 三态保真，绝不从分数或正文重造）；候选角色不消费（恒 null）。
+  const 在线简历分析: 匹配分析模型 = {
+    分数: 正常.匹配分,
+    解释: 正常.匹配解释 ?? null,
+    有限依据: [],
+    上下文: '有来源',
+  };
 
   return {
     kind: '正常',
@@ -431,6 +446,7 @@ export function use后端详情控制({ role, caseId }: { role: P5角色; caseId
     分段们: 从P5到详情分段(正常, 原文, 初评),
     职位资料: 从P5到职位资料(正常),
     在线简历资料,
+    在线简历分析: 原文.role === 'recruiter' ? 在线简历分析 : null,
     // 页尾「已确认」只来自双方确认完成事实（lifecycle completed，不能 stage===S3）
     在线简历已确认: 原文.role === 'recruiter' && 原文.state.lifecycle === 'completed',
     底栏,

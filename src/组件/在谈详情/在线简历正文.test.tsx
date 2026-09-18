@@ -12,6 +12,8 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { 在线简历正文 } from './在线简历正文';
 import { 映射招聘匹配依据 } from '../../数据/招聘匹配依据映射';
+import { 解匹配解释 } from '../../数据/招聘数据源/匹配解释';
+import { BFF匹配解释92分样本 } from '../../测试/BFF样本';
 import { 从Mock到简历正文, 从安全资料到简历正文 } from '../../数据/在线简历正文映射';
 import { 匿名简历表 } from '../../数据/企业端模拟数据';
 import type { 匿名简历档 } from '../../数据/企业端模拟数据';
@@ -426,5 +428,54 @@ describe('在线简历正文 · 匹配依据行们（Task 5 唯一匹配度分�
     rerender(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 />);
     expect(screen.queryByText('薪资 · 未核对')).toBeNull();
     expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+  });
+});
+
+// ── Task 6（Spec §3.3）：匹配分析（已展开批次解释的六维模型）—— 接线消费断言 ──
+// 在场时分析区 = 匹配分析块（藏环：顶栏分数是唯一总分），优先于 匹配依据行们（互斥）；
+// 解释显式 null 给缺失说明 + 有限依据；与 Task 5 防御路径（六行有限依据版式）不并存。
+describe('在线简历正文 · 匹配分析模型（Task 6 六维解释版式）', () => {
+  const 解释92 = 解匹配解释(BFF匹配解释92分样本, 92)!;
+  const 模型92 = { 分数: 92, 解释: 解释92, 有限依据: [], 上下文: '有来源' as const };
+
+  it('传 匹配分析：六维行直接展开（藏环），无「当前接口仅提供部分匹配依据」与「匹配分析缺失」', () => {
+    render(<在线简历正文 内容={从安全资料到简历正文(资料齐备)} 完整布局 匹配分析={模型92} />);
+    expect(screen.getByText('匹配度分析')).toBeTruthy();
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('命中11/12个岗位关键词')).toBeTruthy();
+    expect(screen.getByText('技能按关键词命中核对，不代表能力认证。')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull(); // 藏环
+    expect(screen.queryByText('当前接口仅提供部分匹配依据')).toBeNull();
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
+  });
+
+  it('与 匹配依据行们 同传：匹配分析 优先（旧有限六行版式退场）', () => {
+    const 行们 = 映射招聘匹配依据({
+      highlights: ['full_stack'],
+      structured_requirements_confirmed: true,
+    } as never);
+    render(
+      <在线简历正文
+        内容={从安全资料到简历正文(资料齐备)}
+        完整布局
+        匹配依据行们={行们}
+        匹配分析={模型92}
+      />,
+    );
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.queryByText('当前接口仅提供部分匹配依据')).toBeNull();
+  });
+
+  it('解释显式 null 的模型：缺失说明 + 有限依据，不补六条假状态', () => {
+    render(
+      <在线简历正文
+        内容={从安全资料到简历正文(资料齐备)}
+        完整布局
+        匹配分析={{ 分数: 73, 解释: null, 有限依据: ['求职方向与岗位方向匹配'], 上下文: '有来源' }}
+      />,
+    );
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(screen.getByText('有限依据')).toBeTruthy();
+    expect(screen.queryByText('推荐生成时的匹配结果')).toBeNull();
   });
 });

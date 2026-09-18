@@ -27,7 +27,7 @@ import type { NegotiationDetail } from '../../数据/招聘数据源/连续代�
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import type { BFF主体 } from '../../数据/BFF契约';
 import { BFF安全职位资料样本, BFF候选在线简历样本, BFF候选身份披露样本 } from '../../测试/展示资料样本';
-import { P5历史连续块 } from '../../测试/BFF样本';
+import { P5历史连续块, BFF匹配解释87分样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -122,6 +122,7 @@ function 候选详情DTO(覆盖: {
   availableActions?: P5详情['availableActions'];
   matchScore?: number | null;
   jobDetail?: P5详情['jobDetail'];
+  匹配解释?: P5详情['匹配解释'];
 } = {}): P5详情 {
   return {
     role: 'candidate',
@@ -138,6 +139,7 @@ function 候选详情DTO(覆盖: {
     matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
     ...P5历史连续块,
+    ...(覆盖.匹配解释 === undefined ? {} : { 匹配解释: 覆盖.匹配解释 }),
   };
 }
 
@@ -147,6 +149,7 @@ function 招聘详情DTO(覆盖: {
   jobDetail?: P5详情['jobDetail'];
   candidateResume?: Extract<P5详情, { role: 'recruiter' }>['candidateResume'];
   identity?: Extract<P5详情, { role: 'recruiter' }>['candidateIdentity'];
+  匹配解释?: P5详情['匹配解释'];
 } = {}): P5详情 {
   return {
     role: 'recruiter',
@@ -162,6 +165,7 @@ function 招聘详情DTO(覆盖: {
     matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
     ...P5历史连续块,
+    ...(覆盖.匹配解释 === undefined ? {} : { 匹配解释: 覆盖.匹配解释 }),
     candidateResume: 覆盖.candidateResume ?? null,
     candidateIdentity: 覆盖.identity ?? { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
@@ -288,6 +292,7 @@ function 连续详情DTO(选项: {
   publicEvaluation?: NegotiationDetail['agent_summary']['public_evaluation'];
   jobDetail?: NegotiationDetail['job_detail'];
   匹配分?: number | null;
+  匹配解释?: NegotiationDetail['匹配解释'];
 } = {}): NegotiationDetail {
   const recordId = 选项.recordId ?? 'mc_direct';
   const recordKind = recordId.startsWith('dlg_') ? ('delegation' as const) : ('case' as const);
@@ -326,6 +331,7 @@ function 连续详情DTO(选项: {
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
     match_score: 选项.匹配分 ?? null,
+    ...(选项.匹配解释 === undefined ? {} : { 匹配解释: 选项.匹配解释 }),
     evaluation: null,
     case_detail: caseDetail,
     failure_history: [],
@@ -1201,5 +1207,95 @@ describe('use后端详情控制 · 公开初评与 S0 单次渲染', () => {
     expect(JSON.stringify(资源.分段们)).not.toContain('公开资料匹配检查');
     expect(资源.canonical记录ID).toBeNull(); // 招聘 Case ID 不归一替换
     expect(mock读取连续详情).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 6（Spec §3.3/§3.4/§5.4）：详情资源的六维解释接线 ──
+// 各联合的资料区直接吃同一响应的解释（外层/嵌套不拼接、转 Case/换单清旧解释、
+// 未展开防御路径保 null）。招聘 Case 另外交付 在线简历分析（在线简历 Tab 的分析区）。
+describe('use后端详情控制 · 六维解释接线（Task 6）', () => {
+  beforeEach(() => {
+    mock设置P5范围.mockClear();
+    mock读取详情.mockClear();
+    mock读取连续详情.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('招聘 Case 展开解释：职位资料.分析与 在线简历分析 都吃同一响应（分数=权威分）', () => {
+    置详情状态({
+      role: 'recruiter',
+      快照: 详情快照({
+        detail: 招聘详情DTO({ matchScore: 87, jobDetail: BFF安全职位资料样本, 匹配解释: BFF匹配解释87分样本 }),
+      }),
+    });
+    const { result } = renderHook(() => use后端详情控制({ role: 'recruiter', caseId: 'mc_direct' }));
+    const 资源 = 取正常(result.current);
+    expect(资源.职位资料.分析.分数).toBe(87);
+    expect(资源.职位资料.分析.解释).toEqual(BFF匹配解释87分样本);
+    // 在线简历 Tab 的分析区输入（藏环：顶栏分数唯一）
+    expect(资源.在线简历分析).not.toBeNull();
+    expect(资源.在线简历分析!.分数).toBe(87);
+    expect(资源.在线简历分析!.解释).toEqual(BFF匹配解释87分样本);
+    expect(资源.在线简历分析!.上下文).toBe('有来源');
+  });
+
+  it('候选 Case 展开解释：资料区解释同源；候选无在线简历分析（第二 Tab 是职位资料）', () => {
+    置详情状态({
+      role: 'candidate',
+      快照: 详情快照({
+        detail: 候选详情DTO({ matchScore: 92, 匹配解释: BFF匹配解释92分样本 }),
+      }),
+    });
+    const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    const 资源 = 取正常(result.current);
+    expect(资源.职位资料.分析.解释).toEqual(BFF匹配解释92分样本);
+    expect(资源.在线简历分析).toBeNull();
+  });
+
+  it('pre-Case 连续联合：外层解释进资料区模型（解释属于推荐本身，case_id 缺席不隐藏）', () => {
+    置详情状态({
+      role: 'candidate',
+      连续快照: 连续详情快照({
+        聚合: 连续详情DTO({ phase: 'accepted', 匹配分: 87, 匹配解释: BFF匹配解释87分样本 }),
+      }),
+    });
+    const { result } = renderHook(() => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }));
+    const 连续 = 取连续(result.current);
+    expect(连续.职位资料.分析.解释).toEqual(BFF匹配解释87分样本);
+    expect(连续.职位资料.分析.分数).toBe(87);
+  });
+
+  it('pre-Case 转 Case：解释跟新联合整体切换 —— Case 自己的解释为 null 时旧六行绝不残留', () => {
+    const { result, rerender } = renderHook(
+      () => use后端详情控制({ role: 'candidate', caseId: 'mc_direct' }),
+      { initialProps: undefined },
+    );
+    expect(取连续(result.current).职位资料.分析.解释).toEqual(BFF匹配解释87分样本);
+
+    // 同一记录开案：case_detail 携带自己的显式 null 解释（外层 87 分解释不跨界拼接）
+    const 聚合 = 连续详情DTO({
+      phase: 'case_started', 匹配分: 87, 匹配解释: null,
+      caseDetail: 候选详情DTO({ matchScore: 87, 匹配解释: null }),
+    });
+    置详情状态({
+      role: 'candidate',
+      连续快照: 连续详情快照({ 聚合 }),
+    });
+    rerender(undefined);
+    const 资源 = 取正常(result.current);
+    expect(资源.职位资料.分析.解释).toBeNull();
+    expect(资源.职位资料.分析.分数).toBe(87);
+  });
+
+  it('未展开防御路径（键缺席）：解释为 null，不从不完整响应造六行', () => {
+    置详情状态({
+      role: 'recruiter',
+      快照: 详情快照({ detail: 招聘详情DTO({ matchScore: 87 }) }),
+    });
+    const { result } = renderHook(() => use后端详情控制({ role: 'recruiter', caseId: 'mc_direct' }));
+    const 资源 = 取正常(result.current);
+    expect(资源.职位资料.分析.解释).toBeNull();
+    expect(资源.在线简历分析).not.toBeNull();
+    expect(资源.在线简历分析!.解释).toBeNull();
   });
 });

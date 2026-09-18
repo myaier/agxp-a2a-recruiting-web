@@ -466,7 +466,8 @@ describe('MatchCase详情 · 资料 Tab 与完整缺失区（Task 3）', () => {
     for (const 标题 of ['匹配度分析', '职位详情', '职位要求', '公司信息', '对接人']) {
       expect(screen.getAllByText(标题).length).toBeGreaterThan(0);
     }
-    expect(screen.getByText('匹配分析缺失')).toBeTruthy();
+    // Task 6（模型口径）：解释缺失给约定缺失说明，分析区标题仍在（不整区消失）
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
     expect(screen.getByText('职位详情缺失')).toBeTruthy();
     expect(screen.getByText('职位要求缺失')).toBeTruthy();
     expect(screen.getByText('公司介绍缺失')).toBeTruthy();
@@ -530,8 +531,9 @@ describe('MatchCase详情 · 招聘端在线简历 Tab（Task 4）', () => {
       '匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能',
     ] as const;
     for (const 标题 of 标题们) expect(screen.getByText(标题)).toBeTruthy();
+    // Task 6（模型口径）：匹配分析区改由共享块按解释缺失给约定说明，其余区缺失口径不变
     const 缺失们 = [
-      '匿名画像缺失', '职位信息缺失', '匹配分析缺失', '个人优势缺失', '求职期望缺失',
+      '匿名画像缺失', '职位信息缺失', '暂无该次匹配的详细分析', '个人优势缺失', '求职期望缺失',
       '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失',
     ] as const;
     for (const 缺失 of 缺失们) expect(screen.getByText(缺失)).toBeTruthy();

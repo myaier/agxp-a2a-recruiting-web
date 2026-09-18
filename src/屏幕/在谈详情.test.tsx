@@ -184,8 +184,10 @@ describe('在谈详情 · Mock 公司卡仍按原 slug 导航', () => {
     // （J-01 在意向确认态，顶栏标题同文案，所以职位用 getAllByText）
     expect(screen.getAllByText(本单.职位).length).toBeGreaterThan(0);
     expect(screen.getByText('上海 · 浦东')).toBeTruthy();
-    // 技能标签来自证据源的 JD 技能要求：同一词在 岗位摘要标签区 与 匹配分析要求行 各出现一次
-    expect(screen.getAllByText('稳定性治理').length).toBe(2);
+    // 技能标签来自证据源的 JD 技能要求（岗位摘要标签区）。Task 6 起 Mock 分析区是模型
+    // 过渡形态（种子分 + 解释合法缺失），旧 JD 三态要求行不再出现
+    expect(screen.getAllByText('稳定性治理').length).toBe(1);
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
     // JD 正文/要求来自 取在谈岗位详情（连接层已把静态查询做掉）
     expect(screen.getByText('1、负责电商交易链路的网关与清结算服务，支撑大促峰值下的下单与退款；')).toBeTruthy();
     // 公司五元行由公司档案投影（档案规模行认段 + 工商信息成立 + 地址），公司标签区保留

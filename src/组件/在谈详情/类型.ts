@@ -103,7 +103,13 @@ export interface 终局区信息 {
  *  null = 数据源未提供（缺失）；空数组 = 提供了但一条没有（「暂无…」）。 */
 export interface 职位资料信息 {
   摘要: { 职位: string; 城市: string; 薪资: string; 技能: readonly string[] | null } | null;
-  分析: { 分: number | null; 行们: 对齐行[] | null; 文案: { 墨句: string; 灰句: string } | null };
+  /**
+   * Task 6（Spec §3.4）：匹配分析区唯一输入 = C3 展示模型（分数/解释/有限依据/上下文），
+   * 由各详情入口从同一响应的 match_score + match_explanation 构建 —— 组件不再消费旧
+   * 「JD 三态核对行」版式（求职核对块 已随 Task 6 删除）。解释合法缺失（null）由
+   * 匹配分析块 显示「暂无该次匹配的详细分析」+ 有限依据，绝不补六条假状态。
+   */
+  分析: 匹配分析模型;
   职位详情: readonly string[] | null;
   职位要求: readonly string[] | null;
   公司: {

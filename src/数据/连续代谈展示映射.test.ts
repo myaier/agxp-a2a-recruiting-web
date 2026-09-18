@@ -23,7 +23,7 @@ import {
 } from './连续代谈展示映射';
 import { 从连续到阶段 } from './列表卡片映射';
 import { BFF安全职位资料样本, BFF公司摘要样本 } from '../测试/展示资料样本';
-import { BFF匹配解释92分样本 } from '../测试/BFF样本';
+import { BFF匹配解释92分样本, BFF匹配解释87分样本 } from '../测试/BFF样本';
 
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
@@ -119,6 +119,8 @@ function 连续详情(选项: {
   /** Task 6：详情响应的冻结职位资料与权威分（旧记录合法 null 档）。 */
   jobDetail?: NegotiationDetail['job_detail'];
   匹配分?: number | null;
+  /** Task 6：同一响应的展开解释（对象/显式 null/缺席=未展开）。 */
+  匹配解释?: NegotiationDetail['匹配解释'];
   /** review-r1：外层 NegotiationJob 的公司摘要与技能（同响应权威事实）。 */
   组织?: NegotiationCard['job']['organization'];
   技能?: string[] | null;
@@ -139,6 +141,7 @@ function 连续详情(选项: {
       组织: 选项.组织,
       技能: 选项.技能,
       匹配分: 选项.匹配分,
+      匹配解释: 选项.匹配解释,
     }),
     evaluation: 选项.evaluation ?? null,
     failure_history: 选项.failureHistory ?? [],
@@ -402,10 +405,17 @@ describe('Task 5 · 从连续到详情顶栏 / 从连续到职位资料', () => 
     expect(资料.职位详情).toBeNull();
     expect(资料.公司.元行.map((行) => 行.标签)).toEqual(['融资阶段', '规模', '行业', '成立', '地址']);
     expect(资料.接口缺口说明).toBe('当前在谈详情数据未提供');
-    // 权威分只进分析分数槽，无对齐证据不给行（与 Case 详情同一底座）
+    // 权威分进分析模型分数槽；解释缺席（未展开）保 null（与 Case 详情同一底座，Task 6）
     expect(从连续到职位资料(连续详情({ phase: 'accepted', 匹配分: 73 })).分析).toEqual({
-      分: 73, 行们: null, 文案: null,
+      分数: 73, 解释: null, 有限依据: [], 上下文: '有来源',
     });
+  });
+
+  // Task 6（Spec §3.4/§5.4）：pre-Case 也透传同一响应的展开解释（解释属推荐本身）
+  it('职位资料：外层展开解释进分析模型（对象/显式 null 两态保真，不外拼）', () => {
+    expect(从连续到职位资料(连续详情({ phase: 'accepted', 匹配分: 87, 匹配解释: BFF匹配解释87分样本 })).分析)
+      .toEqual({ 分数: 87, 解释: BFF匹配解释87分样本, 有限依据: [], 上下文: '有来源' });
+    expect(从连续到职位资料(连续详情({ phase: 'accepted', 匹配分: 87, 匹配解释: null })).分析.解释).toBeNull();
   });
 
   // Task 6：pre-case 也用它自身 job_detail —— 不因为没有 case_id 不显示已给的冻结职位

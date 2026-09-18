@@ -39,7 +39,7 @@ import {
   BFF候选在线简历样本,
   BFF候选身份披露样本,
 } from '../../测试/展示资料样本';
-import { P5历史连续块 } from '../../测试/BFF样本';
+import { P5历史连续块, BFF匹配解释87分样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
 
 const mock跳转 = vi.fn();
 vi.mock('../../路由/导航钩子', () => ({
@@ -126,7 +126,12 @@ function S0阶段区组(): P5阶段区[] {
   ];
 }
 
-function 候选S0详情DTO(覆盖: { matchScore?: number | null; jobDetail?: P5详情['jobDetail'] } = {}): P5详情 {
+function 候选S0详情DTO(覆盖: {
+  matchScore?: number | null;
+  jobDetail?: P5详情['jobDetail'];
+  匹配解释?: P5详情['匹配解释'];
+  对话进度?: P5详情['dialogueProgress'];
+} = {}): P5详情 {
   return {
     role: 'candidate',
     context: {
@@ -145,6 +150,8 @@ function 候选S0详情DTO(覆盖: { matchScore?: number | null; jobDetail?: P5�
     matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
     ...P5历史连续块,
+    ...(覆盖.匹配解释 === undefined ? {} : { 匹配解释: 覆盖.匹配解释 }),
+    ...(覆盖.对话进度 === undefined ? {} : { dialogueProgress: 覆盖.对话进度 }),
   };
 }
 
@@ -177,6 +184,9 @@ function 招聘S1附件详情DTO(带附件: boolean, 覆盖: {
   candidateResume?: Extract<P5详情, { role: 'recruiter' }>['candidateResume'];
   identity?: Extract<P5详情, { role: 'recruiter' }>['candidateIdentity'];
   jobDetail?: P5详情['jobDetail'];
+  matchScore?: number | null;
+  匹配解释?: P5详情['匹配解释'];
+  对话进度?: P5详情['dialogueProgress'];
 } = {}): P5详情 {
   return {
     role: 'recruiter',
@@ -204,9 +214,11 @@ function 招聘S1附件详情DTO(带附件: boolean, 覆盖: {
     intentConfirmations: { candidate: '', recruiter: '' },
     terminalSummary: null,
     conversationRef: null,
-    matchScore: null,
+    matchScore: 覆盖.matchScore ?? null,
     jobDetail: 覆盖.jobDetail ?? null,
     ...P5历史连续块,
+    ...(覆盖.匹配解释 === undefined ? {} : { 匹配解释: 覆盖.匹配解释 }),
+    ...(覆盖.对话进度 === undefined ? {} : { dialogueProgress: 覆盖.对话进度 }),
     candidateResume: 覆盖.candidateResume ?? null,
     candidateIdentity: 覆盖.identity ?? { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
   };
@@ -304,6 +316,10 @@ function 宿主({
       分段们: 从P5到详情分段(视图, 详情, 初评),
       职位资料: 从P5到职位资料(视图),
       在线简历资料,
+      // Task 6（父控制 hook 同口径）：在线简历 Tab 的分析区输入 = 同一响应的解释
+      在线简历分析: 详情.role === 'recruiter'
+        ? { 分数: 视图.匹配分, 解释: 视图.匹配解释 ?? null, 有限依据: [], 上下文: '有来源' as const }
+        : null,
       // 页尾「已确认」只来自双方确认完成事实（lifecycle completed，与父控制 hook 同口径）
       在线简历已确认: 详情.role === 'recruiter' && 详情.state.lifecycle === 'completed',
       底栏,
@@ -625,12 +641,14 @@ describe('后端正常详情 · 招聘端顶栏同源与页尾确认事实（Tas
     expect(栏文).not.toContain('示例公司');
   });
 
-  it('R1：完整布局下安全资料有值也保留匹配分析标题与缺失提示（不整区消失）', async () => {
+  it('R1：完整布局下解释缺失（Task 6 起按模型口径）分析区标题与缺失说明保留（不整区消失）', async () => {
     const user = userEvent.setup();
     render(<宿主 详情={招聘带简历DTO()} caseId="mc_hr" />);
     await user.click(screen.getByRole('button', { name: '在线简历' }));
     expect(screen.getByText('匹配度分析')).toBeTruthy();
-    expect(screen.getByText('匹配分析缺失')).toBeTruthy(); // 无对齐证据：明确缺失，不从公开 matches 重建
+    // 同响应解释显式缺失：约定缺失说明（旧「匹配分析缺失」随旧版式退役），不整区消失
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
   });
 
   it('页尾「已确认」只来自双方确认完成事实（lifecycle completed）：进行中给生成声明', async () => {
@@ -906,6 +924,9 @@ function 构造正常资源(视图: P5详情正常视图, caseId: string, 详情
     动作段: P5阶段共用名(详情.state.stage),
     分段们: 从P5到详情分段(视图, 详情, null),
     职位资料: 从P5到职位资料(视图),
+    在线简历分析: 详情.role === 'recruiter'
+      ? { 分数: 视图.匹配分, 解释: 视图.匹配解释 ?? null, 有限依据: [], 上下文: '有来源' as const }
+      : null,
     在线简历资料,
     // 页尾「已确认」只来自双方确认完成事实（lifecycle completed，与父控制同口径）
     在线简历已确认: 详情.role === 'recruiter' && 详情.state.lifecycle === 'completed',
@@ -918,3 +939,111 @@ function 构造正常资源(视图: P5详情正常视图, caseId: string, 详情
     PDF输入: { role: 详情.role, caseId, 读取: mock读取简历PDF },
   };
 }
+
+// ── Task 6（Spec §3.3/§3.4）：详情资料 Tab 的单一分析区 + §8B step 与评分同屏 ──
+// 资料区解释来自同一响应（外层/嵌套不拼接）；顶栏分数是详情唯一总分（块藏环）；
+// 解释显式 null 给缺失说明。阶段新 step（Spec §8B）与评分同时在场整页成功。
+describe('后端正常详情 · 资料 Tab 六维分析区（Task 6）', () => {
+  beforeEach(() => {
+    mock新增叮嘱.mockClear();
+    mock读取简历PDF.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('招聘 Case 展开解释：在线简历 Tab 直接展开六维行（藏环），无「匹配分析缺失」', async () => {
+    const user = userEvent.setup();
+    render(
+      <宿主
+        详情={招聘S1附件详情DTO(false, {
+          candidateResume: BFF候选在线简历样本,
+          matchScore: 87,
+          匹配解释: BFF匹配解释87分样本,
+        })}
+        caseId="mc_hr"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '在线简历' }));
+    expect(screen.getByText('匹配度分析')).toBeTruthy();
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('命中11/12个岗位关键词')).toBeTruthy();
+    expect(screen.getByText('薪资范围不匹配')).toBeTruthy();
+    expect(screen.getByText('技能按关键词命中核对，不代表能力认证。')).toBeTruthy();
+    // 藏环：顶栏分数是唯一总分，Tab 内无第二个分数环
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
+    // 个人优势不混入分析（Spec §3.3：分析不是个人优势）
+    expect(screen.getByText('四年全栈经验')).toBeTruthy();
+    // §8：服务端返回的公司名原样展示（前端无 hidden 遮蔽路径，源公司显示只由服务端决定）
+    expect(screen.getByText('云衢')).toBeTruthy();
+  });
+
+  it('解释显式 null：同区显示「暂无该次匹配的详细分析」，不从摘要/正文补行', async () => {
+    const user = userEvent.setup();
+    render(
+      <宿主
+        详情={招聘S1附件详情DTO(false, {
+          candidateResume: BFF候选在线简历样本,
+          matchScore: 87,
+          匹配解释: null,
+        })}
+        caseId="mc_hr"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '在线简历' }));
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(screen.queryByText('推荐生成时的匹配结果')).toBeNull();
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
+  });
+
+  it('候选 Case 展开解释：资料 Tab 的职位资料直接展开六维行（同一响应）', async () => {
+    const user = userEvent.setup();
+    render(
+      <宿主
+        详情={候选S0详情DTO({ matchScore: 92, 匹配解释: BFF匹配解释92分样本 })}
+        caseId="mc_direct"
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    expect(screen.getByText('匹配度分析')).toBeTruthy();
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('命中11/12个岗位关键词')).toBeTruthy();
+    // 藏环：顶栏 92 是唯一总分
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(screen.getByText('92')).toBeTruthy(); // 顶栏分原样
+  });
+
+  it('§8B：阶段新 step（assessing）与评分解释同时在场整页成功 —— 步骤行与六维行同屏', async () => {
+    const user = userEvent.setup();
+    render(
+      <宿主
+        详情={{
+          ...候选S0详情DTO({
+            matchScore: 87,
+            匹配解释: BFF匹配解释87分样本,
+            对话进度: {
+              stage: 'needs_coordination', askingRole: 'recruiter',
+              recruiterRound: 1, candidateRound: 0, roundBudget: 2, step: 'assessing',
+            },
+          }),
+          state: 状态({
+            stage: 'needs_coordination', status: 'waiting', step: 'coordinating', needsUser: false,
+          }),
+          stages: [
+            { ...S0阶段区组()[0]!, state: 'passed', summary: '匿名初筛已通过' },
+            { ...待段('resume_submission'), state: 'passed' },
+            { ...待段('needs_coordination'), state: 'active', occurredAt: '2026-08-29T02:10:00Z', summary: 'coordinating' },
+            待段('intent_confirmation'),
+          ],
+        }}
+        caseId="mc_direct"
+      />,
+    );
+    // 整页成功（不落契约错误分支）：进度 Tab 有步骤行
+    expect(screen.getByText('招聘 Agent 判断中')).toBeTruthy();
+    // 资料 Tab 同时有六维行（同一响应的解释）
+    await user.click(screen.getByRole('button', { name: '职位详情' }));
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('薪资范围不匹配')).toBeTruthy();
+    expect(mock读取简历PDF).not.toHaveBeenCalled();
+  });
+});
