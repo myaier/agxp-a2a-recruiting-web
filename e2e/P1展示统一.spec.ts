@@ -806,7 +806,7 @@ for (const 宽度 of 后端宽度们) {
 
       // 进详情：快照命中直接渲染，绝不再发 canonical job GET（P4 缓存路径回归）
       await page.getByRole('button', { name: '查看职位详情' }).first().click();
-      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee01$/, { timeout: 10_000 });
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee01(\?|$)/, { timeout: 10_000 }); // 推荐卡带四坐标 query（Task 7 推荐上下文）
       // 等详情正文上屏（列表卡与详情都有同文职位名，先等详情独有标题避免竞态）
       await expect(page.getByText('岗位信息与职位详情', { exact: true })).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('交易中台架构师', { exact: true }).first()).toBeVisible();
@@ -840,7 +840,7 @@ for (const 宽度 of 后端宽度们) {
       await page.getByRole('button', { name: '市场', exact: true }).click();
       await expect(page.getByText('交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
       await page.getByRole('button', { name: '查看职位详情' }).nth(1).click();
-      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee02$/, { timeout: 10_000 });
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee02(\?|$)/, { timeout: 10_000 });
       await expect(page.getByText('岗位信息与职位详情', { exact: true })).toBeVisible({ timeout: 15_000 });
       await expect(page.getByRole('img', { name: '适配 0 分' })).toBeVisible();
 

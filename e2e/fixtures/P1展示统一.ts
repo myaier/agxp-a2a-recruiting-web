@@ -318,6 +318,8 @@ function P1推荐卡(job: P1CandidateJob形, match_score: number, 覆盖: Partia
     structured_requirements_confirmed: true,
     job,
     delegation: null,
+    // include=match_explanation 展开读取（C2）：解释键必在；null = 已展开无溯源
+    match_explanation: null,
     ...覆盖,
   };
 }
