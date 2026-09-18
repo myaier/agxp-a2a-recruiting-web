@@ -20,6 +20,8 @@
 // 操作层读锁单飞收敛为一次），后续两次都是「重试」按钮触发 —— 相位确定，不靠重跑碰运气。
 
 import type { Page, Route } from '@playwright/test';
+import { P5Case, P5详情wire, P5连续详情wire, type P5连续记录形 } from './bff/MatchCase';
+import { P7案例记录 } from './bff/真人消息';
 
 export type P1角色 = 'candidate' | 'recruiter';
 export type P1场景名 = '完整' | '缺失' | '长文' | '错误带缓存';
@@ -73,6 +75,15 @@ const 标记 = {
 } as const;
 
 const 时间戳 = '2026-08-30T10:46:00Z';
+
+// ── P1 消息页会话坐标的 Case 聚合详情（Task 10 fix-r1）────────────────────────
+// 会话列表/聊天页按会话 case_id 定向补读（候选 me/negotiations alias、招聘
+// recruiter match-cases 详情；两读都带 include 查询，路由按 pathname 匹配不受
+// query 影响 —— 本分支 Task 5/6 起的新请求形态，P1 之前没有这条坐标声明）。
+// 最小合法开案（匿名初筛 running·policy_check）：分数与解释显式 null，与 P1 展示
+// 场景「无评分」的事实一致。外层 record_id 受合同模式 ^mc_[0-9a-f]{32}$ 约束取
+// 合法形；case_id 保持会话字面量（decoder 对 case_id 只要求非空，并要求外层与
+// 嵌套 case_detail 同值 —— 由同一 caseId 构造保证）。
 
 function 信封<T>(result: T): { result: T; meta: { request_id: string; api_version: 'v1' } } {
   return { result, meta: { request_id: 'p1-fixture-req', api_version: 'v1' } };
@@ -326,6 +337,80 @@ function P1推荐卡(job: P1CandidateJob形, match_score: number, 覆盖: Partia
 
 // ── P7 会话项 / 消息（wire 键集与 数据源模式.spec.ts 同构）────────────────────────
 
+
+
+/** 单条会话案例的内容（Task 10 fix-r1）：列表/聊天页补读落地后行资料由这些值组装
+ *  （候选行 = 招聘者姓名/职务 + 发布企业链；招聘行 = 候选真名 + 用人企业·岗位）。
+ *  案例们 未列的编号取缺省内容 —— 行资料确定落地，viewer-safe 加载标签只是过渡帧。 */
+interface P1案例内容 {
+  招聘者姓名: string;
+  招聘者职务: string;
+  用人企业: string | null;
+  候选真名: string | null;
+}
+
+const P1缺省案例内容: P1案例内容 = {
+  招聘者姓名: 'P1FIX 联系人',
+  招聘者职务: '招聘负责人',
+  用人企业: null,
+  候选真名: null,
+};
+
+function P1会话案例(caseId: string, 内容: P1案例内容) {
+  const c = P5Case({
+    caseId, lifecycle: 'open', stage: 'anonymous_screening', status: 'running', step: 'policy_check',
+    职位名: 'P1FIX 在谈岗位', alias: 'candidate-00000000a101',
+  });
+  // 冻结 jobDetail 沿用 P7 案例的合法 25 键模板，按内容覆写展示成员
+  c.jobDetail = {
+    ...(P7案例记录().jobDetail as Record<string, unknown>),
+    title: 'P1FIX 在谈岗位',
+    organization: 内容.用人企业 === null ? null : {
+      organization_id: `org_${'0'.repeat(28)}p101`,
+      display_name: 内容.用人企业,
+      industry: null, company_size: null, funding_stage: null, logo: null,
+    },
+    publisher_profile: {
+      public_name: 内容.招聘者姓名,
+      title: 内容.招聘者职务,
+      personal_verification_status: 'verified' as const,
+      avatar_url: null,
+    },
+  };
+  return c;
+}
+
+function P1会话案例聚合(caseId: string, 内容: P1案例内容): Record<string, unknown> {
+  const 记录: P5连续记录形 = {
+    recordId: `mc_${'0'.repeat(28)}c101`,
+    recordKind: 'case',
+    caseId,
+    delegationId: null,
+    evaluationId: null,
+    phase: 'case_started',
+    needsAction: false,
+    actions: { retry: false, archive: false, open_case: false },
+    failure: null,
+    refusalCode: null,
+    retryGeneration: 0,
+    职位名: 'P1FIX 在谈岗位',
+    createdAt: 时间戳,
+    updatedAt: 时间戳,
+    archivedAt: null,
+    公开评: null,
+  };
+  return P5连续详情wire({ [caseId]: P1会话案例(caseId, 内容) }, 记录);
+}
+
+function P1招聘案例详情(caseId: string, 内容: P1案例内容): Record<string, unknown> {
+  const wire = P5详情wire(P1会话案例(caseId, 内容), 'recruiter');
+  if (内容.候选真名 === null) return wire;
+  return {
+    ...wire,
+    candidate_identity: { state: 'disclosed', name: 内容.候选真名, avatar_url: null, disclosed_at: 时间戳 },
+  };
+}
+
 interface P1会话项形 {
   conversation_id: string;
   case_id: string;
@@ -339,12 +424,12 @@ interface P1会话项形 {
 
 function P1会话项(
   conversation_id: string,
-  选项: { 未读?: number; 摘要?: string | null; 无上下文?: boolean; 时间?: string } = {},
+  选项: { 未读?: number; 摘要?: string | null; 无上下文?: boolean; 时间?: string; 案例编号?: string } = {},
 ): P1会话项形 {
   const 上下文不可用 = 选项.无上下文 === true;
   const 条: P1会话项形 = {
     conversation_id,
-    case_id: 'mc_p1_000000000000000000000001',
+    case_id: 选项.案例编号 ?? 'mc_p1_000000000000000000000001',
     kind: 'human_handoff',
     last_message: 选项.摘要 === null
       ? null
@@ -383,6 +468,8 @@ interface P1场景fixture {
   岗位: Record<string, P1CandidateJob形>;
   推荐卡: P1候选卡形[];
   /** 无游标会话列表第 N 次读取（1 起）的应答；null = 500 受控错误 */
+  /** 会话案例内容（Task 10 fix-r1）：键 = 会话 case_id；未列的编号用缺省内容 */
+  案例们?: Record<string, P1案例内容>;
   会话页: (读数: number) => { items: P1会话项形[]; next_cursor: string | null } | null;
   /** 带游标会话列表应答（游标原文 → 页） */
   会话页按游标: Record<string, { items: P1会话项形[]; next_cursor: string | null }>;
@@ -401,11 +488,11 @@ function 会话消息甲(): P1消息形[] {
 function 场景fixture(场景: P1场景名): P1场景fixture {
   if (场景 === '完整') {
     // 双栈同文对照：同文岗位 + 两条同文长度的会话行（后一条在游标第二页，顺带覆盖分页）
-    const 同文会话 = P1会话项(编号.会话甲, { 摘要: '新建岗，产品这边你是第一个，配 6 个工程师', 时间: '2026-08-30T10:46:00Z' });
+    const 同文会话 = P1会话项(编号.会话甲, { 摘要: '新建岗，产品这边你是第一个，配 6 个工程师', 时间: '2026-08-30T10:46:00Z', 案例编号: 'mc_p1_000000000000000000000001' });
     同文会话.context = { primary_label: '陆知遥', secondary_label: 'MiniMax · 直聊中 · 未走AI代理', job_ref: 编号.职位完整, resume_ref: 'rf_00112233445566778899aabbccddee01' };
-    const 同文会话乙 = P1会话项(编号.会话乙, { 摘要: '收到！面试官是邵铭 + 架构评审组，流程约 90 分钟', 时间: '2026-08-29T09:30:00Z' });
+    const 同文会话乙 = P1会话项(编号.会话乙, { 摘要: '收到！面试官是邵铭 + 架构评审组，流程约 90 分钟', 时间: '2026-08-29T09:30:00Z', 案例编号: 'mc_p1_000000000000000000000002' });
     同文会话乙.context = { primary_label: '林筱', secondary_label: '铨衡人才 · 意向已确认 · 真人沟通', job_ref: 编号.职位完整, resume_ref: 'rf_00112233445566778899aabbccddee01' };
-    const 未读会话 = P1会话项(编号.会话丙, { 未读: 2, 摘要: 'P1FIX 摘要：第二页会话', 时间: '2026-08-28T08:00:00Z' });
+    const 未读会话 = P1会话项(编号.会话丙, { 未读: 2, 摘要: 'P1FIX 摘要：第二页会话', 时间: '2026-08-28T08:00:00Z', 案例编号: 'mc_p1_000000000000000000000003' });
     return {
       岗位: {
         [编号.职位完整]: P1岗位(编号.职位完整),
@@ -415,6 +502,12 @@ function 场景fixture(场景: P1场景名): P1场景fixture {
         P1推荐卡(P1岗位(编号.职位完整), 92),
         P1推荐卡(P1岗位(编号.职位零分), 0),
       ],
+      案例们: {
+        // 落地资料（Task 2/6 行映射）：候选行 = 招聘者姓名/职务 + 发布企业链；
+        // 招聘行 = 候选真名（甲 披露、乙 匿名）+ 用人企业·岗位
+        ['mc_p1_000000000000000000000001']: { 招聘者姓名: '陆知遥', 招聘者职务: '招聘负责人', 用人企业: 'MiniMax', 候选真名: 'P1FIX 候选真名' },
+        ['mc_p1_000000000000000000000002']: { 招聘者姓名: '林筱', 招聘者职务: '技术面试官', 用人企业: null, 候选真名: null },
+      },
       会话页: () => ({ items: [同文会话, 同文会话乙], next_cursor: 'p1page2' }),
       会话页按游标: { p1page2: { items: [未读会话], next_cursor: null } },
       会话消息: { [编号.会话甲]: 会话消息甲(), [编号.会话乙]: [], [编号.会话丙]: [] },
@@ -448,12 +541,16 @@ function 场景fixture(场景: P1场景名): P1场景fixture {
       会话页: () => ({
         items: [
           P1会话项(编号.会话甲, { 无上下文: true }),
-          P1会话项(编号.会话乙, { 摘要: null }),
+          P1会话项(编号.会话乙, { 摘要: null, 案例编号: 'mc_p1_000000000000000000000002' }),
           P1会话项(编号.会话丙, { 未读: 3 }),
         ],
         next_cursor: null,
       }),
       会话页按游标: {},
+      案例们: {
+        // 乙 落地资料后行标题 = 招聘者姓名：沿用该行原有的标记文本作姓名
+        ['mc_p1_000000000000000000000002']: { 招聘者姓名: 'P1FIX 职位 3002', 招聘者职务: '招聘负责人', 用人企业: null, 候选真名: null },
+      },
       会话消息: { [编号.会话甲]: 会话消息甲(), [编号.会话乙]: [], [编号.会话丙]: [] },
       岗位GET错误: false,
     };
@@ -464,13 +561,18 @@ function 场景fixture(场景: P1场景名): P1场景fixture {
       description: 标记.长正文段落们.join('\n'),
       requirements: 标记.长正文段落们.slice(0, 3).join('\n'),
     });
-    const 长标题会话 = P1会话项(编号.会话长标题, { 摘要: 标记.专有摘要 });
+    const 长标题会话 = P1会话项(编号.会话长标题, { 摘要: 标记.专有摘要, 案例编号: 'mc_p1_000000000000000000000004' });
     长标题会话.context = { primary_label: 标记.长标题, secondary_label: 'P1FIX 市', job_ref: 编号.职位长文, resume_ref: 'rf_00112233445566778899aabbccddee01' };
-    const 长副标题会话 = P1会话项(编号.会话长副标题, { 摘要: 标记.长摘要 });
+    const 长副标题会话 = P1会话项(编号.会话长副标题, { 摘要: 标记.长摘要, 案例编号: 'mc_p1_000000000000000000000005' });
     长副标题会话.context = { primary_label: 'P1FIX 正常长度标题', secondary_label: 标记.长副标题, job_ref: 编号.职位长文, resume_ref: 'rf_00112233445566778899aabbccddee01' };
     return {
       岗位: { [编号.职位长文]: 长文岗位 },
       推荐卡: [P1推荐卡(长文岗位, 76)],
+      案例们: {
+        // 落地后候选行标题 = 招聘者姓名：长名样本沿用 80 汉字长标题，长副标题行同理
+        ['mc_p1_000000000000000000000004']: { 招聘者姓名: 标记.长标题, 招聘者职务: 'P1FIX 市', 用人企业: null, 候选真名: null },
+        ['mc_p1_000000000000000000000005']: { 招聘者姓名: 'P1FIX 正常长度标题', 招聘者职务: 标记.长副标题, 用人企业: null, 候选真名: null },
+      },
       会话页: () => ({ items: [长标题会话, 长副标题会话], next_cursor: null }),
       会话页按游标: {},
       会话消息: { [编号.会话长标题]: 会话消息甲(), [编号.会话长副标题]: [] },
@@ -483,12 +585,22 @@ function 场景fixture(场景: P1场景名): P1场景fixture {
     推荐卡: [],
     会话页: (读数) => {
       if (读数 <= 2) {
-        return { items: [P1会话项(编号.会话甲, { 未读: 1 }), P1会话项(编号.会话乙)], next_cursor: null };
+        return {
+          items: [
+            P1会话项(编号.会话甲, { 未读: 1, 案例编号: 'mc_p1_000000000000000000000001' }),
+            P1会话项(编号.会话乙, { 案例编号: 'mc_p1_000000000000000000000002' }),
+          ],
+          next_cursor: null,
+        };
       }
       if (读数 === 3) return null;
       return { items: [], next_cursor: null };
     },
     会话页按游标: {},
+    案例们: {
+      // 落地后候选行标题 = 招聘者姓名：沿用该行原有的标记文本作姓名
+      ['mc_p1_000000000000000000000001']: { 招聘者姓名: 'P1FIX 职位 3001', 招聘者职务: '招聘负责人', 用人企业: null, 候选真名: null },
+    },
     会话消息: { [编号.会话甲]: 会话消息甲(), [编号.会话乙]: [] },
     岗位GET错误: true,
   };
@@ -772,6 +884,21 @@ export async function 安装P1路由(
         await 答(200, 信封({ read_through_message_id: (body as { read_through_message_id?: string }).read_through_message_id ?? '' }));
         return;
       }
+    }
+
+    // ── Case 聚合详情坐标（Task 10 fix-r1）：消息列表/聊天页按会话 case_id 定向补读。
+    //    本分支 Task 5/6 起该读取带 include 查询 —— P1 白名单此前从未声明这条坐标，
+    //    请求落离线边界导致消息层 12 例基线红（回归由本分支引入，非存量债）。──
+    const 案例详情匹配 = /^\/api\/v1\/(me\/negotiations|recruiter\/match-cases)\/([^/]+)$/.exec(path);
+    if (案例详情匹配 && method === 'GET') {
+      const caseId = decodeURIComponent(案例详情匹配[2]!);
+      const 内容 = fixture.案例们?.[caseId] ?? P1缺省案例内容;
+      if (案例详情匹配[1] === 'recruiter/match-cases') {
+        await 答(200, 信封(P1招聘案例详情(caseId, 内容)));
+      } else {
+        await 答(200, 信封(P1会话案例聚合(caseId, 内容)));
+      }
+      return;
     }
 
     // ── 白名单外：记录后显式 fallback，交给 context 级离线边界

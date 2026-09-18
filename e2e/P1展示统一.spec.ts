@@ -926,7 +926,8 @@ for (const 宽度 of 后端宽度们) {
       expect(Number.isInteger(诊断溢出记录)).toBe(true);
       await 采集后端场景(page, 诊断, `p1-backend-job-longtext-${宽度}`, [
         await 取几何(page.getByText(长标题文本, { exact: true }), '职位名 长标题'),
-        await 取几何(page.getByRole('button', { name: '让AI代理去谈' }), '浮动主按钮'),
+        // 通用直达（无四坐标）不许诺委托（C2，Task 7 接线）：主键给中性禁用态
+        await 取几何(page.getByRole('button', { name: '当前求职意向暂无这条推荐' }), '浮动主按钮'),
       ]);
 
       期望无意外诊断(诊断);
@@ -974,8 +975,11 @@ for (const 宽度 of 后端宽度们) {
       await 消息定位(page).click();
       await expect(page.getByRole('button', { name: /陆知遥/ })).toBeVisible({ timeout: 15_000 });
 
-      // 行映射（candidate：标题=职位、副标题=地点）与 HTTP 标记值
-      await expect(page.getByText('MiniMax · 直聊中 · 未走AI代理', { exact: true })).toBeVisible();
+      // 行映射落地资料（Task 2/6 契约A，Task 10 fix-r1 对齐）：候选行标题/副标题 =
+      // Case 冻结发布人姓名 + 发布方公司（publisher 链）· 职务；viewer-safe 加载标签
+      // （context 的 MiniMax 字样）只在资料落地前的过渡帧出现，不再作锚点
+      await expect(page.getByText('陆知遥', { exact: true })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('美团 · 招聘负责人', { exact: true })).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('新建岗，产品这边你是第一个，配 6 个工程师')).toBeVisible();
       // 固定 AI 入口行：唯一入口、无模拟摘要/时间/未读（取代旧缺席断言）；
       // Backend 未读 0 不误套 Mock 红点语义（无红点无数字）
@@ -1056,10 +1060,13 @@ for (const 宽度 of 后端宽度们) {
       const 诊断 = 安装诊断(page);
       await 打开后端主壳(page, 角色);
 
-      // 招聘端标题=候选侧 secondary_label（反转映射），行几何与候选端同一展示
+      // 招聘端行映射落地资料（Task 2/6 契约A，Task 10 fix-r1 对齐）：标题 = Case
+      // candidateIdentity（disclosed 真名；匿名给「候选人姓名暂未提供」）、副标题 =
+      // 用人企业 · 岗位；viewer-safe 反转标签只是资料落地前的过渡帧，不再作锚点
       await 消息定位(page).click();
-      const 行甲 = page.getByRole('button', { name: /MiniMax · 直聊中 · 未走AI代理/ }).first();
+      const 行甲 = page.getByRole('button', { name: /P1FIX 候选真名/ }).first();
       await expect(行甲).toBeVisible({ timeout: 15_000 });
+      await expect(行甲).toContainText('MiniMax · P1FIX 在谈岗位');
       // 固定 AI 入口行：唯一入口、无模拟摘要/时间/未读；Mock 的「本周替你初筛 23 人」零残留
       await 期望固定AI入口行(page, 角色);
       await expect(page.getByText('本周替你初筛 23 人')).toHaveCount(0);
@@ -1070,7 +1077,7 @@ for (const 宽度 of 后端宽度们) {
         await 取几何(page.getByRole('button', { name: '全部', exact: true }), '页签 全部'),
         await 取几何(page.getByPlaceholder('搜索会话 / 候选 / 岗位'), '搜索输入'),
         await 取几何(行甲, '会话行 甲'),
-        await 取几何(page.getByRole('button', { name: /林筱/ }).first(), '会话行 乙'),
+        await 取几何(page.getByRole('button', { name: /候选人姓名暂未提供/ }).first(), '会话行 乙'),
         ...(await 取行节点几何(行甲, '会话行 甲')),
       ]);
 
@@ -1131,11 +1138,13 @@ for (const 宽度 of 后端宽度们) {
       const 长标题行 = page.getByRole('button', { name: /P1FIX 市/ }).first();
       await expect(长标题行).toBeVisible({ timeout: 15_000 });
 
-      // HTTP 长标题字段如实上屏（fixture 数据，非 DOM 替换）
+      // HTTP 长标题字段如实上屏（fixture 数据，非 DOM 替换）：落地资料后行标题 =
+      // Case 招聘者姓名（同一长名样本），Task 2 三行版式的单行截断在行内收口 ——
+      // 旧「标题溢出视口」限制随版式修复不再复现，改断言当前事实
       await expect(page.getByText(长标题文本, { exact: true })).toBeVisible();
       const 长标题几何 = await 取几何(page.getByText(长标题文本, { exact: true }), '长标题 HTTP 标题');
-      // 旧有限制如实记录：标题不收缩不换行（宽度超出视口），时间被挤出视口右沿 —— 不修不门禁
-      expect(长标题几何.width).toBeGreaterThan(宽度);
+      expect(长标题几何.width).toBeLessThanOrEqual(宽度);
+      expect(长标题几何.width).toBeGreaterThan(宽度 / 2);
 
       // 正常长度标题 + 长副标题/长摘要：既有单行截断生效，时间不被挤出或遮住
       const 长副标题行 = page.getByRole('button', { name: /P1FIX 正常长度标题/ }).first();
@@ -1145,19 +1154,22 @@ for (const 宽度 of 后端宽度们) {
       const 副标题节点 = 节点.find((条) => 条.名称 === '长副标题行 副标题');
       const 时间节点 = 节点.find((条) => 条.名称 === '长副标题行 时间');
       expect(标题节点 && 副标题节点 && 时间节点).toBeTruthy();
-      expect(副标题节点!.x + 副标题节点!.width).toBeLessThanOrEqual(时间节点!.x);
+      // 单行截断（.单行 ellipsis）在行内收口：副标题/时间盒都不越出视口（时间不被挤出）
+      expect(副标题节点!.x + 副标题节点!.width).toBeLessThanOrEqual(宽度);
       expect(时间节点!.x + 时间节点!.width).toBeLessThanOrEqual(宽度);
 
       // Task 1 同文本隔离布局样本：对正常行做同一 80 汉字 DOM 替换，几何不退化
+      //（行框基准取替换前的实测高 —— 替换不得引起重排）
+      const 样本行原高 = (await 长副标题行.boundingBox())!.height;
       const 样本 = await 记长标题几何(page, 'P1FIX 正常长度标题', '08-30');
       const 样本标题 = 样本.find((条) => 条.名称 === '长标题样本 标题');
       const 样本时间 = 样本.find((条) => 条.名称 === '长标题样本 时间');
       const 样本行 = 样本.find((条) => 条.名称 === '长标题样本 会话行');
       expect(样本标题 && 样本时间 && 样本行).toBeTruthy();
-      // 与 Mock 基准同行为：标题非收缩（宽度超视口）、时间被挤出视口右沿、行框 73 高不变
-      expect(样本标题!.width).toBeGreaterThan(宽度);
-      expect(样本时间!.x).toBeGreaterThan(宽度);
-      expect(样本行!.height).toBeCloseTo(73, 1);
+      // 与当前版式同行为：长标题单行截断在行内（不溢出视口）、时间留在视口内、行框高不变
+      expect(样本标题!.width).toBeLessThanOrEqual(宽度);
+      expect(样本时间!.x + 样本时间!.width).toBeLessThanOrEqual(宽度);
+      expect(样本行!.height).toBeCloseTo(样本行原高, 1);
 
       await 采集后端场景(page, 诊断, `p1-backend-msg-longtitle-${宽度}`, [
         长标题几何,

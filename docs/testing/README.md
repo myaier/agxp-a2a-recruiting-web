@@ -679,12 +679,17 @@ fixture 修复前 20 failed，断言迁移（URL 四坐标锚、include 矩阵�
 顺序、退役文案「未提供判定/匹配分析缺失/推荐依据」、旧合并轮次行）后全绿；
 `e2e/展示字段接线.spec.ts` 全量 34 passed（候选侧 4 例基线红根因有二：URL `$` 锚
 未容纳四坐标 query、嵌套候选 case_detail 缺解释键，均已修）；`e2e/P1展示统一.spec.ts`
-中义务点名的 `p1-job-top`（含 `匹配度分析标题` 关键元素，Mock 320/390）通过。
-P1 Backend 消息层 12 例（双端消息行/无上下文/长文/错误带缓存/长标题 × 320/390）
-维持基线红：根因是 P1 fixture 未声明会话页 Case 聚合详情坐标
-（`GET /me/negotiations/{id}?include=match_explanation` 落离线边界），与 Task 8/9
-基线红集合逐例相同（本轮零新增、零修复 —— 修法需在 P1 fixture 内建完整聚合详情
-wire，超出本 Task 迁移范围，留待 P1 fixture 责任方）。
+全量 46 passed（fix round 1）。
+
+P1 Backend 消息层 12 例的归属更正（review 裁定 + 本轮清偿）：红始于**本分支**
+Task 5/6 接线引入的新请求形态 —— 会话页按会话 case_id 定向补读
+`GET /{me/negotiations|recruiter/match-cases}/{id}?include=…`（84fd3c11 的 src 无此
+形态，git grep 证实；P1 spec 84fd3c11→HEAD 逐行未变），Task 8 基线首次观测到红，
+并非存量基线债。清偿：P1 fixture 补声明该聚合详情坐标（按会话 case_id 给最小合法
+开案 wire，分数/解释显式 null；招聘侧 candidate_identity/jobDetail 支撑行资料映射），
+并把两处停在 viewer-safe 加载标签的旧行锚迁到落地资料锚（候选 '美团 · 招聘负责人'、
+招聘 'P1FIX 候选真名'）；「长标题溢出视口」的旧限制记录随三行版式截断失效，改断言
+单行截断在行内收口。实跑 `e2e/P1展示统一.spec.ts` 全量 46/46 绿。
 
 ### 视觉（Task 4/10 义务）
 

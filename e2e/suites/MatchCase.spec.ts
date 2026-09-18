@@ -936,6 +936,11 @@ test.describe('六维展示对齐 @backend', () => {
     // 候选端丙二（S1 解析失败行）当 S1 来源样本：招聘侧初筛 continue 后服务端进 S2
     const 单 = fixture.cases[P5编号.丙二]!;
     const 进S2 = (步骤: 'assessing' | 'answering' | null, 招聘待办: boolean) => {
+      单.lifecycle = 'open';
+      单.finalizedAt = null; // open 无终局列：finalized_at 必缺席（生命周期↔终局闭合）
+      单.终局 = undefined;
+      单.outcome = null;
+      单.outcomeCode = null;
       单.stage = 'needs_coordination';
       // 矩阵行：open+needs_coordination 只认 needs_user/attention_required 两档
       单.status = 招聘待办 ? 'attention_required' : 'needs_user';
@@ -975,11 +980,46 @@ test.describe('六维展示对齐 @backend', () => {
     await expect(page.getByText('当前由招聘方发问', { exact: false })).toHaveCount(0);
     await expect(page.getByText('招聘 Agent 判断中')).toHaveCount(0); // 缺 step 不从 asking_role 猜
 
-    // ── 来源二（招聘侧 s1_continue 完成后的 S2 assessing）与来源三（reconsider 恢复
-    //    回 S2）同形：服务端 S2 响应被原样消费，前端不因 open items 为空跳 S3 ──
+    // ── 来源二（招聘侧 s1_continue 完成后的 S2 assessing）：服务端 S2 响应被原样
+    //    消费，前端不因 open items 为空跳 S3 ──
     进S2('assessing', true);
     await expect(page.getByText('招聘 Agent 判断中')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('招聘方已问 1/2 轮')).toBeVisible();
+
+    // ── 来源三（reconsider 恢复）：先给「S1 ended + 七天窗口」的恢复前态，再翻回
+    //    open S2。恢复后的 S2 响应 reconsideration 恒为 null —— 解重新考虑 的合同
+    //    是「恢复窗口只属于已结束的 Case：open/completed 携带该块即漂移」
+    //    （src/数据/招聘数据源/MatchCase.ts），非空块在 open S2 上会被整包拒绝；
+    //    非空块的真实合同形只出现在恢复前的 ended 快照上（本段第一拍）。──
+    单.lifecycle = 'ended';
+    单.stage = 'resume_submission';
+    单.status = 'ended';
+    单.step = 'complete';
+    单.outcome = 'semantic_not_fit';
+    单.outcomeCode = 'hard_exclusion';
+    单.finalizedAt = '2026-08-29T04:00:00Z';
+    单.终局 = { stage: 'resume_submission', outcome: 'semantic_not_fit', reason_summary: 'hard_exclusion', finalized_at: 单.finalizedAt };
+    单.候选 = { needsAction: false, actions: [] };
+    单.招聘 = { needsAction: false, actions: [] };
+    单.协同 = undefined;
+    单.连续块 = {
+      pending_actions: [],
+      dialogue_progress: {
+        stage: 'resume_submission', asking_role: 'recruiter',
+        recruiter_round: 1, candidate_round: 0, round_budget: 2,
+      },
+      reconsideration: { eligible: true, deadline: '2026-12-01T03:00:00Z', unavailable_reason: null },
+      confirmation_summary: null,
+    };
+    await expect(page.getByText(/招聘方可在 .* 前重新考虑这一单/)).toBeVisible({ timeout: 15_000 });
+    // ended 详情的节拍已停（终局只读零轮询）：恢复发生在服务端（另一端/另一会话），
+    // 本端以重新进入详情表达「回来再看」—— 重挂载后的权威读取消费恢复后的 open S2
+    进S2('answering', true);
+    await hash直达(page, '/#/app');
+    await hash直达(page, `/#/deal/${P5连续编号.丙二}`);
+    await expect(page.getByText('候选 Agent 回答中')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/招聘方可在 .* 前重新考虑这一单/)).toHaveCount(0); // 恢复后窗口块退场
+    await expect(page.getByText('当前在谈已结束，仅可查看')).toHaveCount(0); // 不再是终局只读
 
     // ── 招聘侧 finish（服务端单侧 accept）：本端仍展示 S2（候选 Agent 判断中），
     //    绝不提前进入 S3；只有服务端推进后 S3 才上屏 ──
