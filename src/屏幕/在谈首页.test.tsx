@@ -118,7 +118,7 @@ describe('在谈首页 · Mock 卡统一（Task 3：卡面迁到共享求职在�
     expect(await screen.findByText('资深后端工程师 · 交易网关')).toBeTruthy();
     expect(screen.getAllByText('抖音').length).toBeGreaterThan(0);
     expect(screen.getAllByText('未上市 · 10000 人以上').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('50–65K').length).toBeGreaterThan(0); // 原展示破折号行为
+    expect(screen.getAllByText('50–65K x 15').length).toBeGreaterThan(0); // Mock 薪资带已含 x N 后缀（§8A）
     expect(screen.getByText('上海 · 浦东')).toBeTruthy();
     expect(screen.getByText('意向确认')).toBeTruthy();
     expect(screen.getByText('见面条件已一致，是否确认意向')).toBeTruthy();

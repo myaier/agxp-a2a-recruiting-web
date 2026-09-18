@@ -23,8 +23,8 @@ function 渲染卡(覆盖: Partial<求职推荐卡属性> = {}): {
     公司简介: '未上市 · 200-500 人',
     公司首字: '云',
     职位: '资深后端工程师 · 交易网关',
-    薪资: '20-40K·14薪',
-    标签: ['上海 · 浦东', '15 薪', 'Go'],
+    薪资: '20–40K x 14',
+    标签: ['上海 · 浦东', 'Go'],
     匹配分: 94,
     发布人: '云帆科技 · 企业直招',
     发布人首字: '企',
@@ -47,10 +47,10 @@ describe('求职推荐卡 · 原市场卡已知值（合同 D 提取基准）', 
     expect(screen.getByText('云帆科技')).toBeTruthy();
     expect(screen.getByText('未上市 · 200-500 人')).toBeTruthy();
     expect(screen.getByRole('img', { name: '适配 94 分' })).toBeTruthy();
-    // 原展示破折号行为：薪资里的 - 照旧换成 –（不改币种/单位/数值）
-    expect(screen.getByText('20–40K·14薪')).toBeTruthy();
+    // 薪资串由映射边界格式化后原样渲染（Task 9 / §8A）
+    expect(screen.getByText('20–40K x 14')).toBeTruthy();
     expect(screen.getByText('资深后端工程师 · 交易网关')).toBeTruthy();
-    for (const 标签 of ['上海 · 浦东', '15 薪', 'Go']) {
+    for (const 标签 of ['上海 · 浦东', 'Go']) {
       expect(screen.getByText(标签)).toBeTruthy();
     }
     // 发布人以「公司 · 」开头只留身份段（原市场卡行为逐字保留）
@@ -76,6 +76,19 @@ describe('求职推荐卡 · 原市场卡已知值（合同 D 提取基准）', 
 });
 
 describe('求职推荐卡 · null/0 与占位（合同 D：null 控制占位，空串不是 null）', () => {
+  // Task 9 / Spec §8A：薪资串在映射边界统一格式化，卡面原样渲染，不再散落 JSX replace
+  it('§8A：薪资原样渲染传入串，卡内不做连字符替换', () => {
+    render(<求职推荐卡
+      公司="云帆科技" 公司简介="未上市" 公司首字="云"
+      职位="资深后端工程师" 薪资="20-40K" 标签={[]}
+      匹配分={null}
+      发布人="企业直招" 发布人首字="企" 发布人底色="#5b7a9a" 发布人字色="#fff"
+      已委托={false} 委托禁用={false} 委托={vi.fn()} 打开={vi.fn()}
+    />);
+    expect(screen.getByText('20-40K')).toBeTruthy();
+    expect(screen.queryByText('20–40K')).toBeNull();
+  });
+
   it('匹配分 null 走卡片分数未知占位：不画环；真实 0 分仍画 0 分环，不误判未知', () => {
     const 无分宿主 = render(<求职推荐卡
       公司="云帆科技" 公司简介="未上市" 公司首字="云"
@@ -105,7 +118,7 @@ describe('求职推荐卡 · null/0 与占位（合同 D：null 控制占位，�
   it('公司首字 null 走中性空位：不渲染字标、不按公司名命中静态标；公司/简介 null 给未知占位', () => {
     const 宿主 = render(<求职推荐卡
       公司={null} 公司简介={null} 公司首字={null}
-      职位="AI 产品实习生" 薪资="300-500 元/天" 标签={['上海']}
+      职位="AI 产品实习生" 薪资="300–500 元/天" 标签={['上海']}
       匹配分={null}
       发布人={null} 发布人首字={null} 发布人底色="#5b7a9a" 发布人字色="#fff"
       已委托={false} 委托禁用={false} 委托={vi.fn()} 打开={vi.fn()}
@@ -124,7 +137,7 @@ describe('求职推荐卡 · null/0 与占位（合同 D：null 控制占位，�
   it('空串不是 null：市场页既有空段渲染逐字不变，不出占位文字', () => {
     const 宿主 = render(<求职推荐卡
       公司="云衢科技" 公司简介="" 公司首字="云"
-      职位="AI 产品实习生" 薪资="300-500 元/天" 标签={[]}
+      职位="AI 产品实习生" 薪资="300–500 元/天" 标签={[]}
       匹配分={87}
       发布人="" 发布人首字="" 发布人底色="#5b7a9a" 发布人字色="#fff"
       已委托={false} 委托禁用={false} 委托={vi.fn()} 打开={vi.fn()}
@@ -264,10 +277,10 @@ describe('求职推荐卡 · 查看匹配分析入口（C3 / Spec §3.1：仅指
     expect(卡主体键.contains(入口)).toBe(false);
     expect(卡主体键.querySelectorAll('button')).toHaveLength(0);
     // 44px 触摸区不挤薪资：薪资与入口同列照常渲染
-    expect(screen.getByText('20–40K·14薪')).toBeTruthy();
+    expect(screen.getByText('20–40K x 14')).toBeTruthy();
     const 右列 = 入口.parentElement as HTMLElement;
     expect(右列.className).toContain('右列');
-    expect(within(右列).getByText('20–40K·14薪')).toBeTruthy();
+    expect(within(右列).getByText('20–40K x 14')).toBeTruthy();
   });
 
   it('匹配分 null 仍保留入口：— 占位在入口内（仍可查看缺失说明），不画假 0 分环', () => {

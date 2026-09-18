@@ -508,7 +508,7 @@ describe('MatchCase列表 · 候选连续在谈（J-PILOT-01 Task 4）', () => {
     expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
     const 标签顺序 = Array.from(卡.querySelector('[data-card-region="tags"]')?.children ?? [])
       .map((元) => 元.textContent);
-    expect(标签顺序).toEqual(['上海', '15 薪', '混合', 'Go', '高并发']);
+    expect(标签顺序).toEqual(['上海', '混合', 'Go', '高并发']); // §8A：无独立 N 薪 段
     // 组织摘要只来自快照内已 decode 的字段：零逐卡补读
     expect(mock加载连续列表).toHaveBeenCalledTimes(1);
   });

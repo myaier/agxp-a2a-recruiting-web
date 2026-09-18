@@ -658,7 +658,9 @@ describe('职位详情 · P4 权威数据（Backend）', () => {
     expect(await screen.findByText('城市：上海')).toBeTruthy();
     expect(screen.getByText('办公方式：混合')).toBeTruthy();
     expect(screen.getByText('办公地点：浦东新区世纪大道 1 号')).toBeTruthy();
-    expect(screen.getByText('年薪月数：15 薪')).toBeTruthy();
+    // §8A：年薪月数由薪资带的 x N 后缀表达，事实行不再有独立「年薪月数：N 薪」
+    expect(screen.queryByText('年薪月数：15 薪')).toBeNull();
+    expect(screen.getByText('300–500 元/天')).toBeTruthy(); // 日薪永不追加月数（样本 300/500/day）
     expect(screen.getByText('结构化经验要求：3-5 年')).toBeTruthy();
     expect(screen.getByText('结构化学历要求：本科')).toBeTruthy();
     // 详情直取（通用岗位直达）：无推荐分、无生成分析，明确显示无推荐上下文

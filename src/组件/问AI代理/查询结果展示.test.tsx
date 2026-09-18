@@ -295,25 +295,25 @@ describe('查询结果展示 · 消息时间（Spec §10.4）', () => {
 // ── 岗位推荐结果（Spec §4.1 + §10.3 卡内中文理由）──
 
 describe('查询结果展示 · 岗位推荐结果', () => {
-  it('真实字段映射原市场卡：薪资/标签[地点,n 薪]、未知占位、委托禁用、卡内中文理由原序、打开岗位送精确 job_id', () => {
+  it('真实字段映射原市场卡：薪资带 x N 后缀、标签只留地点、未知占位、委托禁用、卡内中文理由原序、打开岗位送精确 job_id', () => {
     const { 属性, 宿主 } = 渲染([岗位卡([
       造岗位项({
         safe_reasons: ['category_matched', 'experience_met', '城市一致'],
       }),
     ])]);
     expect(screen.getByText('资深后端工程师')).toBeTruthy();
-    expect(screen.getByText('20–35K')).toBeTruthy();
+    expect(screen.getByText('20–35K x 15')).toBeTruthy();
     // 未知占位：公司/简介/分/发布人未知，公司图位中性空位
     expect(screen.getByText('公司信息未知')).toBeTruthy();
     expect(screen.getByText('公司简介未知')).toBeTruthy();
     expect(screen.getByLabelText('公司图片未知')).toBeTruthy();
     expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
     expect(screen.getByText('发布人未知')).toBeTruthy();
-    // 标签顺序 = [office_location, "n 薪"]；未提供招聘类型/办公方式不制造事实
+    // 标签顺序 = [office_location]；§8A 起月数由薪资后缀表达，未提供招聘类型/办公方式不制造事实
     const 标签们 = Array.from(
       screen.getByTestId('求职推荐卡').querySelector('[class*="标签行"]')?.children ?? [],
     ).map((元) => 元.textContent);
-    expect(标签们).toEqual(['上海 · 浦东', '15 薪']);
+    expect(标签们).toEqual(['上海 · 浦东']);
     // 匹配理由进卡内：已知码译中文带勾、自然语言保留原文；原序；无机器码透出
     const 卡文 = screen.getByTestId('求职推荐卡').textContent ?? '';
     expect(卡文.indexOf('职位方向匹配')).toBeGreaterThanOrEqual(0);
@@ -349,8 +349,8 @@ describe('查询结果展示 · 岗位推荐结果', () => {
     expect(screen.getByText('300–500 元/天')).toBeTruthy();
     expect(screen.getByText('80–120 元/时')).toBeTruthy();
     expect(screen.getByText('地点未知')).toBeTruthy();
-    expect(screen.getByText('13 薪')).toBeTruthy();
-    // 缺年薪月数不假设 12/13 薪
+    // §8A：日/时薪与缺月数都不出独立「N 薪」标签，时薪也不追加后缀
+    expect(screen.queryByText('13 薪')).toBeNull();
     expect(screen.queryByText('12 薪')).toBeNull();
     expect(screen.queryByText('15 薪')).toBeNull();
     // 理由真实为空（未知机器码被过滤）：卡内出「暂无推荐理由」占位，不编造理由
@@ -417,7 +417,7 @@ describe('查询结果展示 · 在谈列表结果', () => {
     expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
     expect(screen.getByText('后端负责人')).toBeTruthy();
     expect(screen.getByText('上海')).toBeTruthy();
-    expect(screen.getByText('20–35K·15薪')).toBeTruthy();
+    expect(screen.getByText('20–35K x 15')).toBeTruthy(); // 快照串经 规范薪资文本 规范化
     expect(无待办.queryByText('需要你')).toBeNull();
     无待办.unmount();
 
@@ -437,7 +437,7 @@ describe('查询结果展示 · 在谈列表结果', () => {
       case_id: 'case-9',
       job: {
         job_id: 'job-8', title: '数据工程师', location: '北京',
-        public_salary_range: '25-40K', availability: 'available',
+        public_salary_range: '25-40K', availability: 'available', // 渲染为 25–40K
       },
     });
     const { 属性 } = 渲染([在谈列表卡([项甲, 项乙])]);

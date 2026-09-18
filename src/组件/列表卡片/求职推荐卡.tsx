@@ -70,7 +70,8 @@ export default function 求职推荐卡({
       ) : (
         <卡片分数 分={匹配分} />
       )}
-      <span className={`${样式.薪资} 薪资体`}>{薪资.replace('-', '–')}</span>
+      {/* 薪资串在映射边界按 §8A 统一格式化，卡面原样渲染（Task 9 移除散落 replace） */}
+      <span className={`${样式.薪资} 薪资体`}>{薪资}</span>
     </div>
   );
   return (

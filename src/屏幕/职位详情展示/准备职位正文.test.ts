@@ -108,6 +108,18 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
     ]);
   });
 
+  it('Task 9 / §8A：年薪月数由薪资后缀表达，职位事实行不再有独立「年薪月数：N 薪」行', () => {
+    const 数据 = 准备Backend职位正文(从P4CandidateJob({
+      ...BFFCandidateJob样本,
+      salary_period: 'month',
+      salary_lower: 20,
+      salary_upper: 35,
+      annual_salary_months: 14,
+    }));
+    expect(数据.职位事实行.every((行) => !行.includes('薪'))).toBe(true);
+    expect(数据.薪资).toBe('20–35K x 14');
+  });
+
   it('JD 合法空正文：保留原标题与未知占位，事实行不能掩盖缺失', () => {
     const 视图 = 从P4CandidateJob({
       ...BFFCandidateJob样本,
@@ -392,7 +404,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
     const 数据 = 准备Mock职位正文(岗!);
     expect(mock取市场岗位详情).toHaveBeenCalledWith(岗);
     expect(数据.职位).toBe('交易中台架构师');
-    expect(数据.薪资).toBe('60-80K');
+    expect(数据.薪资).toBe('60–80K x 16'); // Mock 薪资带规范为 §8A 显示合同
     // Task 7（Spec §7）：快照对象逐字来自 Mock匹配快照表（全匹配 100 分），无核对行
     expect(数据.匹配.解释).toEqual(Mock匹配解释('M-13'));
     expect(数据.匹配.分数).toBe(Mock匹配解释('M-13')!.total_points);

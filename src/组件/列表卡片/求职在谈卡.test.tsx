@@ -30,9 +30,9 @@ function 渲染卡(覆盖: Partial<求职在谈卡属性> = {}): 求职在谈卡
     公司简介: '未上市 · 200-500 人',
     公司字标: { 首字: '云', 公司名: '云帆科技' },
     匹配分: 94,
-    薪资: '20-40K·14薪',
+    薪资: '20–40K x 14',
     职位: '资深后端工程师 · 交易网关',
-    标签: ['上海 · 浦东', '15 薪', 'Go'],
+    标签: ['上海 · 浦东', 'Go'],
     阶段: 阶段(),
     打开: vi.fn(),
     ...覆盖,
@@ -42,15 +42,32 @@ function 渲染卡(覆盖: Partial<求职在谈卡属性> = {}): 求职在谈卡
 }
 
 describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
+  // Task 9 / Spec §8A：薪资串在映射边界统一格式化，卡面原样渲染，不再散落 JSX replace
+  it('§8A：薪资原样渲染传入串，卡内不做连字符替换', () => {
+    render(<求职在谈卡
+      公司="云帆科技"
+      公司简介={null}
+      公司字标={null}
+      匹配分={null}
+      薪资="20-40K"
+      职位="资深后端工程师"
+      标签={[]}
+      阶段={阶段()}
+      打开={vi.fn()}
+    />);
+    expect(screen.getByText('20-40K')).toBeTruthy();
+    expect(screen.queryByText('20–40K')).toBeNull();
+  });
+
   it('Mock 基准：公司头行 + 右列[分+薪资] → 职位 → 标签 → 阶段区，区域顺序固定', () => {
     render(<求职在谈卡
       公司="云帆科技"
       公司简介="未上市 · 200-500 人"
       公司字标={{ 首字: '云', 公司名: '云帆科技' }}
       匹配分={94}
-      薪资="20-40K·14薪"
+      薪资="20–40K x 14"
       职位="资深后端工程师 · 交易网关"
-      标签={['上海 · 浦东', '15 薪', 'Go']}
+      标签={['上海 · 浦东', 'Go']}
       阶段={阶段()}
       打开={vi.fn()}
     />);
@@ -59,10 +76,10 @@ describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
     expect(screen.getByText('云帆科技')).toBeTruthy();
     expect(screen.getByText('未上市 · 200-500 人')).toBeTruthy();
     expect(screen.getByRole('img', { name: '适配 94 分' })).toBeTruthy();
-    // 原展示破折号行为：薪资里的 - 照旧换成 –（不改币种/单位/数值）
-    expect(screen.getByText('20–40K·14薪')).toBeTruthy();
+    // 薪资串由映射边界格式化后原样渲染（Task 9 / §8A）
+    expect(screen.getByText('20–40K x 14')).toBeTruthy();
     expect(screen.getByText('资深后端工程师 · 交易网关')).toBeTruthy();
-    for (const 标签 of ['上海 · 浦东', '15 薪', 'Go']) {
+    for (const 标签 of ['上海 · 浦东', 'Go']) {
       expect(screen.getByText(标签)).toBeTruthy();
     }
     expect(screen.getByText('见面条件已一致，是否确认意向')).toBeTruthy();
@@ -78,7 +95,7 @@ describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
       公司简介={null}
       公司字标={null}
       匹配分={null}
-      薪资="300-500 元/天"
+      薪资="300–500 元/天"
       职位="AI 产品实习生"
       标签={[]}
       阶段={阶段()}
@@ -106,7 +123,7 @@ describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
       公司简介={null}
       公司字标={null}
       匹配分={null}
-      薪资="300-500 元/天"
+      薪资="300–500 元/天"
       职位="AI 产品实习生"
       标签={['上海', '  ', '', 'Python', 'Python']}
       阶段={阶段()}
@@ -127,7 +144,7 @@ describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
       公司简介="  "
       公司字标={{ 首字: '云', 公司名: '云帆科技' }}
       匹配分={94}
-      薪资="20-40K·14薪"
+      薪资="20–40K x 14"
       职位="资深后端工程师 · 交易网关"
       标签={['上海 · 浦东']}
       阶段={阶段()}
@@ -146,7 +163,7 @@ describe('求职在谈卡 · 卡面与占位（Spec §5.3 / §4）', () => {
       公司简介={null}
       公司字标={null}
       匹配分={null}
-      薪资="300-500 元/天"
+      薪资="300–500 元/天"
       职位="AI 产品实习生"
       标签={[]}
       阶段={阶段({ 待办: false, 徽标: '需注意', 注意说明: 'AI 服务暂时不可用，本 Case 尚未继续' })}
@@ -200,7 +217,7 @@ describe('求职在谈卡 · 禁用（助手查询快照的不可查看项目）
     fireEvent.click(screen.getByTestId('求职在谈卡'));
     expect(打开).not.toHaveBeenCalled();
     expect(screen.getByText('资深后端工程师')).toBeTruthy();
-    expect(screen.getByText('20–35K')).toBeTruthy();
+    expect(screen.getByText('20-35K')).toBeTruthy(); // 卡面原样渲染（§8A）
   });
 });
 
@@ -279,7 +296,7 @@ describe('求职在谈卡 · 查看匹配分析入口（C3 / Spec §3.1：仅指
     await 用户.keyboard('{Enter}');
     expect(查看匹配分析).toHaveBeenCalledTimes(2);
     // 44px 触摸区不挤薪资：薪资与入口同列照常
-    expect(screen.getByText('20–40K·14薪')).toBeTruthy();
+    expect(screen.getByText('20–40K x 14')).toBeTruthy();
     // 分数+薪资整列移出整卡 button（区域顺序里 score/salary 在 company 之前）
     const 区域顺序 = Array.from(卡根.querySelectorAll('[data-card-region]')).map((元) => 元.getAttribute('data-card-region'));
     expect(区域顺序).toEqual(['score', 'salary', 'company', 'title', 'tags', 'stage']);

@@ -60,9 +60,9 @@ export default function 求职在谈卡({
       ) : (
         <卡片分数 分={匹配分} />
       )}
-      {/* 原展示破折号行为（Mock 卡沿用至今）：仅把 - 换成 –，不改币种/单位/数值 */}
+      {/* 薪资串在映射边界按 §8A 统一格式化，卡面原样渲染（Task 9 移除散落 replace） */}
       <span className={`${样式.薪资} 薪资体`} data-card-region="salary">
-        {薪资.replace('-', '–')}
+        {薪资}
       </span>
     </div>
   );

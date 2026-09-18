@@ -83,7 +83,7 @@ if (!HTMLElement.prototype.scrollIntoView) {
 const 叮嘱占位 = '有想法就告诉你的AI代理';
 const 冻结职位 = {
   jobId: 'job_0123456789abcdef0123456789abcdef',
-  job: { title: '平台工程师', location: '上海', publicSalaryRange: '25-40K·16薪', requiredSkills: ['Go'] },
+  job: { title: '平台工程师', location: '上海', publicSalaryRange: '25–40K x 16', requiredSkills: ['Go'] },
 };
 
 function 状态(覆盖: Partial<P5列表项['state']> = {}): P5列表项['state'] {
@@ -628,7 +628,7 @@ describe('后端正常详情 · 招聘端顶栏同源与页尾确认事实（Tas
     expect(栏文).toContain('示例公司 · 软件工程师'); // 最近工作行 → 副标题
     expect(screen.queryByText('candidate-0123456789ab')).toBeNull(); // alias 仍不进顶栏
     // 岗位上下文单独保留行
-    expect(screen.getByText('平台工程师 · 上海 · 25-40K·16薪')).toBeTruthy();
+    expect(screen.getByText('平台工程师 · 上海 · 25–40K x 16')).toBeTruthy();
   });
 
   it('candidate_resume 缺源：顶栏画像位置保留、缺失占位归展示层，副标题不残留', () => {
@@ -692,7 +692,7 @@ function 连续详情DTO(选项: {
       job_id: 'job_0123456789abcdef0123456789abcdef',
       title: '平台工程师',
       location: '上海',
-      public_salary_range: '25-40K·16薪',
+      public_salary_range: '25–40K x 16',
       availability: 'available',
       organization: null,
       required_skills: null,

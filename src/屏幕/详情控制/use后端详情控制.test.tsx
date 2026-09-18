@@ -78,7 +78,7 @@ const 冻结职位 = {
   job: {
     title: '平台工程师',
     location: '上海',
-    publicSalaryRange: '25-40K·16薪',
+    publicSalaryRange: '25–40K x 16',
     requiredSkills: ['Go', 'Kubernetes'],
   },
 };
@@ -307,7 +307,7 @@ function 连续详情DTO(选项: {
       job_id: 'job_0123456789abcdef0123456789abcdef',
       title: '平台工程师',
       location: '上海',
-      public_salary_range: '25-40K·16薪',
+      public_salary_range: '25–40K x 16',
       availability: 'available',
       organization: null,
       required_skills: null,
@@ -567,7 +567,7 @@ describe('use后端详情控制 · Case 冻结正文与在线简历资料（Task
     expect(资源.职位资料.职位详情).toEqual(['参与产品工作']);
     expect(资源.职位资料.接口缺口说明).toBeNull();
     // 摘要仍用旧四事实（不因 job_detail 在场重写）
-    expect(资源.职位资料.摘要).toEqual({ 职位: '平台工程师', 城市: '上海', 薪资: '25-40K·16薪', 技能: ['Go', 'Kubernetes'] });
+    expect(资源.职位资料.摘要).toEqual({ 职位: '平台工程师', 城市: '上海', 薪资: '25–40K x 16', 技能: ['Go', 'Kubernetes'] });
     expect(资源.在线简历资料).toBeNull(); // 候选角色不构造在线简历资料
   });
 
