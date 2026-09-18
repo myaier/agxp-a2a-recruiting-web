@@ -897,6 +897,23 @@ describe('匿名在线简历 · Mock 匹配依据（review-r1 对齐六维）', 
     expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
   });
 
+  it('review-r2：顶栏总分与分析模型同源（A-07 快照 null → 种子 79；档.适配分 89 不上屏）', () => {
+    置Mock详情状态('A-07');
+    render(<匿名在线简历 />, { wrapper: ({ children }) => (
+      <MemoryRouter initialEntries={['/hr/resume/A-07']}>
+        <Routes>
+          <Route path="/hr/resume/:id" element={children} />
+        </Routes>
+      </MemoryRouter>
+    ) });
+    // Spec §7：列表分数、详情顶栏总分、弹层文本总分同一来源 —— 快照键存在时
+    // 顶栏用 Mock匹配分数（null 条目回落种子 79），匿名简历表自己的 适配分 89 退场
+    expect(screen.getByText('79')).toBeTruthy();
+    expect(screen.queryByText('89')).toBeNull();
+    // 快照 null 条目的缺失说明仍在
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+  });
+
   it('快照 null 条目（A-07）：缺失说明 + 有限依据行，不造六条假状态', () => {
     置Mock详情状态('A-07');
     render(<匿名在线简历 />, { wrapper: ({ children }) => (
