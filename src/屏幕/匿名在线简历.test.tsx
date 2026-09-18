@@ -14,8 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 匿名在线简历, { 简历正文 } from './匿名在线简历';
 import { 匿名简历表 } from '../数据/企业端模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
-import type { BFF招聘候选推荐, BFF委托回执 } from '../数据/BFF契约';
-import { BFF招聘候选推荐样本, BFF岗位样本 } from '../测试/BFF样本';
+import type { BFF招聘候选推荐, BFF委托回执, BFF匹配解释 } from '../数据/BFF契约';
+import { BFF招聘候选推荐样本, BFF岗位样本, BFF匹配解释87分样本 } from '../测试/BFF样本';
 import { BFF招聘推荐详情无简历样本, BFF招聘推荐详情样本 } from '../测试/展示资料样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 
@@ -245,6 +245,86 @@ describe('匿名在线简历 · P4 招聘端详情（Backend）', () => {
     // basis 未核对的说明属于求职端概念，招聘端简历正文不出；原 token 不透出
     expect(screen.queryByText('经验与学历尚未核对')).toBeNull();
     expect(document.body.textContent).not.toContain('category_matched');
+  });
+
+  // ── Task 5（Spec §3.3）：include=match_explanation 已展开的详情 —— 六维解释直接展开 ──
+
+  it('已展开批次解释：分析区直接展开六维行，替换原有限六行依据；总分唯一在顶栏（分析区藏环）', async () => {
+    置P4详情状态({
+      详情: {
+        ...BFF招聘推荐详情样本,
+        match_explanation: BFF匹配解释87分样本,
+        highlights: ['category_matched', 'location_matched'],
+      },
+    });
+    渲染详情();
+    // 顶栏匹配分是唯一总分（87）；分析区不重复分数环
+    expect(await screen.findByText('87')).toBeTruthy();
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('命中11/12个岗位关键词')).toBeTruthy();
+    expect(screen.getByText('薪资范围不匹配')).toBeTruthy();
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('技能按关键词命中核对，不代表能力认证。')).toBeTruthy();
+    // 新解释替换原有限六行依据：旧六行版式与统一说明都不再出现
+    expect(screen.queryByText('方向 · 职位方向匹配')).toBeNull();
+    expect(screen.queryByText('当前接口仅提供部分匹配依据')).toBeNull();
+    expect(screen.queryByText('有限依据')).toBeNull();
+    // 六行用固定中文说明，不透出原 token
+    expect(document.body.textContent).not.toContain('compensation_disjoint');
+    // 分析区藏环：正文里没有第二个分数环（适配环的 role img 全页仅顶栏没有——顶栏是文本分）
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+  });
+
+  it('已展开但解释为显式 null：显示「暂无该次匹配的详细分析」+ 同区有限依据，不再显示旧统一说明', async () => {
+    置P4详情状态({
+      详情: {
+        ...BFF招聘推荐详情样本,
+        match_explanation: null,
+        highlights: ['category_matched', 'location_matched'],
+      },
+    });
+    渲染详情();
+    expect(await screen.findByText('87')).toBeTruthy();
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(screen.getByText('有限依据')).toBeTruthy();
+    expect(screen.getByText('职位方向匹配')).toBeTruthy();
+    expect(screen.getByText('工作地点匹配')).toBeTruthy();
+    expect(screen.queryByText('当前接口仅提供部分匹配依据')).toBeNull();
+    expect(screen.queryByText('方向 · 职位方向匹配')).toBeNull();
+    expect(document.body.textContent).not.toContain('category_matched');
+  });
+
+  it('导航另一条推荐（另一批次）：六维行换成新记录的解释，旧解释不残留（双批次不串值）', async () => {
+    置P4详情状态({
+      详情: { ...BFF招聘推荐详情样本, match_explanation: BFF匹配解释87分样本 },
+    });
+    const 页 = 渲染详情();
+    expect(await screen.findByText('薪资范围不匹配')).toBeTruthy();
+    // 换成另一批次（总分不同的合法解释）后重读：分析跟新记录走
+    const 另一解释: BFF匹配解释 = {
+      ...BFF匹配解释87分样本,
+      total_points: 97,
+      dimensions: [
+        BFF匹配解释87分样本.dimensions[0],
+        BFF匹配解释87分样本.dimensions[1],
+        BFF匹配解释87分样本.dimensions[2],
+        BFF匹配解释87分样本.dimensions[3],
+        BFF匹配解释87分样本.dimensions[4],
+        { dimension: 'compensation', status: 'matched', points: 10, max_points: 10, reason_code: 'compensation_overlap' },
+      ],
+    };
+    置P4详情状态({
+      详情: { ...BFF招聘推荐详情样本, match_explanation: 另一解释, recommendation_id: 'rec_r2' },
+    });
+    页.rerender(
+      <MemoryRouter initialEntries={[`/hr/jobs/${岗位编号}/recommendations/rec_r2`]}>
+        <Routes>
+          <Route path="/hr/jobs/:jobId/recommendations/:recommendationId" element={<匿名在线简历 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('薪资范围匹配')).toBeTruthy();
+    expect(screen.queryByText('薪资范围不匹配')).toBeNull();
   });
 
   it('身份与薪资 Canary：无真名/无直接聊/无工作经历段/无年龄性别/无 Mock 简历兜底', () => {

@@ -14,7 +14,7 @@ import { 准备Backend职位正文, 准备Mock职位正文 } from './准备职�
 import { 公司区块 } from '../../组件/公司区块';
 import { 从P4CandidateJob, 从P4候选岗位 } from '../../数据/发现推荐映射';
 import { 市场列表, 取市场岗位详情 } from '../../数据/模拟数据';
-import { BFF候选岗位推荐样本, BFFCandidateJob样本, BFF企业档案样本, BFF公开企业样本 } from '../../测试/BFF样本';
+import { BFF候选岗位推荐样本, BFFCandidateJob样本, BFF企业档案样本, BFF公开企业样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
 import { BFF公司摘要样本 } from '../../测试/展示资料样本';
 
 // Spy 包装真实实现：Mock 路径照常工作，Backend 路径用「零调用」自证不读 Mock 来源
@@ -35,21 +35,6 @@ vi.mock('../../数据/公司档案', async (importOriginal) => {
   return { ...实际, 取公司档案: mock取公司档案, 公司路由键: mock公司路由键 };
 });
 
-/** 用户真实简历段（同 职位详情.test.tsx 的合法简历事实，Backend 证据来源） */
-const 真实经历段 = {
-  编号: 'exp_1', 公司: '云衢科技', 行业: '互联网', 职位: '前端工程师',
-  开始: '2024-01', 结束: null, 内容: '负责前端', 隐藏: false,
-};
-const 真实教育段 = {
-  编号: 'edu_1', 学校: '同济大学', 学历: '硕士', 专业: '计算机',
-  开始: '2019-09', 结束: '2022-06',
-};
-const 真实简历 = {
-  经历: [真实经历段], 教育: [真实教育段], 技能: ['Python'], 开始工作年: '2020',
-};
-/** 演示空简历（职位详情.test.tsx Mock 分支的缺省状态：经历/教育为空） */
-const 空简历 = { 经历: [], 教育: [], 技能: [], 开始工作年: '' };
-
 beforeEach(() => {
   mock取市场岗位详情.mockClear();
   mock取公司档案.mockClear();
@@ -58,71 +43,65 @@ beforeEach(() => {
 
 describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
   it('Spy 证明：不读 取市场岗位详情，不读静态公司档/公司路由键', () => {
-    准备Backend职位正文(从P4候选岗位(BFF候选岗位推荐样本), 真实简历);
-    准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    准备Backend职位正文(从P4候选岗位(BFF候选岗位推荐样本));
+    准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本));
     expect(mock取市场岗位详情).not.toHaveBeenCalled();
     expect(mock取公司档案).not.toHaveBeenCalled();
     expect(mock公司路由键).not.toHaveBeenCalled();
   });
 
-  it('推荐卡（basis 已确认）：核对分支吃 wire 分，行按真实简历核对，分析加核对基准前缀', () => {
-    const 数据 = 准备Backend职位正文(从P4候选岗位(BFF候选岗位推荐样本), 真实简历);
+  it('推荐卡（已展开解释在卡上）：模型吃 wire 分与同记录解释，有限依据来自本卡原原因', () => {
+    const 卡 = { ...BFF候选岗位推荐样本, match_explanation: BFF匹配解释92分样本 };
+    const 数据 = 准备Backend职位正文(从P4候选岗位(卡));
     expect(数据.匹配).toEqual({
-      种类: '核对',
-      分: BFF候选岗位推荐样本.match_score,
-      行们: [{ 要求: '学历 本科', 证据: '同济大学 · 硕士', 态: '有证据', 类: '硬性' }],
-      分析: { 墨句: '按岗位设置的结构化要求核对。学历满足岗位要求。', 灰句: '' },
+      分数: BFF候选岗位推荐样本.match_score,
+      解释: BFF匹配解释92分样本,
+      有限依据: [],
+      上下文: '有来源',
     });
     expect(数据.职位).toBe(BFFCandidateJob样本.title);
     expect(数据.薪资).toBe(从P4候选岗位(BFF候选岗位推荐样本).卡.薪资);
   });
 
-  it('经验行按用户真实工作年限判定：年限不够不给真实经历做证据（复用现有 五年经验卡 口径）', () => {
-    const 视图 = 从P4候选岗位({
-      ...BFF候选岗位推荐样本,
-      job: { ...BFF候选岗位推荐样本.job, experience_requirement: 'five_plus_years' },
-    });
-    const 数据 = 准备Backend职位正文(视图, {
-      经历: [真实经历段], 教育: [真实教育段], 技能: [],
-      开始工作年: String(new Date().getFullYear() - 1),
-    });
-    const 匹配 = 数据.匹配;
-    expect(匹配.种类).toBe('核对');
-    if (匹配.种类 !== '核对') return;
-    expect(匹配.分).toBe(BFF候选岗位推荐样本.match_score);
-    expect(匹配.行们).toEqual([
-      { 要求: '经验 5 年以上', 证据: null, 态: '不满足', 类: '硬性' },
-      { 要求: '学历 本科', 证据: '同济大学 · 硕士', 态: '有证据', 类: '硬性' },
-    ]);
+  it('旧 JD 核对路径已删除：匹配模型不按当前简历生成任何 学历/经验 核对行（学历不属于六维）', () => {
+    const 数据 = 准备Backend职位正文(从P4候选岗位(BFF候选岗位推荐样本));
+    expect(JSON.stringify(数据.匹配)).not.toContain('学历 本科');
+    expect(JSON.stringify(数据.匹配)).not.toContain('按岗位设置的结构化要求核对');
   });
 
-  it('详情直取（无推荐批次）：说明分支不伪造分，只交代结构化设置现状', () => {
-    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+  it('已展开但解释为 null（显式无溯源）：模型保留合法分数、解释 null、有限依据取本卡原因，不补六条假状态', () => {
+    const 卡 = { ...BFF候选岗位推荐样本, match_explanation: null, match_reasons: ['category_matched'] };
+    const 数据 = 准备Backend职位正文(从P4候选岗位(卡));
     expect(数据.匹配).toEqual({
-      种类: '说明',
-      分: null,
-      说明: [`结构化设置：${BFFCandidateJob样本.structured_requirements_confirmed ? '已确认' : '尚未确认'}`],
+      分数: BFF候选岗位推荐样本.match_score,
+      解释: null,
+      有限依据: ['职位方向匹配'],
+      上下文: '有来源',
     });
   });
 
-  it('推荐卡 basis 未确认：说明分支保留 wire 分，先交代尚未核对再给结构化设置', () => {
+  it('详情直取（无推荐批次）：模型无分不伪造 0，上下文给「无推荐上下文」，不借任何记录的原因', () => {
+    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), null, '无推荐上下文');
+    expect(数据.匹配).toEqual({ 分数: null, 解释: null, 有限依据: [], 上下文: '无推荐上下文' });
+  });
+
+  it('推荐卡 basis 未确认（旧说明分支退役）：模型同样吃 wire 分与本卡解释，basis 事实不再另生说明行', () => {
     const 视图 = 从P4候选岗位({
       ...BFF候选岗位推荐样本,
       structured_requirements_confirmed: false,
+      match_explanation: BFF匹配解释92分样本,
     });
-    const 数据 = 准备Backend职位正文(视图, 真实简历);
+    const 数据 = 准备Backend职位正文(视图);
     expect(数据.匹配).toEqual({
-      种类: '说明',
-      分: BFF候选岗位推荐样本.match_score,
-      说明: [
-        '经验与学历尚未核对',
-        `结构化设置：${BFFCandidateJob样本.structured_requirements_confirmed ? '已确认' : '尚未确认'}`,
-      ],
+      分数: BFF候选岗位推荐样本.match_score,
+      解释: BFF匹配解释92分样本,
+      有限依据: [],
+      上下文: '有来源',
     });
   });
 
   it('岗位事实行原样：blank 办公地点不出空标签，null 年薪月数不出 X 薪，none 不出结构化行', () => {
-    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本));
     expect(数据.职位事实行).toEqual([
       '城市：上海', '办公方式：混合', '办公地点：张江路 1 号', '结构化学历要求：本科',
     ]);
@@ -134,7 +113,7 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
       description: '  \n  ',
       requirements: '在校生',
     });
-    const 数据 = 准备Backend职位正文(视图, 真实简历);
+    const 数据 = 准备Backend职位正文(视图);
     expect(数据.职位详情标题).toBe('岗位信息与职位详情');
     expect(数据.职位详情行).toEqual(['职位详情未知']);
     expect(数据.职位要求标题).toBe('职位要求（补充说明，不自动解析）');
@@ -148,13 +127,13 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
       description: '第一行\n  \n第二行',
       requirements: '',
     });
-    const 数据 = 准备Backend职位正文(视图, 真实简历);
+    const 数据 = 准备Backend职位正文(视图);
     expect(数据.职位详情行).toEqual(['第一行', '第二行']);
     expect(数据.职位要求行).toEqual(['职位要求未知']);
   });
 
   it('公司区：wire 无图源给未知图位；无元信息给对应未知元行；空简介给 公司简介未知', () => {
-    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本));
     expect(数据.公司.名称).toBe('云衢科技');
     expect(数据.公司.图).toEqual({ 种类: '未知', 可访问名: '公司图片未知' });
     expect(数据.公司.简介).toBe('');
@@ -173,13 +152,13 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
   it('已知公司简介照常进介绍段（视图层合法携带非空简介时，不降级成未知）', () => {
     const 基础视图 = 从P4CandidateJob(BFFCandidateJob样本);
     const 视图 = { ...基础视图, 公司: { ...基础视图.公司, 简介: '做机器人' } };
-    const 数据 = 准备Backend职位正文(视图, 真实简历);
+    const 数据 = 准备Backend职位正文(视图);
     expect(数据.公司.资料.介绍段).toBe('做机器人');
     expect(数据.公司.资料.元行组).toHaveLength(5);
   });
 
   it('发布人缺席：原卡位生成占位对象，不拿公司声明合成真实身份，图位不取派生首字', () => {
-    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本));
     expect(数据.发布人).toEqual({
       图: { 种类: '未知', 可访问名: '发布人图片未知' },
       姓名: '发布人姓名未知',
@@ -198,7 +177,7 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
         personal_verification_status: 'verified',
       },
     });
-    const 数据 = 准备Backend职位正文(视图, 真实简历);
+    const 数据 = 准备Backend职位正文(视图);
     expect(数据.发布人).toEqual({
       图: { 种类: '未知', 可访问名: '发布人图片未知' },
       姓名: '李四',
@@ -217,7 +196,7 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
         personal_verification_status: 'unverified',
       },
     });
-    expect(准备Backend职位正文(视图, 真实简历).发布人.职务).toBe('职务未知');
+    expect(准备Backend职位正文(视图).发布人.职务).toBe('职务未知');
   });
 
   it('发布人 blank 姓名按缺失换未知，已知公司/职务照常展示（§3.2 部分字段已知就展示已知部分）', () => {
@@ -229,7 +208,7 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
         personal_verification_status: 'verified',
       },
     });
-    const 发布人 = 准备Backend职位正文(视图, 真实简历).发布人;
+    const 发布人 = 准备Backend职位正文(视图).发布人;
     expect(发布人.姓名).toBe('发布人姓名未知');
     expect(发布人.公司).toBe('云衢科技');
     expect(发布人.职务).toBe('招聘负责人');
@@ -245,81 +224,51 @@ describe('准备Backend职位正文 · 只吃 P4 权威数据', () => {
         personal_verification_status: 'verified',
       },
     });
-    const 发布人 = 准备Backend职位正文(视图, 真实简历).发布人;
+    const 发布人 = 准备Backend职位正文(视图).发布人;
     expect(发布人.姓名).toBe('李四');
     expect(发布人.公司).toBe('企业信息未知');
   });
 });
 
-// DF-011：候选独立详情在原匹配区展示当前推荐批次返回的已知安全原因。
-// 只对当前视图的 卡.对得上 应用 映射推荐依据；直取无推荐给 [] 且保留 null 分；
-// basis 已确认但核对行为空时回退到既有说明分支（一个匹配标题 + 真实推荐分），不重复标题。
-describe('准备Backend职位正文 · 推荐依据与行空回退（DF-011）', () => {
-  it('当前卡的原原因数组映射成中文推荐依据：未知码丢弃、重复稳定去重、保持首次出现顺序', () => {
+// Task 5 模型化：旧「推荐依据」小区与说明/核对分支整体退役 —— 已知原因并入模型
+// 有限依据（解释缺席时由 匹配分析块 在同一分析区标「有限依据」），不再有独立小区。
+describe('准备Backend职位正文 · 有限依据与分数保真（DF-011 迁移）', () => {
+  it('当前卡的原原因数组映射成有限依据：未知码丢弃、重复稳定去重、保持首次出现顺序、原 token 不透出', () => {
     const 数据 = 准备Backend职位正文(从P4候选岗位({
       ...BFF候选岗位推荐样本,
       match_reasons: ['category_matched', 'location_matched', 'category_matched', 'direction_match'],
-    }), 真实简历);
-    expect(数据.推荐依据).toEqual(['职位方向匹配', '工作地点匹配']);
+    }));
+    expect(数据.匹配.有限依据).toEqual(['职位方向匹配', '工作地点匹配']);
+    expect(JSON.stringify(数据.匹配)).not.toContain('direction_match');
   });
 
-  it('有核对行时原内容保留：推荐依据只是同区新增说明，不改分、不改行、不改分析', () => {
-    const 数据 = 准备Backend职位正文(从P4候选岗位({
-      ...BFF候选岗位推荐样本,
-      match_reasons: ['experience_met'],
-    }), 真实简历);
-    expect(数据.匹配).toEqual({
-      种类: '核对',
-      分: BFF候选岗位推荐样本.match_score,
-      行们: [{ 要求: '学历 本科', 证据: '同济大学 · 硕士', 态: '有证据', 类: '硬性' }],
-      分析: { 墨句: '按岗位设置的结构化要求核对。学历满足岗位要求。', 灰句: '' },
-    });
-    expect(数据.推荐依据).toEqual(['经验要求匹配']);
-  });
-
-  it('basis 已确认但行空（none/none）：回退说明分支保留一个匹配标题与真实推荐分，不重复标题', () => {
-    const 数据 = 准备Backend职位正文(从P4候选岗位({
-      ...BFF候选岗位推荐样本,
-      match_reasons: ['category_matched'],
-      job: { ...BFFCandidateJob样本, experience_requirement: 'none', education_requirement: 'none' },
-    }), 真实简历);
-    expect(数据.匹配).toEqual({
-      种类: '说明',
-      分: BFF候选岗位推荐样本.match_score,
-      说明: [`结构化设置：${BFFCandidateJob样本.structured_requirements_confirmed ? '已确认' : '尚未确认'}`],
-    });
-    expect(数据.推荐依据).toEqual(['职位方向匹配']);
-  });
-
-  it('分数为 0 必须显示 0（行空回退也保留）；直取无推荐分保持 null 不造 0，且给 [] 不借原因', () => {
-    const 零分行空 = 准备Backend职位正文(从P4候选岗位({
+  it('分数为 0 必须保留 0；直取无推荐分保持 null 不造 0，且有限依据恒空不借原因', () => {
+    const 零分卡 = 准备Backend职位正文(从P4候选岗位({
       ...BFF候选岗位推荐样本,
       match_score: 0,
-      job: { ...BFFCandidateJob样本, experience_requirement: 'none', education_requirement: 'none' },
-    }), 真实简历);
-    expect(零分行空.匹配).toMatchObject({ 种类: '说明', 分: 0 });
-    const 直取 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
-    expect(直取.匹配).toMatchObject({ 种类: '说明', 分: null });
-    expect(直取.推荐依据).toEqual([]);
+      match_explanation: null,
+    }));
+    expect(零分卡.匹配.分数).toBe(0);
+    const 直取 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), null, '无推荐上下文');
+    expect(直取.匹配.分数).toBeNull();
+    expect(直取.匹配.有限依据).toEqual([]);
   });
 
-  it('basis 未确认的「经验与学历尚未核对」仍在，推荐依据不能覆盖它', () => {
-    const 数据 = 准备Backend职位正文(从P4候选岗位({
-      ...BFF候选岗位推荐样本,
-      structured_requirements_confirmed: false,
-      match_reasons: ['category_matched'],
-    }), 真实简历);
-    expect(数据.匹配).toMatchObject({
-      种类: '说明',
-      说明: ['经验与学历尚未核对', '结构化设置：已确认'],
-    });
-    expect(数据.推荐依据).toEqual(['职位方向匹配']);
+  it('上下文由连接层按恢复状态传入（原推荐不可用），准备层不自行推断', () => {
+    const 数据 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), null, '原推荐不可用');
+    expect(数据.匹配.上下文).toBe('原推荐不可用');
   });
 
-  it('Mock 路径不启用推荐依据（undefined）：Mock 现有对齐证据不受影响', () => {
+  it('Mock 路径：匹配也走模型（过渡形态，Task 7 接固定快照），分数取卡面种子分', () => {
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-13');
     expect(岗).toBeTruthy();
-    expect(准备Mock职位正文(岗!, 空简历).推荐依据).toBeUndefined();
+    const 数据 = 准备Mock职位正文(岗!);
+    expect(数据.匹配).toEqual({
+      分数: 岗!.适配分,
+      解释: null,
+      有限依据: [],
+      上下文: '有来源',
+    });
   });
 });
 
@@ -331,7 +280,7 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
   };
 
   it('公司摘要先展示：organization 六键把 融资/规模/行业 行填上已知值，成立/地址保持未知', () => {
-    const 数据 = 准备Backend职位正文(从P4候选岗位(带摘要卡), 真实简历);
+    const 数据 = 准备Backend职位正文(从P4候选岗位(带摘要卡));
     expect(数据.公司.资料.元行组).toEqual([
       { 标签: '融资阶段', 值: 'C 轮' },
       { 标签: '规模', 值: '500-1000 人' },
@@ -348,8 +297,8 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
   });
 
   it('公开读取成功补已提供事实：介绍段/地址进原槽；成立无源仍未知；JD/薪资/匹配不覆盖', () => {
-    const 无公开 = 准备Backend职位正文(从P4候选岗位(带摘要卡), 真实简历);
-    const 有公开 = 准备Backend职位正文(从P4候选岗位(带摘要卡), 真实简历, BFF公开企业样本);
+    const 无公开 = 准备Backend职位正文(从P4候选岗位(带摘要卡));
+    const 有公开 = 准备Backend职位正文(从P4候选岗位(带摘要卡), BFF公开企业样本);
     expect(有公开.公司.资料.介绍段).toBe(BFF企业档案样本.company_intro);
     expect(有公开.公司.资料.元行组).toEqual([
       { 标签: '融资阶段', 值: 'C 轮' },
@@ -374,7 +323,7 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
         organization: { ...BFF公司摘要样本, funding_stage: null, company_size: '20_99', logo: null },
       },
     });
-    const 数据 = 准备Backend职位正文(视图, 真实简历, {
+    const 数据 = 准备Backend职位正文(视图, {
       ...BFF公开企业样本,
       profile: { ...BFF企业档案样本, company_intro: '  ', office_address: '   ' },
     });
@@ -393,7 +342,7 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
     const 视图 = 从P4CandidateJob({
       ...BFFCandidateJob样本, organization: null, hiring_organization_ref: 'org_1',
     });
-    const 数据 = 准备Backend职位正文(视图, 真实简历, BFF公开企业样本);
+    const 数据 = 准备Backend职位正文(视图, BFF公开企业样本);
     expect(数据.公司.图).toEqual({
       种类: '图片', URL: BFF企业档案样本.logo!.url, 兜底字: '云', 可访问名: '公司图片未知',
     });
@@ -407,7 +356,7 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
   });
 
   it('公司图位：真实 URL 优先摘要 Logo，无图保持中性未知占位；发布人头像同接 avatar_url', () => {
-    const 无图 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本), 真实简历);
+    const 无图 = 准备Backend职位正文(从P4CandidateJob(BFFCandidateJob样本));
     expect(无图.公司.图).toEqual({ 种类: '未知', 可访问名: '公司图片未知' });
     expect(无图.发布人.图).toEqual({ 种类: '未知', 可访问名: '发布人图片未知' });
     // 发布人在场但无头像：仍是中性图位，不拿姓名首字充当真实照片
@@ -418,7 +367,7 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
         personal_verification_status: 'verified', avatar_url: null,
       },
     });
-    expect(准备Backend职位正文(带发布人, 真实简历).发布人.图)
+    expect(准备Backend职位正文(带发布人).发布人.图)
       .toEqual({ 种类: '未知', 可访问名: '发布人图片未知' });
     // avatar_url 在场 → 图位给真实 URL；兜底字只用于加载失败回退
     const 带头像 = 从P4CandidateJob({
@@ -429,42 +378,34 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
       },
     });
     // 兜底字恒空：发布人失败回未知占位，不用姓名首字充当照片
-    expect(准备Backend职位正文(带头像, 真实简历).发布人.图).toEqual({
+    expect(准备Backend职位正文(带头像).发布人.图).toEqual({
       种类: '图片', URL: 'https://cdn.example.com/p.png', 兜底字: '', 可访问名: '发布人图片未知',
     });
   });
 });
 
 describe('准备Mock职位正文 · 原映射原样', () => {
-  it('M-13：读 模拟详情表；匹配从行来（硬字段未提及 + 手工四行有证据 → 分 50），手写分析逐字不变', () => {
+  it('M-13：读 模拟详情表；匹配走模型过渡形态（分数取卡面种子分，解释合法缺失，无核对行）', () => {
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-13');
     expect(岗).toBeTruthy();
-    const 数据 = 准备Mock职位正文(岗!, 空简历);
+    const 数据 = 准备Mock职位正文(岗!);
     expect(mock取市场岗位详情).toHaveBeenCalledWith(岗);
     expect(数据.职位).toBe('交易中台架构师');
     expect(数据.薪资).toBe('60-80K');
     expect(数据.匹配).toEqual({
-      种类: '核对',
-      分: 50,
-      行们: [
-        { 要求: '经验 5 年以上', 证据: null, 态: '未提及', 类: '硬性' },
-        { 要求: '学历 本科及以上', 证据: null, 态: '未提及', 类: '硬性' },
-        { 要求: 'Go 主栈', 证据: '字节跳动 · 交易中台 · Go · 9 年', 态: '有证据', 类: '必须' },
-        { 要求: '做过高并发架构与分布式事务', 证据: '交易网关重建 · 峰值 32 万 QPS', 态: '有证据', 类: '必须' },
-        { 要求: '稳定性治理的体系化实践', 证据: '多活改造 · 故障分钟级切换', 态: '有证据', 类: '必须' },
-        { 要求: '带过团队', 证据: '直管 8 人小组', 态: '有证据', 类: '必须' },
-      ],
-      分析: {
-        墨句: '9 年交易中台经验与硕士学历超出岗位要求，主栈、高并发、分布式事务、稳定性治理与带队全部有简历证据。',
-        灰句: '',
-      },
+      分数: 岗!.适配分,
+      解释: null,
+      有限依据: [],
+      上下文: '有来源',
     });
+    expect(JSON.stringify(数据.匹配)).not.toContain('学历 本科及以上');
+    expect(JSON.stringify(数据.匹配)).not.toContain('简历未提及');
   });
 
   it('JD/发布人/公司逐字来自 取市场岗位详情：不在详情表的岗走原合成 fallback（职务/备注空值原样，不添未知）', () => {
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-02');
     expect(岗).toBeTruthy();
-    const 数据 = 准备Mock职位正文(岗!, 空简历);
+    const 数据 = 准备Mock职位正文(岗!);
     const 详 = 取市场岗位详情(岗!);
     expect(数据.职位详情标题).toBe('职位详情');
     expect(数据.职位事实行).toEqual([]);
@@ -486,7 +427,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
   it('公司资料与 公司区块 原组件同一输入的可观察输出对照：介绍段与元行顺序/文案逐字一致', () => {
     // M-13 美团不在静态档案表 → 原组件走合成兜底档：一行简介拆段，无 介绍段、无 成立/地址
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-13')!;
-    const 数据 = 准备Mock职位正文(岗, 空简历);
+    const 数据 = 准备Mock职位正文(岗);
     render(
       createElement(公司区块, {
         名称: 岗.公司,
@@ -519,7 +460,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
       工商信息: [{ 项: '成立日期', 值: '2016-03-01' }],
     });
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-12')!;
-    const 数据 = 准备Mock职位正文(岗, 空简历);
+    const 数据 = 准备Mock职位正文(岗);
     expect(mock公司路由键).toHaveBeenCalledWith('PingCAP');
     expect(mock取公司档案).toHaveBeenCalledWith('full-co');
     expect(数据.公司.资料).toEqual({
@@ -546,7 +487,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
       工商信息: [],
     });
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-12')!;
-    expect(准备Mock职位正文(岗, 空简历).公司.资料.元行组).toEqual([
+    expect(准备Mock职位正文(岗).公司.资料.元行组).toEqual([
       { 标签: '融资阶段', 值: 'A 轮' },
       { 标签: '规模', 值: '80 人' },
       // 「机器人」含「人」→ 原认段规则归入规模；重复标签原样保留
@@ -567,7 +508,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
       工商信息: [{ 项: '成立日期', 值: '2020-01-01' }],
     });
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-12')!;
-    const 数据 = 准备Mock职位正文(岗, 空简历);
+    const 数据 = 准备Mock职位正文(岗);
     expect(数据.公司.资料.介绍段).toBeNull();
     // 未补全 → 段来自一行简介（M-12 = D 轮 · 500-1000 人 · 分布式数据库），成立/地址都不出
     expect(数据.公司.资料.元行组).toEqual([
@@ -589,7 +530,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
       工商信息: [{ 项: '成立日期', 值: '2018-01-01' }],
     });
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-12')!;
-    const 数据 = 准备Mock职位正文(岗, 空简历);
+    const 数据 = 准备Mock职位正文(岗);
     expect(数据.公司.资料.元行组).toEqual([]);
     expect(数据.公司.资料.介绍段).toBe('做硬件');
   });
@@ -606,7 +547,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
       工商信息: [],
     });
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-12')!;
-    expect(准备Mock职位正文(岗, 空简历).公司.资料.元行组).toEqual([
+    expect(准备Mock职位正文(岗).公司.资料.元行组).toEqual([
       { 标签: '行业', 值: '电商' },
       { 标签: '行业', 值: '本地生活' },
       { 标签: '行业', 值: '出行' },
@@ -616,7 +557,7 @@ describe('准备Mock职位正文 · 原映射原样', () => {
 
   it('Mock 图位始终是已知字标（不按未知名称猜图），直接聊能力不在数据层（由连接层给回调）', () => {
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-13')!;
-    const 数据 = 准备Mock职位正文(岗, 空简历);
+    const 数据 = 准备Mock职位正文(岗);
     expect(数据.公司.图).toEqual({ 种类: '字标', 字: '美' });
     expect(数据.发布人.图).toEqual({ 种类: '字标', 字: '梁' });
   });

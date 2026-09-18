@@ -38,6 +38,8 @@ import 顶部意向栏, { 取走市场工具请求 } from './顶部意向栏';
 import { 主页外壳, 代理横幅, 滚动区 } from '../组件/通用';
 import 确认层 from '../组件/确认层';
 import 附件简历选择层, { 从附件行取选择值, type 附件简历选择值 } from '../组件/附件简历选择层';
+import 弹层框架 from '../组件/弹层框架';
+import { 匹配分析块 } from '../组件/匹配分析块';
 import { 放大镜图标 } from '../组件/图标';
 import 求职推荐卡 from '../组件/列表卡片/求职推荐卡';
 import { use应用状态 } from '../状态/应用状态';
@@ -48,8 +50,9 @@ import { 路径 } from '../路由/路径表';
 import { 市场列表 } from '../数据/模拟数据';
 import type { 市场职位 } from '../数据/类型';
 import type { BFF附件简历 } from '../数据/BFF契约';
-import { 从P4候选岗位, P4已开案, 映射P4委托展示 } from '../数据/发现推荐映射';
+import { 从P4候选岗位, P4已开案, 映射P4委托展示, 映射推荐依据 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
+import type { 匹配分析模型 } from '../数据/匹配解释展示映射';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
 import { 取P5候选横幅状态 } from '../状态/后端/MatchCase统计';
@@ -74,6 +77,9 @@ export default function 看市场() {
   const [搜索展开, 设搜索展开] = useState(false);
   const [搜索词, 设搜索词] = useState('');
   const 搜索框 = useRef<HTMLInputElement>(null);
+  // Task 5（C3）：分析弹层的 page-local 选中记录 ID —— 只存编号，弹层打开时按当前页
+  // 权威快照查模型，绝不把旧记录对象闭包缓存（切 scope 后旧 ID 查不到即自动消失）。
+  const [分析推荐编号, 设分析推荐编号] = useState<string | null>(null);
   // 本次进屏内点过「让AI代理去谈」的岗：卡先留在原位显示委托状态标，
   // 让用户看到这一下点到了；离开这一屏再回来就不再出现（它已经是一张在谈单了）。
   // 与企业端 候选推荐 的 本次已接触 同一写法。
@@ -118,6 +124,8 @@ export default function 看市场() {
     // scope 变化即作废已捕获的委托层状态：旧意向的确认层绝不在新意向下出现
     设待确认委托(null);
     设待选择委托(null);
+    // Spec §3.1：换账号/角色/意向（scope）时关闭旧分析弹层
+    设分析推荐编号(null);
     // 同一下也结束本次进屏的委托周期：暂留集合与按卡忙态一起归零
     周期引用.current += 1;
     本次委托.current = new Set();
@@ -324,6 +332,19 @@ export default function 看市场() {
     [后端待选, 关键词]
   );
 
+  // Task 5（C3/Spec §3.1–3.2）：分析弹层模型 = 选中推荐 ID 在当前页权威快照里的那张卡。
+  // 打开即用该行已返回的解释（零网络补读）：分数 = wire match_score，解释 = 已展开批次
+  // 解释，有限依据 = 本卡 match_reasons 的已知原因。切 scope 后旧 ID 查不到 → 弹层消失。
+  const 分析卡 = 分析推荐编号 === null
+    ? null
+    : 后端卡们.find(({ 卡 }) => 卡.recommendation_id === 分析推荐编号) ?? null;
+  const 分析模型: 匹配分析模型 | null = 分析卡 === null ? null : {
+    分数: 分析卡.卡.match_score,
+    解释: 分析卡.卡.match_explanation ?? null,
+    有限依据: 映射推荐依据(分析卡.卡.match_reasons),
+    上下文: '有来源',
+  };
+
   // Backend 列表态：无活跃意向 / 首载进行中 / 首载失败（给明确重试）；
   // 已有卡的快照不管阶段（刷新失败保留旧卡，错误单独一行交代）都算「有卡」。
   const 后端列表态: '无活跃意向' | '载入中' | '失败' | '有卡' =
@@ -462,11 +483,21 @@ export default function 看市场() {
                       已委托文字={委托文字}
                       委托禁用={委托中.has(委托键(视图.intentionId ?? '', 视图.jobId))}
                       委托={() => void 开始委托(视图)}
+                      // C3/Spec §3.1：原分数环变独立入口，点击只开本行分析弹层
+                      查看匹配分析={() => 设分析推荐编号(卡.recommendation_id)}
                       // 带上有限来源标记 + 会话内来路证据：详情页据此走安全返回
-                      //（直链/无标记/刷新残留标记则摆好主壳状态再替换进主壳）
+                      //（直链/无标记/刷新残留标记则摆好主壳状态再替换进主壳）。
+                      // C2：URL query 精确携带 recommendation_id/batch_id/intention_id
+                      //（job_id 取路由段）—— 详情只恢复这一条推荐，不按当前意向重查。
                       按下={() => {
                         标记看市场来路();
-                        跳转(路径.职位详情(视图.jobId), { 来源: 'candidate-market' });
+                        跳转(
+                          `${路径.职位详情(视图.jobId)}`
+                          + `?recommendation_id=${encodeURIComponent(卡.recommendation_id)}`
+                          + `&batch_id=${encodeURIComponent(卡.batch_id)}`
+                          + `&intention_id=${encodeURIComponent(卡.intention_id)}`,
+                          { 来源: 'candidate-market' },
+                        );
                       }}
                     />
                   );
@@ -498,6 +529,21 @@ export default function 看市场() {
         </div>
       </滚动区>
       </下拉刷新>
+
+      {/* Task 5（C3/Spec §3.2）：列表分析弹层 —— 复用既有弹层框架（遮罩/抓手/Escape/
+          焦点恢复都是现成机制），内部直接包 匹配分析块（藏环，文本总分）。关闭/换 scope
+          都只清选中 ID，零请求。 */}
+      {分析模型 !== null ? (
+        <弹层框架
+          标签="匹配度分析"
+          遮罩类名={样式.分析遮罩}
+          面板类名={样式.分析层}
+          关闭={() => 设分析推荐编号(null)}
+        >
+          <div className={样式.分析抓手} />
+          <匹配分析块 模型={分析模型} 藏环 />
+        </弹层框架>
+      ) : null}
 
       {待选择委托 ? (
         // 多份附件：必须单选一份才可确认；取消 / 遮罩 / Esc 都只清捕获零请求，
@@ -565,6 +611,7 @@ function 市场卡({
   按下,
   已委托文字 = 'AI代理已接手',
   委托禁用 = false,
+  查看匹配分析,
 }: {
   岗: 市场职位;
   已委托: boolean;
@@ -574,6 +621,8 @@ function 市场卡({
   已委托文字?: string;
   /** Backend 反馈/委托写进行中时禁用去谈键（并发写会被操作层单飞丢弃） */
   委托禁用?: boolean;
+  /** C3：分析入口回调（仅 Backend 推荐卡传入；Mock/历史卡不传 → 完全没有入口） */
+  查看匹配分析?: () => void;
 }) {
   const 计算适配分 = use适配分(岗);
   return (
@@ -596,6 +645,7 @@ function 市场卡({
       委托禁用={委托禁用}
       委托={委托}
       打开={按下}
+      查看匹配分析={查看匹配分析}
     />
   );
 }

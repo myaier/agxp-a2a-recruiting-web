@@ -6,13 +6,13 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 看市场.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import 候选推荐, { 求职状态文案 } from './候选推荐';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFFOwnerJob, BFF招聘候选推荐, BFF委托摘要, BFF委托回执 } from '../数据/BFF契约';
-import { BFF招聘候选推荐样本, BFF岗位样本, 招聘候选摘要样本, 页面岗位样本 } from '../测试/BFF样本';
+import { BFF招聘候选推荐样本, BFF岗位样本, 招聘候选摘要样本, 页面岗位样本, BFF匹配解释87分样本 } from '../测试/BFF样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { 路径 } from '../路由/路径表';
 import { 推荐列表 } from '../数据/企业端模拟数据';
@@ -1344,5 +1344,100 @@ describe('候选推荐 · 企业顶栏筛选入口已删（第二批 验收2）'
     expect(screen.getByRole('button', { name: '在谈' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '推荐' })).toBeTruthy();
     期望样本卡在场();
+  });
+});
+
+// ── Task 5（冻结 C3 / Spec §3.1–3.2）：招聘推荐列表原分数环变独立可点入口，
+// 打开该行已返回解释的行内弹层（零网络补读）；换岗位/主体关闭旧弹层。──
+describe('候选推荐 · 匹配分析弹层（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock设置发现推荐范围.mockClear();
+    mock加载招聘候选.mockClear();
+    mock刷新招聘候选.mockClear();
+    mock设置候选收藏.mockClear();
+    mock淘汰候选.mockClear();
+    mock委托招聘候选.mockClear();
+    mock刷新委托.mockClear();
+  });
+
+  it('环变按钮：点击只打开分析弹层（文本总分 + 六维行），网络请求计数保持不变且不触发卡片动作', async () => {
+    const user = userEvent.setup();
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{ ...BFF招聘候选推荐样本, match_explanation: BFF匹配解释87分样本 }],
+      }),
+    });
+    render(<候选推荐 />);
+    const 首载请求数 = mock加载招聘候选.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(弹层.textContent).toContain('87 分');
+    expect(within(弹层).getByText('命中11/12个岗位关键词')).toBeTruthy();
+    expect(within(弹层).getByText('薪资范围不匹配')).toBeTruthy();
+    // 弹层内藏环（文本总分）；背景卡上的原环仍在（遮罩之后），弹层里没有第二个环
+    expect(within(弹层).queryByRole('img', { name: /适配/ })).toBeNull();
+    // 打开弹层零网络补读
+    expect(mock加载招聘候选.mock.calls.length).toBe(首载请求数);
+    // 不触发卡片导航 / 收藏 / 委托
+    expect(mock跳转).not.toHaveBeenCalled();
+    expect(mock设置候选收藏).not.toHaveBeenCalled();
+    expect(mock委托招聘候选).not.toHaveBeenCalled();
+  });
+
+  it('已淘汰与已收藏的卡同样可看分析（收藏/淘汰动作保留）；解释缺失给有限依据', async () => {
+    const user = userEvent.setup();
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [
+          { ...BFF招聘候选推荐样本, favorite: true, match_explanation: null },
+        ],
+      }),
+    });
+    render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(within(弹层).getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    // 有限依据 = 本卡 highlights 的已知原因（样本 highlights ['full_stack'] 是未知码 → 空组不标注）
+    expect(within(弹层).queryByText('有限依据')).toBeNull();
+    // 收藏动作照常可用（权限门保留）
+    expect(screen.getByRole('button', { name: '取消收藏' })).toBeTruthy();
+  });
+
+  it('换岗位（scope 切换）关闭旧弹层；Mock 列表不出现分析入口', async () => {
+    const user = userEvent.setup();
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{ ...BFF招聘候选推荐样本, match_explanation: BFF匹配解释87分样本 }],
+      }),
+    });
+    const 页 = render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    // 切到另一个岗位：旧弹层随 scope 关闭
+    置P4状态({
+      岗位编号: 'job_2',
+      快照: P4快照({ 阶段: '成功', items: [] }),
+    });
+    页.rerender(<候选推荐 />);
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+    页.unmount();
+
+    // Mock 分支：无回调消费者不凭空出现分析入口
+    mock应用状态 = {
+      数据源模式: 'mock', 派发: mock派发,
+      状态: {
+        当前岗位编号: 'J-01', 岗位列表: [{ 编号: 'J-01', 名称: 'AI 产品实习生', 状态: '在招' }],
+        企业规则: [], 企业子视图: '推荐', 推荐列表: [], 收藏候选: [],
+        不合适候选: {}, 已接触推荐: [],
+      },
+    };
+    render(<候选推荐 />);
+    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
   });
 });

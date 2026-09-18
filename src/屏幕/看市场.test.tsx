@@ -9,7 +9,7 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 企业我的.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -23,7 +23,7 @@ import { 有会话内看市场来路, 复位看市场来路 } from '../路由/�
 import { 今日简报, 在谈列表 } from '../数据/模拟数据';
 import { BFF错误 } from '../数据/HTTP客户端';
 import type { BFF候选岗位推荐, BFF附件简历, BFF附件简历库, BFF委托回执 } from '../数据/BFF契约';
-import { BFF候选岗位推荐样本, BFF意向样本, BFF主体样本 } from '../测试/BFF样本';
+import { BFF候选岗位推荐样本, BFF意向样本, BFF主体样本, BFF匹配解释92分样本 } from '../测试/BFF样本';
 import { BFF公司摘要样本 } from '../测试/展示资料样本';
 import { 发现推荐操作桩 } from '../测试/操作桩';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
@@ -1027,13 +1027,17 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(screen.queryByRole('button', { name: /查看代理功能/ })).toBeNull();
   });
 
-  it('Backend 市场卡进详情带来源标记，详情页才能安全返回本屏；Mock 卡不带', async () => {
+  it('Backend 市场卡进详情带来源标记与精确四坐标（C2），详情页才能安全返回并恢复本条记录；Mock 卡不带', async () => {
     const user = userEvent.setup();
     置P4候选状态([BFF候选岗位推荐样本]);
     const 页 = render(<看市场 />);
     await user.click(screen.getByRole('button', { name: '查看职位详情' }));
+    // URL query 精确携带 recommendation_id/batch_id/intention_id（job_id 取路由段）
     expect(mock跳转).toHaveBeenCalledWith(
-      路径.职位详情(BFF候选岗位推荐样本.job.job_id),
+      `${路径.职位详情(BFF候选岗位推荐样本.job.job_id)}`
+      + `?recommendation_id=${encodeURIComponent(BFF候选岗位推荐样本.recommendation_id)}`
+      + `&batch_id=${encodeURIComponent(BFF候选岗位推荐样本.batch_id)}`
+      + `&intention_id=${encodeURIComponent(BFF候选岗位推荐样本.intention_id)}`,
       { 来源: 'candidate-market' },
     );
     // 来源标记之外还留下会话内来路证据：详情页的安全返回靠它区分本会话跳转与刷新残留
@@ -1664,5 +1668,119 @@ describe('看市场 · 市场卡提取前证据（Task 2）', () => {
     expect(页.container.querySelector('img[src="https://cdn.example.com/p.png"]')).toBeTruthy();
     const 去谈键 = screen.getByRole('button', { name: '让AI代理去谈' }) as HTMLButtonElement;
     expect(去谈键.disabled).toBe(false);
+  });
+});
+
+// ── Task 5（冻结 C3 / Spec §3.1–3.2）：原分数环变独立可点入口，打开行内已有数据弹层 ──
+// 打开只用该行已返回的解释（零网络补读）；换意向/主体关闭旧弹层；弹层总分用文本。
+describe('看市场 · 匹配分析弹层（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock轻提示.mockClear();
+    mock加载候选岗位.mockClear();
+    mock刷新候选岗位.mockClear();
+    mock设置发现推荐范围.mockClear();
+  });
+
+  afterEach(() => {
+    复位看市场来路();
+  });
+
+  it('环变按钮：点击只打开分析弹层（文本总分 + 六维行），网络请求计数保持不变', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([{ ...BFF候选岗位推荐样本, match_explanation: BFF匹配解释92分样本 }]);
+    const 页 = render(<看市场 />);
+    const 首载请求数 = mock加载候选岗位.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    // 弹层用文本总分（藏环），六维行来自该行已返回的解释
+    expect(弹层.textContent).toContain('92 分');
+    expect(within(弹层).getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(within(弹层).getByText('命中11/12个岗位关键词')).toBeTruthy();
+    // 弹层内藏环（文本总分）；背景卡上的原环仍在（遮罩之后），弹层里没有第二个环
+    expect(within(弹层).queryByRole('img', { name: /适配/ })).toBeNull();
+    // 打开弹层零网络补读：加载调用计数与打开前一致
+    expect(mock加载候选岗位.mock.calls.length).toBe(首载请求数);
+    // 卡片导航没有被触发（点击不透传）
+    expect(mock跳转).not.toHaveBeenCalled();
+    页.unmount();
+  });
+
+  it('解释合法缺失（显式 null）：弹层显示「暂无该次匹配的详细分析」+ 有限依据；无六行', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([{
+      ...BFF候选岗位推荐样本,
+      match_explanation: null,
+      match_reasons: ['category_matched', 'direction_match'],
+    }]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(within(弹层).getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(within(弹层).getByText('有限依据')).toBeTruthy();
+    expect(within(弹层).getByText('职位方向匹配')).toBeTruthy();
+    expect(within(弹层).queryByText('推荐生成时的匹配结果')).toBeNull();
+    expect(弹层.textContent).not.toContain('direction_match');
+  });
+
+  it('遮罩 / Escape 关闭弹层；Mock 列表卡不出现分析入口', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([{ ...BFF候选岗位推荐样本, match_explanation: BFF匹配解释92分样本 }]);
+    const 页 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭匹配度分析' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // Escape 在弹层关闭后才按 —— 再开一次用键盘关
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+    页.unmount();
+
+    // Mock 分支：无回调消费者不凭空出现分析入口（Task 7 才接 Mock 快照）
+    置应用状态({
+      模式: 'mock',
+      状态: {
+        子视图: '看市场', 当前意向: 'AI 产品经理',
+        求职意向表: [{ 编号: 'I-01', 标题: '[上海] AI 产品经理' }],
+        在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+        全局规则: [], 意向级规则: [], 简历经历: [], 简历教育: [], 简历技能: [],
+      },
+    });
+    render(<看市场 />);
+    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
+  });
+
+  it('换意向（scope 切换）关闭旧弹层；再开新意向的卡显示那一批的分数，双批次不串值', async () => {
+    const user = userEvent.setup();
+    置P4候选意向({
+      意向ID: 'int_a', 阶段: '成功',
+      items: [{ ...BFF候选岗位推荐样本, match_score: 92, match_explanation: BFF匹配解释92分样本 }],
+    });
+    const 页 = render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' }).textContent).toContain('92 分');
+
+    // 切到意向 B：同岗位另一批次（71 分）—— 旧弹层必须关闭，绝不让 92 分残留
+    置P4候选意向({
+      意向ID: 'int_b', 阶段: '成功',
+      items: [{
+        ...BFF候选岗位推荐样本, match_score: 71, batch_id: 'bat_b',
+        match_explanation: {
+          ...BFF匹配解释92分样本, total_points: 71,
+        },
+      }],
+    });
+    页.rerender(<看市场 />);
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+    // 再开 B 意向的卡：文本总分与六维行都是 B 批次的
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' }).textContent).toContain('71 分');
+    expect(screen.getByRole('dialog', { name: '匹配度分析' }).textContent).not.toContain('92 分');
+    页.unmount();
   });
 });

@@ -295,3 +295,53 @@
 /* （原「筛选抽屉」整块样式 —— .遮罩 / .筛选层 / .抓手 / .要求标题行 / .筛选标题 / .管理规则 /
    .筛选内容 / .规则行 / .规则输入 / .删行 / .添加行 / .完成键 及两个 keyframes ——
    只服务于页内筛选层，已于 2026-09-09 随删筛选整体删除。） */
+
+/* ── Task 5：匹配分析弹层（复用全局 弹层框架；面板/遮罩/抓手版式沿用原筛选抽屉同一套
+    视觉语汇。弹层内容 = 匹配分析块（藏环文本总分），长内容在面板内滚动。 ── */
+.分析遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: var(--遮罩);
+  animation: 遮罩淡入 0.18s ease-out both;
+}
+
+.分析层 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  background: var(--白);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 20px calc(max(var(--安全区下), 20px) + 12px);
+  max-height: 72%;
+  overflow-y: auto;
+  animation: 分析层升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.分析抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 14px;
+}
+
+@keyframes 分析层升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
