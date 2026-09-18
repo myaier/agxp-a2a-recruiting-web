@@ -341,12 +341,12 @@ export default function 看市场() {
   const 分析模型: 匹配分析模型 | null = 分析推荐编号 === null
     ? null
     : 分析卡 !== null
-      ? {
-        分数: 分析卡.卡.match_score,
-        解释: 分析卡.卡.match_explanation ?? null,
-        有限依据: 映射推荐依据(分析卡.卡.match_reasons),
-        上下文: '有来源',
-      }
+      ? 建匹配分析模型(
+        分析卡.卡.match_score,
+        分析卡.卡.match_explanation ?? null,
+        '有来源',
+        映射推荐依据(分析卡.卡.match_reasons),
+      )
       : 是后端
         ? null
         : 建匹配分析模型(Mock匹配分数(分析推荐编号), Mock匹配解释(分析推荐编号), '有来源');
