@@ -713,8 +713,39 @@ Task 5/6 接线引入的新请求形态 —— 会话页按会话 case_id 定向
 
 ### 已知边界
 
-- 视觉采集固定 mock 源：招聘推荐卡的传回调态入口只在 Backend 数据源存在（Mock
-  人才库卡按 Task 7 as-built 无入口），该卡的 44px 入口几何与截图证据由
-  展示与交互「卡片统一 招聘推荐卡两模式」用例承担（44×44 实测断言 + 截图）。
+- 视觉采集固定 mock 源：招聘推荐卡的传回调态入口截图以 Backend 数据源场景为准；
+  review-r1 后 Mock 推荐筛选卡同样传 查看匹配分析（Spec §7 同源接线），其 44px
+  入口几何与 DOM 顺序证据由展示与交互「卡片统一 招聘推荐卡两模式 / Mock 三屏」
+  用例承担（44×44 实测断言 + 期望数组）。
 - 真实后端行为（OpenAPI 实际下发 match_explanation/step/exchange_ref）未由
   fixture 证明；真实环境未验收，由用户负责。
+
+## 实施后收尾对账（异构 review 与最终验证，2026-09-19）
+
+### 宿主内全局 review 与 Codex review-loop
+
+- 全局 whole-branch review（跨 Task 缝隙核查）：C1 闭表三处一致、C2 七入口矩阵、
+  账本结构性、历史零入口、分析落位、薪资单点收口逐项核实；2 required
+  （lint 1 警告、收尾四件套缺口）+ 8 处一行级 hygiene 以单笔 `46da5484` 收口，
+  scoped re-review 全 ADDRESSED。
+- Codex 异构 review-loop（`84fd3c11...46da5484` 冻结范围，3 轮上限，共用合同
+  `_shared/review-contract.md`）：r1 三条（Mock 招聘推荐/匿名简历未接六维、四处
+  弹层 scope 关闭不完整、固定范围 diff --check EOF 空行）→ `7fbb20f6`/`f004bf0d`；
+  r2 一条（Mock 匿名简历同屏双总分 89/79）→ `76fde4f2`；r3 一条（r2 引入的缺档
+  崩溃）→ `ab09168a`。全部接受并 TDD 修复，每轮 post-round guard 通过，无未解决
+  required；修复均不开新 review 轮。
+
+### 最终验证（HEAD bd8aaa55）
+
+| 责任 | 命令 | 结果 |
+|---|---|---|
+| build | `npm run build` | PASS（429ms） |
+| diff 检查 | `git diff --check 84fd3c11...HEAD` | 干净 |
+| 清单 | `npm run test:list -- --write` → `--check` | 一致（第一层 6339 例·271 文件；第二层 389 项） |
+| 受影响单测 | 证据复用：271/271@7fbb20f6（六文件）、47/47@ab09168a、49/49@46da5484（其后相关文件未再变更） | 全绿 |
+| e2e mock 选集 | 六 spec `--project=mock --workers=2 --retries=0` | 50/50（含 1 条过期卡序断言迁移后复绿，`bd8aaa55`） |
+| 视觉 | `场景.test.ts` 5/5；`UI_CAPTURE_DIR=…-closeout ui:capture --grep 'match-explanation-'` 12/12 | captured + 逐张看图全过（四态/长原因换行/分项/技能计数/弹层关闭钮与岗位上下文行/纸身独立分析区/薪资后缀/缺档态「—」/320 省略号截断） |
+| 静态 | `npm run typecheck` / `npm run lint` | 0 错 / 0 警告 |
+
+fixture 自动化与静态检查由实施侧完成；**真实环境未验收，由用户负责**（不使用
+测试账号、不访问真实 Case、不运行本地真实 E2E 栈或正式 L3、不启动后端）。

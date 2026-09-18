@@ -399,3 +399,13 @@ npm run test:e2e -- e2e/suites/发现推荐.spec.ts e2e/suites/MatchCase.spec.ts
 |R1-4|Minor / optional / 可选增强 / 降低复杂度|拒绝：用户原始要求及批准Spec §5.1明确以冻结后端验证器约束为准。C1公式仅校验已返回计数/分数一致性，非生成分数；后端验证不能替代本任务要求的前端损坏输入拒绝。补明仅限v1解码、不能导出算分能力、展示用返回值。|
 
 结论：1轮，4条发现；3条接受修复（其中1条required），1条optional拒绝，无未解决有效required。依review-loop停止条件结束，不声称reviewer给出NO FINDINGS，不启动无必要复审或产品测试。修订只补实施路径/验证覆盖与解释既定约束，不改变批准Spec。此记录随Plan Revision 2固定，最终执行提示词引用该版本blob。
+
+## 实施记录（2026-09-19 收尾）
+
+执行：Claude Code 宿主，superpowers:subagent-driven-development，10 个编号 Task 全部完成（BASE 197064b0，实施链 f5304f27→33f97282→03f241b3→c7c2152c→9ae66bb7→dfa611bf→c840b31f→5ab9eb1a→dc7bcb84→c305b64d）。每 Task 独立实施者 + spec/code-quality 两阶段宿主内 review；Task 8/9/10 各一轮 fix round 后收口（5ab9eb1a、dc7bcb84、c305b64d）。
+
+- 宿主内全局 whole-branch review（opus）：跨任务缝隙逐项核实一致；2 required + 8 处 hygiene 以 `46da5484` 单笔收口，scoped re-review 全 ADDRESSED。
+- Codex 异构 review-loop（3 轮上限，冻结范围 84fd3c11...46da5484，共用合同 `_shared/review-contract.md`）：r1 三条 required（Mock 招聘推荐/匿名简历未接六维快照；看市场/在谈首页/企业在谈候选/MatchCase列表 四处弹层 scope 关闭不完整；固定范围 diff --check 的 prompts EOF 空行）→ `7fbb20f6`+`f004bf0d`；r2 一条（Mock 匿名简历同屏双总分 89/79，Spec §7）→ `76fde4f2`；r3 一条（r2 引入的缺档崩溃）→ `ab09168a`。全部接受并以 TDD 修复，每轮 post-round guard 通过，无未解决 required；按上限结束，未开第 4 轮。
+- 收尾 affected/L0–L2（HEAD bd8aaa55）：build PASS（429ms）、`git diff --check 84fd3c11...HEAD` 干净、`test:list --write→--check` 一致（第一层 6339 例·271 文件；第二层 389 项）、e2e mock 选集六 spec 50/50（含 1 条过期卡序断言迁移 `bd8aaa55`）、视觉 12 场景重采集并逐张看图全过、typecheck/lint 0。单元证据按 INCREMENTAL_EVIDENCE 复用（271/271@7fbb20f6、47/47@ab09168a、49/49@46da5484；其后相关文件未再变更）。逐 Task 命令/RED-GREEN/裁决明细在会话本地 `.superpowers/sdd/2026-09-18-match-explanation-wiring/`（git-ignored）。
+- 真实环境未验收，由用户负责（不使用测试账号、不访问真实 Case、不运行本地真实 E2E 栈或正式 L3、不启动后端、不清库）。后端只读核对（openapi/mobile-v1.yaml 与评分实现）与冻结文本零冲突。
+- final gate：候选 HEAD bd8aaa55，待用户确认后按 final-integration 合同 fast-forward push origin/main（不 force push）。
