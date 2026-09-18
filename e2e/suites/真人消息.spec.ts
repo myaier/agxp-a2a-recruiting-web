@@ -627,15 +627,19 @@ test.describe('六维展示对齐 @backend', () => {
 
     // ── 招聘端：看在线简历层 —— 纸身正文之后是独立分析区（唯一六维来源 = 会话 Case）──
     await page.getByRole('button', { name: '看在线简历' }).click();
-    await expect(page.getByRole('dialog', { name: '看在线简历' })).toBeVisible();
-    await expect(page.getByText('手机：—')).toBeVisible({ timeout: 10_000 }); // 纸身在位
+    const 简历层 = page.getByRole('dialog', { name: '看在线简历' });
+    await expect(简历层).toBeVisible();
+    await expect(简历层.getByText('手机：—')).toBeVisible({ timeout: 10_000 }); // 纸身在位
     // 84 分的构造：薪资10 + 方向25 + 经验15 + 地点10 + 办公5 + 技能19（55/100 命中）
-    await expect(page.getByText('匹配度分析', { exact: true }).last()).toBeVisible();
-    await expect(page.getByText('命中55/100个岗位关键词')).toBeVisible();
-    await expect(page.getByText('19/35')).toBeVisible();
-    await expect(page.getByText('薪资范围匹配').first()).toBeVisible();
-    // 分析在纸身之后：先简历段标、后分析标题（独立白区，不混入正文）
-    await 断言纵序(page, ['个人优势', '匹配度分析']);
+    await expect(简历层.getByText('匹配度分析', { exact: true })).toBeVisible();
+    await expect(简历层.getByText('命中55/100个岗位关键词')).toBeVisible();
+    await expect(简历层.getByText('19/35')).toBeVisible();
+    await expect(简历层.getByText('薪资范围匹配')).toBeVisible();
+    // 分析在纸身之后（层内定位，页面背景的零散同文不参与）：先简历段标、后分析标题
+    await 断言纵序(page, [
+      简历层.getByText('个人优势', { exact: true }),
+      简历层.getByText('匹配度分析', { exact: true }),
+    ]);
     await page.getByRole('button', { name: '继续沟通' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });

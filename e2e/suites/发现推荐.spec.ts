@@ -7,7 +7,7 @@ import { 信封 } from '../fixtures/bff/协议';
 import { 安装BFF路由 } from '../fixtures/bff/安装BFF路由';
 import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系 } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
-import { P4编号, P4标记, P4补充编号, P4CandidateJob, P4候选卡, P4意向, P4招聘岗位, P4招聘卡, P4发现fixture } from '../fixtures/bff/发现推荐';
+import { P4编号, P4标记, P4补充编号, P4CandidateJob, P4候选卡, P4意向, P4招聘岗位, P4招聘卡, P4匹配解释, P4发现fixture } from '../fixtures/bff/发现推荐';
 import { P2新附件, 创建P2附件fixture } from '../fixtures/bff/附件';
 import { 创建P5MatchCasefixture } from '../fixtures/bff/MatchCase';
 import { type Page } from '@playwright/test';
@@ -60,7 +60,8 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
 
     // 进详情：快照命中直接渲染，绝不再发 canonical job GET
     await page.getByRole('button', { name: '查看职位详情' }).click();
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
+    // Task 7 接线：市场卡导航按 C2 四坐标携带 query（recommendation/batch/intention）
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`));
     await expect(page.getByText(P4标记.jobTitle).first()).toBeVisible();
     // 公司名同时出现在公司区块与发布人行 → 用 .first() 只证渲染自 HTTP
     await expect(page.getByText(P4标记.company).first()).toBeVisible();
@@ -246,13 +247,13 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
     // 两张卡：第一张即甲（翻页首页 items[0]）
     await page.getByRole('button', { name: '查看职位详情' }).first().click();
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`));
 
     // 首次 PUT 500：服务端先行 —— 不回列表，权威数组原样两张卡
     // （远端 message 不进 UI，500 统一收口为安全文案）
     await page.getByRole('button', { name: '不感兴趣' }).click();
     await expect(page.getByText('后端服务暂时不可用，请稍后重试').first()).toBeVisible({ timeout: 10_000 });
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`));
     expect(fixture.候选推荐[P4编号.intention]).toHaveLength(2);
 
     // 第二次 PUT 200：权威回执确认后才回列表；卡消失、另一张还在
@@ -280,7 +281,7 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     // include=candidate_summary 展开页）；请求按当前岗位 scope 发出
     await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(P4标记.summaryWork).first()).toBeVisible();
-    expect(请求序.some((项) => 项 === `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50&include=candidate_summary`)).toBe(true);
+    expect(请求序.some((项) => 项 === `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50&include=candidate_summary,match_explanation`)).toBe(true);
 
     // 详情：强制重读权威详情后渲染同一张卡的画像
     // J（Task 8）：点卡落 canonical 双坐标 URL（岗位 + 推荐都来自卡片坐标）
@@ -295,7 +296,7 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page.getByText('工作经历').first()).toBeVisible();
     await expect(page.getByText('项目经历').first()).toBeVisible();
     await expect(page.getByText('教育经历').first()).toBeVisible();
-    expect(请求序).toContain(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations/${P4编号.recruiterRecommendation}`);
+    expect(请求序).toContain(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations/${P4编号.recruiterRecommendation}?include=match_explanation`);
 
     // 身份/薪资 canary：HTTP 从未下发真名/直聊/期望薪资，页面一概不渲染；
     // Mock 人才库的候选（江叙白）与会话主体真名也不兜底出现
@@ -470,16 +471,17 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 20_000 });
 
     // S0–S3 展示统一（R1）：显式 完整布局 → 匹配区标题保留，不整区消失；
-    // Task 5：默认卡只有薪资 overlap 一个正向码 —— 其余五行「未提供判定」，
-    // 附统一说明；原「推荐依据」区与缺失文案随六行模型退役，不伪造分数
+    // Task 10（Spec §3.3）：详情恒带 include=match_explanation，展开解释 → 六维行
+    // 直接展开（88 分批次解释），旧「未提供判定/推荐依据」版式退役，不伪造分数
     await expect(page.getByText('匹配度分析')).toBeVisible();
-    await expect(page.getByText('薪资 · 薪资带有交集')).toBeVisible();
-    await expect(page.getByText('方向 · 未提供判定')).toBeVisible();
-    await expect(page.getByText('技能 · 未提供判定')).toBeVisible();
-    await expect(page.getByText('当前接口仅提供部分匹配依据')).toBeVisible();
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible();
+    await expect(page.getByText('命中66/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('23/35')).toBeVisible();
+    await expect(page.getByText('薪资范围匹配').first()).toBeVisible();
+    await expect(page.getByText('求职方向与岗位方向匹配').first()).toBeVisible();
+    await expect(page.getByText('未提供判定')).toHaveCount(0);
     await expect(page.getByText('推荐依据', { exact: true })).toHaveCount(0);
     await expect(page.getByText('暂无推荐依据')).toHaveCount(0);
-    await expect(page.getByText('暂无逐条匹配证据')).toHaveCount(0);
     await expect(page.getByText('distributed_systems')).toHaveCount(0);
     // 非空安全简历照旧：项目整区在（后端有项目即出）、遮蔽公司给「未披露」
     await expect(page.getByText('项目经历')).toBeVisible();
@@ -591,10 +593,12 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     };
     fixture.招聘可用 = {
       [P4编号.recruiterJob]: [
+        // 甲 = 默认 88 分真实解释（六维行来源）；乙 = 显式 null（有限依据样本）
         P4招聘卡({ highlights: ['category_matched', 'location_matched', 'category_matched', 'distributed_systems'] }),
         P4招聘卡({
           recommendation_id: P4补充编号.招聘候选乙,
-          candidate_alias: 'P4候选乙', rank: 2, match_score: 76, highlights: [],
+          candidate_alias: 'P4候选乙', rank: 2, match_score: 76, highlights: ['category_matched'],
+          match_explanation: null,
         }),
       ],
     };
@@ -627,24 +631,29 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '查看候选画像' }).first().click();
     await expect(page).toHaveURL(new RegExp(`#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}$`));
-    // Task 5：唯一「匹配度分析」+ 六行有限依据（正向码行勾选在位），无独立「推荐依据」区
+    // Task 10（Spec §3.3）：详情恒展开解释 → 六维行来自甲自己的批次解释，旧
+    // 「有限依据/未提供判定」版式退役；重复 highlights 不再造第二份依据区
     await expect(page.getByText('匹配度分析')).toBeVisible({ timeout: 15_000 });
-    // 已有中文原因上屏：重复只展示一次、原 token 不透出不猜词义
-    await expect(page.getByText('职位方向匹配')).toHaveCount(1);
-    await expect(page.getByText('工作地点匹配')).toHaveCount(1);
+    // 六行只来自已展开解释：原 token 与未知码不透出
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible();
+    await expect(page.getByText('命中66/100个岗位关键词')).toBeVisible();
     await expect(page.getByText('category_matched')).toHaveCount(0);
     await expect(page.getByText('distributed_systems')).toHaveCount(0);
-    // 分数只有顶栏一个位置：正文无第二分数环；缺码行「未提供判定」+ 统一说明在位
+    // 分数只有顶栏一个位置：正文藏环（块内不画第二分数环）
     await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(0);
-    await expect(page.getByText('当前接口仅提供部分匹配依据')).toBeVisible();
+    await expect(page.getByText('88', { exact: true }).first()).toBeVisible();
     // 位置：匹配区在画像之后、个人优势之前
-    await 断言纵序(page, ['P4 本科', '匹配度分析', '职位方向匹配', '个人优势']);
+    await 断言纵序(page, ['P4 本科', '匹配度分析', '个人优势']);
 
-    // 导航另一记录（无已知原因的乙）：旧原因立即清除，六行全部转为未提供判定
+    // 导航另一记录（乙 = 显式 null 解释）：六行整组清除 → 缺失说明 + 有限依据一行，
+    // 甲的批次解释绝不残留
     await hash直达(page, `/#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4补充编号.招聘候选乙}`);
     await expect(page.getByText('匹配度分析')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('方向 · 未提供判定')).toBeVisible();
-    await expect(page.getByText('职位方向匹配')).toHaveCount(0);
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
+    await expect(page.getByText('有限依据')).toBeVisible();
+    await expect(page.getByText('职位方向匹配')).toBeVisible(); // 乙 highlights 的已知码
+    await expect(page.getByText('命中66/100个岗位关键词')).toHaveCount(0);
+    await expect(page.getByText('88', { exact: true })).toHaveCount(0); // 顶栏回到乙自己的 76
 
     // ── 切到求职端：推荐列表 → 独立职位详情 ──
     await hash直达(page, '/#/identity?switch=1&from=hr');
@@ -653,21 +662,22 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     await page.getByRole('button', { name: '市场', exact: true }).click();
     await expect(page.getByText(P4标记.jobTitle).first()).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '查看职位详情' }).first().click();
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`));
-    await expect(page.getByText('推荐依据').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('职位方向匹配')).toHaveCount(1);
-    await expect(page.getByText('工作地点匹配')).toHaveCount(1);
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`));
+    // 四坐标恢复原记录 → 六维行来自同一批次的已展开解释
+    await expect(page.getByText('匹配度分析').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible();
+    await expect(page.getByText('命中78/100个岗位关键词')).toBeVisible();
     await expect(page.getByText('direction_match')).toHaveCount(0);
-    // 候选端核对环是唯一分数环：原因说明不新增第二个环，核对行照常
+    // 候选端正文环是唯一分数环：解释行不新增第二个环
     await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(1);
-    await 断言纵序(page, [P4标记.jobTitle, '职位方向匹配', '岗位信息与职位详情']);
+    await 断言纵序(page, [P4标记.jobTitle, '命中部分岗位关键词', '岗位信息与职位详情']);
 
-    // 直接详情无推荐上下文：真实缺失状态（暂无推荐依据 + 无分缺位），不借上一条记录的原因
+    // 直接详情无推荐上下文：真实缺失状态（暂无分析 + 无分缺位），不借上一条记录的解释
     await hash直达(page, `/#/job/${P4补充编号.备选岗位}`);
     await expect(page.getByText('P4 Fixture 备选岗位').first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('暂无推荐依据')).toBeVisible();
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
     await expect(page.getByRole('img', { name: '匹配分未知' })).toBeVisible();
-    await expect(page.getByText('职位方向匹配')).toHaveCount(0);
+    await expect(page.getByText('命中部分岗位关键词')).toHaveCount(0);
 
     // 网络中不增加推荐刷新或 Case 补读请求：Case 域只允许主壳水合的摘要读，
     // 绝无逐 Case 详情补读；推荐刷新 POST 全程为零
@@ -681,15 +691,17 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
     expect(请求序.filter((项) => 项.startsWith('POST') && 项.includes('refresh'))).toEqual([]);
   });
 
-  test('聊天推荐前端修复 推荐详情唯一六维有限依据：正向码勾行、未确认经验不冒进、薪资部分匹配 @backend', async ({ page }) => {
+  test('聊天推荐前端修复 推荐详情唯一六维解释：四态行同屏、维覆盖不动旧依据投影 @backend', async ({ page }) => {
     const fixture = P4发现fixture();
-    // 五码齐但经验未确认 + 薪资 near_miss：六行各自按契约 C 落态，不拼造一致性
+    // 六维覆盖样本：办公方式=缺失未核对（U 0 分，本就未取维，覆盖后分项和不变）；
+    // 总分 63 → 方向/经验/地点 matched、技能 3/35、薪资 matched
     fixture.招聘可用 = {
       [P4编号.recruiterJob]: [
         P4招聘卡({
-          highlights: ['category_matched', 'skills_matched', 'experience_met', 'location_matched', 'workplace_mode_matched'],
-          structured_requirements_confirmed: false,
-          compensation_relationship: 'near_miss',
+          match_score: 63,
+          match_explanation: P4匹配解释(63, {
+            workplace_mode: { status: 'unknown', points: 0, reason_code: 'job_workplace_mode_missing' },
+          }),
         }),
       ],
     };
@@ -697,24 +709,22 @@ test.describe('P4 发现推荐域 fixture @backend', () => {
 
     await page.goto(`/#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}`);
     await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 20_000 });
-    // 唯一「匹配度分析」标题：六行固定在位 —— 正向行按码落文案、skills 只说「有技能命中」、
-    // 经验缺确认给「未提供判定」（不把缺确认当不匹配）、near_miss 标部分匹配
+    // 唯一「匹配度分析」标题：六行各自按冻结闭表落态 —— 办公方式缺失给「未核对」，
+    // 技能部分命中带计数、方向/经验/地点/薪资按批次解释原样
     await expect(page.getByText('匹配度分析')).toHaveCount(1);
-    await expect(page.getByText('方向 · 职位方向匹配')).toBeVisible();
-    await expect(page.getByText('技能 · 有技能命中')).toBeVisible();
-    await expect(page.getByText('经验 · 未提供判定')).toBeVisible();
-    await expect(page.getByText('地点 · 工作地点匹配')).toBeVisible();
-    await expect(page.getByText('办公方式 · 办公方式匹配')).toBeVisible();
-    await expect(page.getByText('薪资 · 薪资带接近，部分匹配')).toBeVisible();
-    // 行尾统一说明一次；原 token 不透出；无独立「推荐依据」区、无第二分数环
-    await expect(page.getByText('当前接口仅提供部分匹配依据')).toHaveCount(1);
-    await expect(page.getByText('skills_matched')).toHaveCount(0);
-    await expect(page.getByText('experience_met')).toHaveCount(0);
-    await expect(page.getByText('compensation_near_miss')).toHaveCount(0);
+    await expect(page.getByText('岗位办公方式信息缺失')).toBeVisible();
+    await expect(page.getByText('未核对', { exact: true })).toBeVisible();
+    await expect(page.getByText('命中9/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('薪资范围匹配').first()).toBeVisible();
+    await expect(page.getByText('经验满足岗位要求')).toBeVisible();
+    // 覆盖后分项和仍=总分：办公方式 0/5、技能 3/35 在位；原 token 不透出
+    await expect(page.getByText('0/5', { exact: true })).toBeVisible();
+    await expect(page.getByText('3/35', { exact: true })).toBeVisible();
+    await expect(page.getByText('job_workplace_mode_missing')).toHaveCount(0);
     await expect(page.getByText('推荐依据', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(0);
     // 位置：匹配区在画像之后、个人优势之前
-    await 断言纵序(page, ['P4 本科', '匹配度分析', '方向 · 职位方向匹配', '个人优势']);
+    await 断言纵序(page, ['P4 本科', '匹配度分析', '个人优势']);
     await 断言核心页无横向溢出(page);
   });
 });

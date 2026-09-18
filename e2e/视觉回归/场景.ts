@@ -428,10 +428,11 @@ const 发岗三场景: 视觉场景 = {
 // 注：点「查看候选画像」落到匿名在线简历页（/hr/resume/:id）。计划 ready 写「候选画像标题」，
 // 该页无字面「候选画像」标题，最接近的稳定标题是简历正文段标「个人优势」。按 carry-forward
 // 规则用「个人优势」作关键元素，不改产品代码。
-// 关键元素锚点（c836f30 修）：该页从 c836f30 起同时有栏匹配标「匹配」与匹配对齐卡标题
+// 关键元素锚点（c836f30 修）：该页从 c836f30 起同时有栏匹配标「匹配」与匹配分析卡标题
 // 「匹配度分析」，旧锚点 /匹配|在线简历/ 会命中两个元素触发 strict mode violation，采集必失败。
 // 改为两个精确锚点，并把「匹配度分析」卡显式纳入几何覆盖——截图像素比较本就覆盖它，
 // 这里是把它从「让定位器歧义的新元素」变成「被 harness 盯住的元素」，不是掩盖产品漂移。
+// （Task 10 更名：旧组件「匹配对齐卡」已退役，共享卡现名「匹配分析块」，锚点注释随实改名。）
 const 候选画像场景: 视觉场景 = {
   id: 'recruiter-home-candidate',
   状态: '招聘端已注册',
@@ -448,7 +449,7 @@ const 候选画像场景: 视觉场景 = {
     return [
       { 名称: '返回按钮', 定位: page.getByRole('button', { name: '返回' }) },
       { 名称: '栏匹配标 匹配', 定位: page.getByText('匹配', { exact: true }) },
-      { 名称: '匹配对齐卡标题 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
+      { 名称: '匹配分析卡标题 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
       { 名称: '简历段标 个人优势', 定位: page.getByText('个人优势', { exact: true }) },
     ];
   },
@@ -622,6 +623,268 @@ const 修复招聘纸身场景: 视觉场景 = {
   },
 };
 
+
+// ── 六维展示对齐（Task 10）：匹配解释展示的 Mock 视觉场景。全部走 Mock 数据源
+//    （采集 spec 固定 mock 模式），记录快照来自 Mock匹配快照 固定表。 ──
+
+/** 六维场景通用：按视口宽打开页面（采集默认 390；窄屏变体在到达前改视口） */
+async function 打开六维页面(page: Page, 路径串: string, 种子: 场景状态种子, 宽?: number): Promise<void> {
+  if (宽 !== undefined) await page.setViewportSize({ width: 宽, height: 844 });
+  await 打开稳定页面(page, 路径串, 种子);
+  await 注入候选突变(page);
+}
+
+// match-explanation-detail-four-states：M-11 一条记录四态齐备（matched/partial/
+// unknown/not_matched 各一行），总分 52 —— 详情唯一环 + 六维行版式。
+const 六维四态场景: 视觉场景 = {
+  id: 'match-explanation-detail-four-states',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/job/M-11', '求职端已注册');
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('匹配度分析', { exact: true })).toBeVisible();
+    await expect(page.getByText('命中2/4个岗位关键词')).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '分析标题 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
+      { 名称: '方向行 匹配', 定位: page.getByText('求职方向与岗位方向匹配', { exact: true }) },
+      { 名称: '技能行 部分匹配计数', 定位: page.getByText('命中2/4个岗位关键词', { exact: true }) },
+      { 名称: '经验行 未核对', 定位: page.getByText('岗位经验要求尚未确认', { exact: true }) },
+      { 名称: '薪资行 面议未核对', 定位: page.getByText('薪资面议，尚未核对', { exact: true }) },
+      { 名称: '办公方式行 不匹配', 定位: page.getByText('办公方式不匹配', { exact: true }) },
+      { 名称: '技能口径说明', 定位: page.getByText('技能按关键词命中核对，不代表能力认证。', { exact: true }) },
+    ];
+  },
+};
+
+// match-explanation-detail-four-states-320：同一四态记录在 320 窄屏 —— 行注长说明
+// 换行可读、分项分数列可用（Spec §4 窄屏检查）。
+const 六维四态窄屏场景: 视觉场景 = {
+  id: 'match-explanation-detail-four-states-320',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/job/M-11', '求职端已注册', 320);
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('匹配度分析', { exact: true })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '分析标题 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
+      { 名称: '技能行 部分匹配计数', 定位: page.getByText('命中2/4个岗位关键词', { exact: true }) },
+      { 名称: '办公方式行 不匹配', 定位: page.getByText('办公方式不匹配', { exact: true }) },
+    ];
+  },
+};
+
+// match-explanation-skills-partial-zero：M-02 冻结反例 —— 技能 1/100 命中 floor 后
+// 0 分仍为部分匹配（0 与缺失不互换），总分 60。
+const 六维技能部分零场景: 视觉场景 = {
+  id: 'match-explanation-skills-partial-zero',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/job/M-02', '求职端已注册');
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('命中1/100个岗位关键词')).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '分析标题 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
+      { 名称: '技能行 1/100 命中', 定位: page.getByText('命中1/100个岗位关键词', { exact: true }) },
+      { 名称: '技能行 0/35 分', 定位: page.getByText('0/35', { exact: true }) },
+      { 名称: '技能行 部分匹配态', 定位: page.getByText('命中部分岗位关键词', { exact: true }) },
+      { 名称: '薪资行 接近', 定位: page.getByText('薪资范围接近', { exact: true }) },
+    ];
+  },
+};
+
+// match-explanation-missing：M-04 不在快照表 —— 唯一的「无快照与总分缺失」演示：
+// 环位「—」+ 暂无该次匹配的详细分析 + 无推荐上下文，不造 0 分。
+const 六维缺失场景: 视觉场景 = {
+  id: 'match-explanation-missing',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/job/M-04', '求职端已注册');
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '分析标题 匹配度分析', 定位: page.getByText('匹配度分析', { exact: true }) },
+      { 名称: '缺失说明', 定位: page.getByText('暂无该次匹配的详细分析', { exact: true }) },
+      { 名称: '缺分位 匹配分未知', 定位: page.getByRole('img', { name: '匹配分未知' }) },
+    ];
+  },
+};
+
+// match-explanation-list-popup：市场列表 → 原分数环位的独立分析入口 → 共享分析弹层
+//（岗位上下文行 + 藏环文本总分 + 六维行），关闭键可见。
+const 六维列表弹层场景: 视觉场景 = {
+  id: 'match-explanation-list-popup',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/app', '求职端已注册');
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+    await page.getByRole('button', { name: '查看匹配分析' }).first().click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('dialog', { name: '匹配度分析' })).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    const 弹层 = page.getByRole('dialog', { name: '匹配度分析' });
+    return [
+      { 名称: '弹层 匹配度分析', 定位: 弹层 },
+      { 名称: '弹层关闭键', 定位: 弹层.getByRole('button', { name: '关闭', exact: true }) },
+      { 名称: '弹层文本总分', 定位: 弹层.getByText(/分$/, { exact: false }) },
+      { 名称: '弹层六维行 技能计数', 定位: 弹层.getByText(/命中\d+\/\d+个岗位关键词/) },
+    ];
+  },
+};
+
+// match-explanation-recruiter-resume-analysis：招聘端聊天「看在线简历」层 ——
+// 简历纸身之后是本会话 Case 的独立分析区（A-01 总分 94，不混入纸身正文）。
+const 六维招聘纸身分析场景: 视觉场景 = {
+  id: 'match-explanation-recruiter-resume-analysis',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/hr/chat/A-01', '招聘端已注册');
+    await page.getByRole('button', { name: '看在线简历' }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    const 层 = page.getByRole('dialog', { name: '看在线简历' });
+    await expect(层).toBeVisible();
+    await expect(层.getByText('匹配度分析', { exact: true })).toBeVisible();
+    // 独立分析区在纸身之后：滚动进可视区再截图（采集是视口截图）
+    await 层.getByText('匹配度分析', { exact: true }).scrollIntoViewIfNeeded();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    const 层 = page.getByRole('dialog', { name: '看在线简历' });
+    return [
+      { 名称: '层 看在线简历', 定位: 层 },
+      { 名称: '纸身段标 工作经历', 定位: 层.getByText('工作经历', { exact: true }).first() },
+      { 名称: '分析标题 匹配度分析', 定位: 层.getByText('匹配度分析', { exact: true }) },
+      { 名称: '分析技能计数', 定位: 层.getByText('命中35/36个岗位关键词', { exact: true }) },
+      { 名称: '层关闭/继续沟通键', 定位: 层.getByRole('button', { name: '继续沟通' }) },
+    ];
+  },
+};
+
+// ── Task 4 视觉义务：四张共享列表卡「传回调态」的可点击环（44px 触摸区）与
+//    不挤薪资/不破行 —— 普通宽度 390 全覆盖，带薪资串的两卡另加 360/320 窄屏。──
+
+// match-explanation-card-market-*：求职推荐卡（市场列表，薪资 + 环同列）。
+const 六维市场卡场景: 视觉场景 = {
+  id: 'match-explanation-card-market-390',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/app', '求职端已注册');
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    const 卡 = page.locator('[data-testid="市场卡"], [class*="市场卡"]').first();
+    return [
+      { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
+      { 名称: '首卡薪资', 定位: page.locator('[class*="薪资"]').first() },
+    ];
+  },
+};
+
+const 六维市场卡360场景: 视觉场景 = {
+  id: 'match-explanation-card-market-360',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/app', '求职端已注册', 360);
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
+      { 名称: '首卡薪资', 定位: page.locator('[class*="薪资"]').first() },
+    ];
+  },
+};
+
+const 六维市场卡320场景: 视觉场景 = {
+  id: 'match-explanation-card-market-320',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/app', '求职端已注册', 320);
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
+      { 名称: '首卡薪资', 定位: page.locator('[class*="薪资"]').first() },
+    ];
+  },
+};
+
+// match-explanation-card-deals-*：求职在谈卡（在谈首页，薪资 + 环同列）。
+const 六维在谈卡场景: 视觉场景 = {
+  id: 'match-explanation-card-deals-390',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/app', '求职端已注册');
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
+      { 名称: '首卡薪资', 定位: page.locator('[class*="薪资"]').first() },
+    ];
+  },
+};
+
+const 六维在谈卡320场景: 视觉场景 = {
+  id: 'match-explanation-card-deals-320',
+  状态: '求职端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/app', '求职端已注册', 320);
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
+      { 名称: '首卡薪资', 定位: page.locator('[class*="薪资"]').first() },
+    ];
+  },
+};
+
+// match-explanation-card-hr-deals-390：招聘在谈卡（Mock 在谈候选，环独立入口）。
+const 六维招聘在谈卡场景: 视觉场景 = {
+  id: 'match-explanation-card-hr-deals-390',
+  状态: '招聘端已注册',
+  async 到达(page: Page): Promise<void> {
+    await 打开六维页面(page, '/#/hr', '招聘端已注册');
+  },
+  async 就绪(page: Page): Promise<void> {
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+  },
+  关键元素(page: Page): 关键元素描述[] {
+    return [
+      { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
+      { 名称: '首卡阶段徽标', 定位: page.locator('[data-card-region="stage"]').first() },
+    ];
+  },
+};
+
 export const 视觉场景们: 视觉场景[] = [
   登录场景,
   身份场景,
@@ -649,4 +912,17 @@ export const 视觉场景们: 视觉场景[] = [
   修复招聘消息场景,
   修复招聘聊天场景,
   修复招聘纸身场景,
+  // 六维展示对齐（Task 10）
+  六维四态场景,
+  六维四态窄屏场景,
+  六维技能部分零场景,
+  六维缺失场景,
+  六维列表弹层场景,
+  六维招聘纸身分析场景,
+  六维市场卡场景,
+  六维市场卡360场景,
+  六维市场卡320场景,
+  六维在谈卡场景,
+  六维在谈卡320场景,
+  六维招聘在谈卡场景,
 ];

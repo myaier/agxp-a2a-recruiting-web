@@ -166,7 +166,9 @@ test.describe('在谈详情完整布局', () => {
         page.getByText('公司信息', { exact: true }),
         '对接人',
       ]);
-      await expect(page.getByText('匹配分析缺失')).toBeVisible();
+      // Task 6/10：匹配区缺失口径归 共享匹配分析块（「暂无该次匹配的详细分析」），
+      // 旧「匹配分析缺失」单行占位退役
+      await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
       // 冻结摘要四事实如实展示（不因其他字段缺失而隐藏）
       await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible();
       await expect(page.getByText(P5标记.技能).first()).toBeVisible();
@@ -251,7 +253,7 @@ test.describe('在谈详情完整布局', () => {
       await page.getByRole('button', { name: '在线简历', exact: true }).click();
       await expect(page.getByText('当前在谈详情数据未提供').first()).toBeVisible({ timeout: 20_000 });
       await 断言纵序(page, ['匹配度分析', '个人优势', '求职期望', '工作经历', '项目经历', '教育经历', '专业技能']);
-      for (const 缺 of ['匿名画像缺失', '职位信息缺失', '匹配分析缺失', '个人优势缺失', '求职期望缺失', '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失']) {
+      for (const 缺 of ['匿名画像缺失', '职位信息缺失', '暂无该次匹配的详细分析', '个人优势缺失', '求职期望缺失', '工作经历缺失', '项目经历缺失', '教育经历缺失', '专业技能缺失']) {
         await expect(page.getByText(缺).first()).toBeVisible();
       }
       await expect(page.getByText('在线简历缺失 · 内容不可转发').first()).toBeVisible();
@@ -764,8 +766,10 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       await expect(S0段.getByText('公开资料匹配检查：公开初评匹配')).toBeVisible();
       await expect(S0段.getByText('其他条件：匹配')).toBeVisible();
       await expect(page.getByText(P5标记.庚公开评)).toHaveCount(0);
-      // 轮次提示只出现一次（挂当前结束段的段首说明），不是顶部第二条状态条
-      await expect(page.getByText('当前由招聘方发问，已问 1/3 轮')).toHaveCount(1);
+      // 轮次提示只出现一次（挂当前结束段的段首说明），不是顶部第二条状态条；
+      // Task 1（§8B.2）：旧响应缺 step → 只显示服务端轮次，不猜执行方动作
+      await expect(page.getByText('招聘方已问 1/3 轮')).toHaveCount(1);
+      await expect(page.getByText('当前由招聘方发问')).toHaveCount(0);
       await 断言核心页无横向溢出(page);
       await page.screenshot({ path: 'test-results/S0S3展示统一/bk-进度-候选v2终局-390.png', fullPage: true });
 
@@ -804,7 +808,9 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       await expect(page.getByText('等待对方', { exact: true }).first()).toBeVisible();
       await expect(page.getByText('等待招聘方出具简历初筛结论')).toBeVisible();
       await expect(page.getByText('逾期未回应，这一单会自动结束')).toBeVisible();
-      await expect(page.getByText('当前由招聘方发问，已问 1/3 轮')).toHaveCount(1);
+      // Task 1（§8B.2）：缺 step 的旧响应只显示轮次，不显示推测执行方
+      await expect(page.getByText('招聘方已问 1/3 轮')).toHaveCount(1);
+      await expect(page.getByText('当前由招聘方发问')).toHaveCount(0);
       await expect(page.getByRole('button', { name: '出具简历初筛结论' })).toHaveCount(0);
       await 断言核心页无横向溢出(page);
       await page.screenshot({ path: 'test-results/S0S3展示统一/bk-进度-候选v2进行-390.png', fullPage: true });
@@ -956,8 +962,8 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       await expect(page.getByText('P5 Fixture 本科').first()).toBeVisible();
       await expect(page.getByText('在职看机会').first()).toBeVisible();
       await expect(page.getByText('P5 Fixture 公司 · P5 Fixture 现职·甲').first()).toBeVisible();
-      // 匹配区：安全来源无匹配证据 —— 标题在、缺失说明在（R1 不整区消失）
-      await expect(page.getByText('匹配分析缺失')).toBeVisible();
+      // 匹配区：安全来源无匹配证据 —— 标题在、缺失说明在（Task 6/10 共享分析块口径）
+      await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
       // 遮蔽公司「未披露」；起始缺失「日期未知」；项目无独立日期（全页只有工作行这一个日期占位）
       await expect(page.getByText('未披露').first()).toBeVisible();
       await expect(page.getByText('日期未知')).toHaveCount(1);
@@ -1154,7 +1160,8 @@ test.describe('卡片统一 Mock 三屏 @mock', () => {
     await expect(mock在谈卡.getByText('资深后端工程师 · 交易网关')).toBeVisible({ timeout: 15_000 });
     const mock在谈390 = await 采集卡观察(page, mock在谈卡);
     await 断言卡在视口内(page, mock在谈卡);
-    断言区域顺序(mock在谈390, ['company', 'score', 'salary', 'title', 'tags', 'stage']);
+    // Task 4 传回调态（C3/Spec §3.1）：右列（分数+薪资）整列移出白卡、先于白卡渲染
+    断言区域顺序(mock在谈390, ['score', 'salary', 'company', 'title', 'tags', 'stage']);
     断言分数位让位(mock在谈390);
     // 阶段区胶囊落在白卡上同底（透明或白），不另起一块色底
     expect(await mock在谈卡.evaluate((根) => {
@@ -1174,7 +1181,8 @@ test.describe('卡片统一 Mock 三屏 @mock', () => {
     await expect(mock在谈候选卡.getByRole('img', { name: '适配 94 分' })).toBeVisible({ timeout: 15_000 });
     const mock候选390 = await 采集卡观察(page, mock在谈候选卡);
     await 断言卡在视口内(page, mock在谈候选卡);
-    断言区域顺序(mock候选390, ['score', 'head', 'work', 'education', 'tags', 'stage']);
+    // Task 4 传回调态：招聘在谈卡的分数入口挂卡根、卡体之后渲染
+    断言区域顺序(mock候选390, ['head', 'work', 'education', 'tags', 'stage', 'score']);
     断言分数位让位(mock候选390);
     await expect(mock在谈候选卡.getByText('亮点信息未知')).toBeVisible();
     await page.screenshot({ path: 'test-results/卡片统一/mock-企业在谈候选-390.png' });
@@ -1188,6 +1196,8 @@ test.describe('卡片统一 Mock 三屏 @mock', () => {
     await expect(mock推荐卡.getByRole('img', { name: '适配 91 分' })).toBeVisible({ timeout: 15_000 });
     const mock推荐390 = await 采集卡观察(page, mock推荐卡);
     await 断言卡在视口内(page, mock推荐卡);
+    // Mock 推荐列表不传分析回调（Task 7 as-built：Mock 人才库卡无分析入口），
+    // 分数仍在卡主体内 → score 先行；Backend 传回调 → 入口挂卡根在后
     断言区域顺序(mock推荐390, ['score', 'head', 'work', 'education', 'tags', 'actions']);
     断言分数位让位(mock推荐390);
     await page.screenshot({ path: 'test-results/卡片统一/mock-推荐-390.png' });
@@ -1235,9 +1245,14 @@ test.describe('卡片统一 Backend @backend', () => {
     await expect(后端推荐卡.getByRole('img', { name: '适配 88 分' })).toBeVisible({ timeout: 15_000 });
     const 后端推荐390 = await 采集卡观察(page, 后端推荐卡);
     await 断言卡在视口内(page, 后端推荐卡);
-    断言区域顺序(后端推荐390, ['score', 'head', 'work', 'education', 'tags', 'actions']);
+    // Task 4 传回调态：分数入口挂卡根、白卡之后渲染（head…actions 先行）
+    断言区域顺序(后端推荐390, ['head', 'work', 'education', 'tags', 'actions', 'score']);
     断言分数位让位(后端推荐390);
     await expect(后端推荐卡.getByText(P4标记.summaryWork)).toBeVisible();
+    // C3/Spec §3.1 触摸区：传回调态的分数入口是 40px 环 + 2px 补边 = 44×44 可点区
+    const 入口盒 = await 后端推荐卡.locator('[data-card-region="score"]').boundingBox();
+    expect(Math.round(入口盒?.width ?? 0), '回调态入口触摸区宽 44').toBe(44);
+    expect(Math.round(入口盒?.height ?? 0), '回调态入口触摸区高 44').toBe(44);
     await page.screenshot({ path: 'test-results/卡片统一/backend-推荐-390.png' });
 
     // ── Mock 同一张卡的完整数据基准（mock/stg origin）：固定区跨模式 ≤1px ──
@@ -1247,7 +1262,12 @@ test.describe('卡片统一 Backend @backend', () => {
     await expect(mock推荐卡.getByRole('img', { name: '适配 91 分' })).toBeVisible({ timeout: 15_000 });
     const mock推荐390 = await 采集卡观察(page, mock推荐卡);
     expect(Math.abs(mock推荐390.宽 - 后端推荐390.宽)).toBeLessThanOrEqual(1);
-    断言区域对齐(mock推荐390, 后端推荐390, ['score', 'head', 'work', 'education', 'tags']);
+    断言区域对齐(mock推荐390, 后端推荐390, ['head', 'work', 'education', 'tags']);
+    // score 不做跨模式对齐：Mock 推荐列表卡无分析回调（卡内 40px 环），
+    // Backend 传回调态是 44×44 触摸区按钮（上面已单独断言）—— 有意差异，不对齐。
+    const Mock分数盒 = await mock推荐卡.locator('[data-card-region="score"]').boundingBox();
+    expect(Math.round(Mock分数盒?.width ?? 0), 'Mock 卡内环 40').toBe(40);
+    expect(Math.round(Mock分数盒?.height ?? 0), 'Mock 卡内环 40').toBe(40);
 
     // ── Backend 委托 / 收藏 / 详情 / 滑动可用性：先点键，最后才滑开（滑开的行吞卡内点击）──
     await page.setViewportSize({ width: 320, height: 844 });
@@ -1289,7 +1309,8 @@ test.describe('卡片统一 Backend @backend', () => {
     await expect(后端在谈卡.getByRole('img', { name: '匹配分未知' })).toBeVisible({ timeout: 15_000 });
     const 后端在谈390 = await 采集卡观察(page, 后端在谈卡);
     await 断言卡在视口内(page, 后端在谈卡);
-    断言区域顺序(后端在谈390, ['company', 'score', 'salary', 'title', 'tags', 'stage']);
+    // Task 4 传回调态：右列移出白卡 → score/salary 先于 company 渲染
+    断言区域顺序(后端在谈390, ['score', 'salary', 'company', 'title', 'tags', 'stage']);
     // 未知分说明放在 40px 容器内：右列单行高、不把薪资推下一行、也不压到职位名
     expect(后端在谈390.区域.score!.h, '未知分右列高度').toBeLessThanOrEqual(46);
     expect(
@@ -1337,7 +1358,7 @@ test.describe('卡片统一 Backend @backend', () => {
     await expect(后端招聘在谈卡.getByText(P5标记.现职.甲)).toBeVisible({ timeout: 20_000 });
     const 后端招聘在谈390 = await 采集卡观察(page, 后端招聘在谈卡);
     await 断言卡在视口内(page, 后端招聘在谈卡);
-    断言区域顺序(后端招聘在谈390, ['score', 'head', 'work', 'education', 'tags', 'stage']);
+    断言区域顺序(后端招聘在谈390, ['head', 'work', 'education', 'tags', 'stage', 'score']);
     断言分数位让位(后端招聘在谈390);
     await expect(后端招聘在谈卡.getByRole('img', { name: '匹配分未知' })).toBeVisible();
     await expect(后端招聘在谈卡.getByText('需要你', { exact: true })).toBeVisible();

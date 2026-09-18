@@ -33,15 +33,28 @@ const 预期ID = [
   'chat-recommend-frontend-recruiter-messages',
   'chat-recommend-frontend-recruiter-chat',
   'chat-recommend-frontend-recruiter-resume-paper',
+  // 六维展示对齐（Task 10）：解释展示细节 + 四卡传回调态（含 360/320 窄屏）
+  'match-explanation-detail-four-states',
+  'match-explanation-detail-four-states-320',
+  'match-explanation-skills-partial-zero',
+  'match-explanation-missing',
+  'match-explanation-list-popup',
+  'match-explanation-recruiter-resume-analysis',
+  'match-explanation-card-market-390',
+  'match-explanation-card-market-360',
+  'match-explanation-card-market-320',
+  'match-explanation-card-deals-390',
+  'match-explanation-card-deals-320',
+  'match-explanation-card-hr-deals-390',
 ];
 
 describe('视觉场景清单', () => {
   // onboarding 与简历编辑（Task 5）：新增三个场景（日常基本信息编辑 / 共用状态编辑 /
-  // 招聘三级类别），23 → 26；既有两个新增项（P8 两场景、企业公开页）与先行五个
-  // chat-recommend-frontend 场景全部保留，不按旧固定数量覆盖。
-  it('包含 26 个稳定且唯一的场景 ID', () => {
+  // 招聘三级类别）；Task 10 再加十三个 match-explanation-* 场景 —— 26 → 39；
+  // 既有 P8 两场景、企业公开页与 chat-recommend-frontend 场景全部保留，不按旧固定数量覆盖。
+  it('包含 38 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);
-    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(26);
+    expect(new Set(视觉场景们.map((场景) => 场景.id)).size).toBe(38);
   });
 
   it('onboarding 与简历编辑场景前缀覆盖日常基本信息/状态编辑与招聘三级类别', () => {
@@ -55,6 +68,30 @@ describe('视觉场景清单', () => {
       'onboarding-resume-status-edit',
       'onboarding-recruiter-category',
     ]);
+  });
+
+  it('六维展示对齐场景前缀一致且覆盖四态/技能部分0/缺失/弹层/纸身分析与四卡传回调态', () => {
+    const 六维场景 = 视觉场景们.filter((场景) => 场景.id.startsWith('match-explanation-'));
+    expect(六维场景.map((场景) => 场景.id)).toEqual([
+      'match-explanation-detail-four-states',
+      'match-explanation-detail-four-states-320',
+      'match-explanation-skills-partial-zero',
+      'match-explanation-missing',
+      'match-explanation-list-popup',
+      'match-explanation-recruiter-resume-analysis',
+      'match-explanation-card-market-390',
+      'match-explanation-card-market-360',
+      'match-explanation-card-market-320',
+      'match-explanation-card-deals-390',
+      'match-explanation-card-deals-320',
+      'match-explanation-card-hr-deals-390',
+    ]);
+    // Task 4 视觉义务：三张 Mock 可捕获的共享卡有传回调态场景（招聘推荐卡的回调只在
+    // Backend 数据源存在，采集固定 mock 源无法捕获 —— 44px 入口几何与截图证据在
+    // 展示与交互 卡片统一 Backend 用例）；带薪资串的市场/在谈卡覆盖 320/360 窄屏。
+    const 宽度们 = 六维场景.map((场景) => 场景.id);
+    expect(宽度们.filter((id) => id.includes('-320')).length).toBeGreaterThanOrEqual(3);
+    expect(宽度们.filter((id) => id.includes('-360')).length).toBe(1);
   });
 
   it('聊天推荐前端修复场景前缀一致且覆盖两端列表/聊天/招聘纸身', () => {

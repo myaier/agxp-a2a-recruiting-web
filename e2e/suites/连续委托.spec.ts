@@ -80,7 +80,8 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     await expect(page).toHaveURL(/#\/app$/);
     await expect(page.getByText('AI代理已接手')).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: '查看职位详情' }).first().click();
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`), { timeout: 15_000 });
+    // C2 四坐标：市场卡导航在 query 携带推荐坐标（Task 7 接线）
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`), { timeout: 15_000 });
     const 查看进展 = page.getByRole('button', { name: '查看进展' });
     await expect(查看进展).toBeVisible({ timeout: 15_000 });
 
@@ -202,12 +203,12 @@ test.describe('J-PILOT-01 连续委托接线 @backend', () => {
     // 岗位页主键 = 「核对提交结果」（不重新选 PDF）
     await expect.poll(() => 委托POST们(p4).length, { timeout: 15_000 }).toBe(2);
     await page.getByRole('button', { name: '查看职位详情' }).first().click();
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`), { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`), { timeout: 15_000 });
     await expect(page.getByRole('button', { name: '核对提交结果' })).toBeVisible({ timeout: 15_000 });
 
     // ── 同标签页 reload：原命令（key + body）从 sessionStorage 恢复，仍是待核对 ──
     await page.reload();
-    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}$`), { timeout: 20_000 });
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`), { timeout: 20_000 });
     await expect(page.getByRole('button', { name: '核对提交结果' })).toBeVisible({ timeout: 15_000 });
 
     // ── 核对：放行后原 key + 原 body 恰一次重放 → 回执收口 → 查看进展 ──
@@ -502,7 +503,7 @@ test.describe('DF-008 dogfood 回归 @backend', () => {
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
     await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 15_000 });
     const active读取数 = () =>
-      请求序.filter((项) => 项 === 'GET /api/v1/me/negotiations?shelf=active&limit=50').length;
+      请求序.filter((项) => 项 === 'GET /api/v1/me/negotiations?shelf=active&limit=50&include=match_explanation').length;
     const 首载数 = active读取数();
 
     // 权威 active/open 集合改变：丁 open → ended（连续记录随 Case 动态落入历史集合）

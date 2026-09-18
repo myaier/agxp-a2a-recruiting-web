@@ -43,12 +43,12 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
     await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: '加载更多' })).toBeVisible(); // 游标未尽
-    expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=active&limit=50');
+    expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=active&limit=50&include=match_explanation');
 
     // 加载更多：首页 cursor 原样透传，第二页按服务端顺序追加上屏
     await page.getByRole('button', { name: '加载更多' }).click();
     await expect(page.getByText(P5标记.甲职位名)).toBeVisible({ timeout: 10_000 });
-    expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=active&limit=50&cursor=p5pg2');
+    expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=active&limit=50&include=match_explanation&cursor=p5pg2');
     await 断言纵序(page, [P5标记.丁职位名, P5标记.乙职位名, P5标记.丙一职位名, P5标记.丙二职位名, P5标记.甲职位名]);
     // 候选端视角：丁/乙/丙一/丙二需要你 ×4；同一 Case 甲对候选端零待办（代理处理中）
     await expect(page.getByText('需要你', { exact: true })).toHaveCount(4);
@@ -68,14 +68,14 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     // 首页唯甲：需要你 ×1、代理处理中 ×0
     await expect(page.getByText('需要你', { exact: true })).toHaveCount(1);
     await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(0);
-    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary`);
+    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary,match_explanation`);
     await page.getByRole('button', { name: '加载更多' }).click();
     await expect(page.getByText(P5标记.现职.丁)).toBeVisible({ timeout: 10_000 });
     await 断言纵序(page, [P5标记.现职.甲, P5标记.现职.丁, P5标记.现职.乙, P5标记.现职.丙一, P5标记.现职.丙二]);
     // 读尽后：甲/丁 needs_action → 需要你 ×2；乙/丙一/丙二 waiting → 代理处理中 ×3
     await expect(page.getByText('需要你', { exact: true })).toHaveCount(2);
     await expect(page.getByText('代理处理中', { exact: true })).toHaveCount(3);
-    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary&cursor=p5pg2`);
+    expect(请求序).toContain(`GET /api/v1/recruiter/match-cases?job_id=${P5编号.job}&limit=50&include=candidate_summary,match_explanation&cursor=p5pg2`);
 
     // 候选端专属上下文（intention_id）绝不上招聘端的屏
     await expect(page.getByText(new RegExp(P6标记.意向编号))).toHaveCount(0);
@@ -441,7 +441,7 @@ test.describe('P5 MatchCase 生命周期 fixture @backend', () => {
     // 单页读尽无加载更多；needs_action=false 不据以隐藏卡）
     await expect(page.getByText(P5标记.己职位名)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(P5标记.戊职位名)).toBeVisible({ timeout: 10_000 });
-    expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=history&limit=50');
+    expect(请求序).toContain('GET /api/v1/me/negotiations?shelf=history&limit=50&include=match_explanation');
     await expect(page.getByRole('button', { name: '加载更多' })).toHaveCount(0);
 
     // ended 详情：S0–S3 展示统一 Task 4：顶部终局卡与 wire 原词退场 —— 终局按附录 A.2.1
