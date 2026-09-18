@@ -207,6 +207,15 @@ export function Mock匹配解释(编号: string): BFF匹配解释 | null {
   return Mock匹配快照表[编号] ?? Mock匹配快照表[编号.split('@')[0]] ?? null;
 }
 
+/**
+ * 记录是否在固定快照表内（含 @ 克隆回落）。C1 两态的 Mock 侧判据：表内显式 null =
+ * 「已展开无溯源」，不在表内 = 「未展开」（调用方据此在 模型版式 与 有限依据 旧行
+ * 之间互斥选择 —— 与 Backend 详情的 解释已展开 判据同构）。
+ */
+export function Mock有快照(编号: string): boolean {
+  return 编号 in Mock匹配快照表 || 编号.split('@')[0] in Mock匹配快照表;
+}
+
 /** 记录的固定展示分：对象快照 = total_points（同源）；null 条目 = 种子分；不在表内 = null。 */
 export function Mock匹配分数(编号: string): number | null {
   const 解释 = Mock匹配解释(编号);

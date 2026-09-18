@@ -44,13 +44,16 @@ vi.mock('../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 
 const P01候选: 候选[] = 在谈候选列表.filter((候) => 候.岗位编号 === 'P-01');
 
 /** Mock 模式底座：在谈子视图、当前岗位 P-01，候选表按用例给 */
-function 置Mock状态(候选表: 候选[] = P01候选) {
+function 置Mock状态(
+  候选表: 候选[] = P01候选,
+  选项: { 看什么?: '全部' | '当前'; 范围?: '全部' | '当前' } = {},
+) {
   mock应用状态 = {
     数据源模式: 'mock',
     派发: mock派发,
     状态: {
       企业子视图: '在谈', 企业Tab: '人才',
-      企业在谈看什么: '全部', 企业在谈范围: '当前',
+      企业在谈看什么: 选项.看什么 ?? '全部', 企业在谈范围: 选项.范围 ?? '当前',
       当前岗位编号: 'P-01',
       岗位列表: 在招岗位列表,
       企业候选列表: 候选表,
@@ -125,6 +128,19 @@ describe('企业在谈候选 · 去名改版卡面（定稿 2026-09-08）', () =
     for (const 徽标文案 of ['需要你', '需注意', '代理处理中']) {
       expect(screen.queryByText(徽标文案)).toBeNull();
     }
+  });
+
+  it('review-r1：企业在谈范围档变化关闭旧分析弹层（Spec §3.1 scope 关闭）', async () => {
+    const 用户 = userEvent.setup();
+    置Mock状态(P01候选, { 范围: '全部' });
+    const 页 = render(<企业在谈候选 />);
+    await screen.findAllByRole('img', { name: '男' });
+    await 用户.click(screen.getAllByRole('button', { name: '查看匹配分析' })[0]);
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    // 全部 → 当前 收窄（他岗位候选被藏）：范围档是 scope 的一部分，必须关旧弹层
+    置Mock状态(P01候选, { 范围: '当前' });
+    页.rerender(<企业在谈候选 />);
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
   });
 
   it('Task 7（Spec §7）：环变分析入口，弹层六维行来自招聘端固定快照（A-01 94 分），点击不导航', async () => {

@@ -589,6 +589,32 @@ describe('看市场 · P4 候选发现（Backend）', () => {
     expect(container.textContent).not.toContain('int_');
   });
 
+  it('review-r1：Mock 切意向关闭旧分析弹层（Spec §3.1 scope 关闭）', async () => {
+    const user = userEvent.setup();
+    置应用状态({
+      模式: 'mock',
+      状态: {
+        子视图: '看市场', 当前意向: '后端工程师',
+        求职意向表: [{ 编号: 'I-01', 标题: '后端工程师 · 45-55K' }],
+        在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      },
+    });
+    const 页 = render(<看市场 />);
+    await user.click(screen.getAllByRole('button', { name: '查看匹配分析' })[0]);
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    // Mock 意向变化（活跃意向 载体恒 null 的分支）同样要关闭旧弹层
+    置应用状态({
+      模式: 'mock',
+      状态: {
+        子视图: '看市场', 当前意向: 'AI 产品经理',
+        求职意向表: [{ 编号: 'I-02', 标题: 'AI 产品经理 · 30-45K' }],
+        在谈列表: [], 屏蔽名单: [], 不感兴趣岗位: [], 已委托: [],
+      },
+    });
+    页.rerender(<看市场 />);
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
   it('切意向即换 scope：旧范围先清、新范围后注册，旧数据不闪进新列表', () => {
     // 两条意向共用同一个意向名（重名场景）：列表跟着编号载体走，不跟着名字走
     置P4候选意向({

@@ -138,6 +138,19 @@ describe('在谈首页 · Mock 卡统一（Task 3：卡面迁到共享求职在�
     expect(screen.getAllByRole('img', { name: /适配 \d+ 分/ }).length).toBeGreaterThan(0);
   });
 
+  it('review-r1：在谈范围档变化关闭旧分析弹层（Spec §3.1 scope 关闭）', async () => {
+    const 用户 = userEvent.setup();
+    置Mock状态({ 范围: '全部' });
+    const 页 = render(<在谈首页 />);
+    expect(await screen.findByText('资深后端工程师 · 交易网关')).toBeTruthy();
+    await 用户.click(screen.getAllByRole('button', { name: '查看匹配分析' })[0]);
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    // 全部 → 当前 收窄会藏掉他意向记录：范围档是 scope 的一部分，必须关旧弹层
+    置Mock状态({ 范围: '当前' });
+    页.rerender(<在谈首页 />);
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
   it('环变入口：点击只打开分析弹层，总分与缺失说明来自该行固定快照（J-01 null 条目）', async () => {
     const 用户 = userEvent.setup();
     置Mock状态();

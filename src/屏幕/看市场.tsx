@@ -118,6 +118,9 @@ export default function 看市场() {
   const 当前候选主体 = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
     : null;
+  // review-r1：弹层/委托层的关闭依据 = 当前 scope —— Backend 取活跃意向编号载体，
+  // Mock 取当前意向名（活跃意向 载体在 Mock 恒 null）（Spec §3.1）。
+  const 弹层关闭依据 = 是后端 ? 活跃意向 : 状态.当前意向;
   useEffect(() => {
     准备代际引用.current += 1;
     // scope 变化即作废已捕获的委托层状态：旧意向的确认层绝不在新意向下出现
@@ -133,7 +136,7 @@ export default function 看市场() {
       周期引用.current += 1;
       本次委托.current = new Set();
     };
-  }, [活跃意向, 当前候选主体]);
+  }, [弹层关闭依据, 当前候选主体]);
 
   const 后端卡们 = useMemo(
     () => (后端快照 ? 后端快照.items.map((卡) => {

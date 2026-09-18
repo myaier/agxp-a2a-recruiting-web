@@ -1347,6 +1347,39 @@ describe('候选推荐 · 企业顶栏筛选入口已删（第二批 验收2）'
   });
 });
 
+// ── review-r1 Finding 1：Mock 招聘推荐链路同接六维 —— 环变入口打开该记录固定
+//    快照的分析弹层（零请求）；快照 null 条目按 C1 两态给缺失语义。──
+describe('候选推荐 · 匹配分析弹层（Mock）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+  });
+
+  it('环变按钮：点击打开该记录固定快照的分析弹层（种子分 + 缺失语义），Mock 零请求', async () => {
+    const user = userEvent.setup();
+    mock应用状态 = {
+      数据源模式: 'mock', 派发: mock派发,
+      状态: {
+        当前岗位编号: 'P-01', 企业子视图: '推荐', 企业Tab: '人才',
+        企业在谈看什么: '全部', 企业在谈范围: '当前',
+        推荐列表: 推荐列表.filter((人) => 人.岗位编号 === 'P-01'),
+        收藏候选: [], 已接触推荐: [], 不合适候选: {},
+        岗位列表: [{ 编号: 'P-01', 名称: '资深后端工程师', 状态: '在招', 薪资带: '50-65K' }],
+        企业规则: [],
+      },
+      后端状态: {}, 操作: {},
+    };
+    render(<候选推荐 />);
+    expect(mock加载招聘候选.mock.calls.length).toBe(0); // Mock 分支零发现域请求
+    // P-01 挂四名候选：任取首张卡（R-11，种子 91）
+    await user.click(screen.getAllByRole('button', { name: '查看匹配分析' })[0]);
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(弹层.textContent).toContain('91 分'); // R-11 种子分（快照 null 条目，环/弹层同源）
+    expect(within(弹层).getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(within(弹层).getByRole('button', { name: '关闭' })).toBeTruthy();
+  });
+});
+
 // ── Task 5（冻结 C3 / Spec §3.1–3.2）：招聘推荐列表原分数环变独立可点入口，
 // 打开该行已返回解释的行内弹层（零网络补读）；换岗位/主体关闭旧弹层。──
 describe('候选推荐 · 匹配分析弹层（Backend）', () => {

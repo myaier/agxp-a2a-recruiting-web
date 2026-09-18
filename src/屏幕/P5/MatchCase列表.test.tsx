@@ -1314,6 +1314,29 @@ describe('MatchCase列表 · 匹配分析弹层（Backend）', () => {
     页2.unmount();
   });
 
+  it('review-r1：候选侧 Backend 当前意向编号变化关闭旧弹层（Spec §3.1 scope 关闭）', async () => {
+    const user = userEvent.setup();
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [连续卡({ recordId: 'dlg_1', phase: 'accepted', 匹配分: 87, 匹配解释: BFF匹配解释87分样本 })],
+      }),
+    });
+    const 页 = render(列表元素('candidate', null));
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    // 列表恒全意向，但当前意向编号也是 scope 的一部分（Spec §3.1 字面）：变化即关
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [连续卡({ recordId: 'dlg_1', phase: 'accepted', 匹配分: 87, 匹配解释: BFF匹配解释87分样本 })],
+      }),
+    });
+    mock应用状态.状态.当前意向编号 = 'int_00112233445566778899aabbccddeef1';
+    页.rerender(列表元素('candidate', null));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
   it('候选在谈：换主体（scope 切换）关闭旧弹层，旧解释不跨主体残留', async () => {
     const user = userEvent.setup();
     置P5状态({

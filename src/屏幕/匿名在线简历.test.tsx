@@ -829,7 +829,9 @@ describe('匿名在线简历 · 独立页默认行为（Task 4 共用正文后�
     );
     expect(screen.queryByText('项目经历')).toBeNull();
     expect(screen.queryByText('暂无项目经历')).toBeNull();
-    expect(document.body.textContent).not.toContain('缺失');
+    // 区块级缺失占位不在场（'求职办公方式信息缺失' 是快照闭表的固定说明词，非占位）
+    expect(document.body.textContent).not.toContain('项目经历缺失');
+    expect(document.body.textContent).not.toContain('匹配分析缺失');
     expect(document.body.textContent).not.toContain('当前在谈详情数据未提供');
     expect(screen.getByText('九坤投资')).toBeTruthy();
     expect(screen.getByText(/内容真实性经双向核验/)).toBeTruthy();
@@ -847,11 +849,11 @@ describe('匿名在线简历 · 独立页默认行为（Task 4 共用正文后�
 
 // ── Task 5：Mock 独立屏同布局同有限信息模型 —— 六行来自 档.推荐依据 经真实映射，
 //    不再画 JD 硬性条件 × 简历原文的逐项对齐卡（不暗示可验证的逐项计分）。 ──
-describe('匿名在线简历 · Mock 匹配依据（Task 5）', () => {
-  /** 带岗位硬性条件的 Mock 状态：Task 5 起匹配区只渲染六行有限依据（旧逐项
-   *  「匹配对齐卡」版式已退场）。岗位坐标走 在谈候选（屏幕只认 状态.企业候选列表
-   *  与全局 推荐列表 常量）。 */
-  function 置Mock详情状态() {
+describe('匿名在线简历 · Mock 匹配依据（review-r1 对齐六维）', () => {
+  /** 带岗位硬性条件的 Mock 状态：快照命中记录走 C3 匹配分析模型（六维直接展开、
+   *  顶栏唯一总分），快照 null 条目给缺失说明+有限依据。岗位坐标走 在谈候选
+   *  （屏幕只认 状态.企业候选列表 与全局 推荐列表 常量）。 */
+  function 置Mock详情状态(候选编号 = 'A-01') {
     mock应用状态 = {
       数据源模式: 'mock', 派发: mock派发,
       状态: {
@@ -860,7 +862,7 @@ describe('匿名在线简历 · Mock 匹配依据（Task 5）', () => {
           薪资带: '50-65K', 硬性条件: ['Go 主栈', '5 年以上', '常驻上海', '可混合办公'],
         }],
         企业候选列表: [{
-          编号: 'A-01', 岗位编号: 'P-01', 在找: '后端工程师 · 在职看机会',
+          编号: 候选编号, 岗位编号: 'P-01', 在找: '后端工程师 · 在职看机会',
         }],
         推荐列表: [], 收藏候选: [], 不合适候选: {}, 已接触推荐: [],
       },
@@ -868,27 +870,46 @@ describe('匿名在线简历 · Mock 匹配依据（Task 5）', () => {
     };
   }
 
-  it('六行布局与 Backend 同构；JD 逐项对齐卡退役；总分仍取档.适配分原样', () => {
-    置Mock详情状态();
-    render(
+
+  it('快照命中记录（A-01，总分 94）走六维模型版式：顶栏唯一总分，正文无第二环', () => {
+    置Mock详情状态('A-01');
+    render(<匿名在线简历 />, { wrapper: ({ children }) => (
       <MemoryRouter initialEntries={['/hr/resume/A-01']}>
         <Routes>
-          <Route path="/hr/resume/:id" element={<匿名在线简历 />} />
+          <Route path="/hr/resume/:id" element={children} />
         </Routes>
-      </MemoryRouter>,
-    );
+      </MemoryRouter>
+    ) });
     expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
-    expect(screen.getByText('方向 · 职位方向匹配')).toBeTruthy();
-    expect(screen.getByText('技能 · 有技能命中')).toBeTruthy();
-    expect(screen.getByText('经验 · 经验要求匹配')).toBeTruthy();
-    expect(screen.getByText('薪资 · 薪资带有交集')).toBeTruthy();
-    expect(screen.getByText('当前接口仅提供部分匹配依据')).toBeTruthy();
+    // A-01 固定快照六维行按 C1 闭表落位（方向 M / 技能 P 34/35、35/36 命中 / 办公方式 N）
+    expect(screen.getByText('求职方向与岗位方向匹配')).toBeTruthy();
+    expect(screen.getByText('命中35/36个岗位关键词')).toBeTruthy();
+    expect(screen.getByText('办公方式不匹配')).toBeTruthy();
+    expect(screen.getByText('薪资范围匹配')).toBeTruthy();
+    // 旧有限依据六行版式与统一说明退场（互斥：模型版式不与旧依据同现）
+    expect(screen.queryByText('方向 · 职位方向匹配')).toBeNull();
+    expect(screen.queryByText('当前接口仅提供部分匹配依据')).toBeNull();
     // JD 逐项计分版式不再出现（对齐行/证据原文）
     expect(screen.queryByText('Go 主栈')).toBeNull();
     expect(screen.queryByText('常驻上海')).toBeNull();
-    // 总分：返回栏 匹配 94 原样，正文无第二分数环
+    // 总分：返回栏 匹配 94 = 快照 total_points 同源，正文无第二分数环
     expect(screen.getByText('94')).toBeTruthy();
     expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+  });
+
+  it('快照 null 条目（A-07）：缺失说明 + 有限依据行，不造六条假状态', () => {
+    置Mock详情状态('A-07');
+    render(<匿名在线简历 />, { wrapper: ({ children }) => (
+      <MemoryRouter initialEntries={['/hr/resume/A-07']}>
+        <Routes>
+          <Route path="/hr/resume/:id" element={children} />
+        </Routes>
+      </MemoryRouter>
+    ) });
+    expect(screen.getAllByText('匹配度分析')).toHaveLength(1);
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    expect(screen.getByText('有限依据')).toBeTruthy();
+    expect(screen.queryByText('求职方向与岗位方向匹配')).toBeNull();
   });
 });
 

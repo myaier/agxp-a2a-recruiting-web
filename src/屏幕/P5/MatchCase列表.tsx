@@ -55,7 +55,7 @@ export function MatchCase列表(props: { role: P5角色; filterRef: string | nul
  *  键与导航唯一归属 canonical record_id；「加载更多」接 追加连续列表，轮询走 刷新连续列表，
  *  手动刷新（首载失败重试）用 force 首屏（丢旧游标）。 */
 function 候选连续在谈() {
-  const { 后端状态, 操作 } = use应用状态();
+  const { 后端状态, 状态, 操作 } = use应用状态();
   const { 跳转 } = use导航();
   const scope键 = P5范围键.negotiations('active');
   // Task 6（承接义务 1 / Spec §3.1–3.2）：分析弹层的 page-local 选中记录 ID —— 只存
@@ -77,10 +77,11 @@ function 候选连续在谈() {
     return () => 操作.设置P5范围('candidate', null);
   }, [当前SubjectId, scope键, 操作]);
 
-  // Spec §3.1：换主体（scope 变化）时关闭旧分析弹层
+  // Spec §3.1：换主体（scope 变化）时关闭旧分析弹层；review-r1：当前意向编号
+  // 同属 scope（列表恒全意向，但字面把意向变化也纳入关闭依据）
   useEffect(() => {
     设分析记录编号(null);
-  }, [当前SubjectId]);
+  }, [当前SubjectId, 状态.当前意向编号]);
 
   // 可见 5 秒列表节拍（spec §5：复用既有 hook 的 callback 调 刷新连续列表，不新增永久
   // timer）：刷新从首屏重建已载窗口；隐藏当拍跳过、卸载即停、单拍失败吞掉（错误态由
