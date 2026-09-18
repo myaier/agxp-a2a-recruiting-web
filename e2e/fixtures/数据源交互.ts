@@ -481,7 +481,7 @@ export function P7带消息fixture(消息: string): P7FixtureState {
 /**
  * 首屏期望薪资（Task 3 合同 C / Spec §3.2）：薪资并入完善资料首屏，学生与社招都
  * 不再有独立薪资页。点该行开共用 薪资区间层，点 薪资下限 30 档 —— 引导联动自动把
- * 上限抬到 40（不单独碰上限轮）—— 点 确定回填，入口行显示 30-40K。
+ * 上限抬到 40（不单独碰上限轮）—— 点 确定回填，入口行显示 30–40K（Task 8 / Spec §8A 显示合同）。
  * 行可访问名被 aria-label="期望薪资" 覆盖（行内值文本不是可访问名的一部分），
  * 故按 aria-label 定位、行内值用 toContainText 读。
  */
@@ -493,7 +493,7 @@ export async function 选首屏薪资(page: Page): Promise<void> {
   await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '30', exact: true }).click();
   await 抽屉.getByRole('button', { name: '确定' }).click();
   await expect(抽屉).toHaveCount(0);
-  await expect(入口行).toContainText('30-40K');
+  await expect(入口行).toContainText('30–40K');
 }
 
 /** Mock 源（@mock describe 的 baseURL；Backend 用例跨源比较时显式传 4181 绝对地址） */

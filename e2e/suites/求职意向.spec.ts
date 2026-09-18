@@ -78,8 +78,8 @@ test.describe('核心编辑 意向薪资 @backend', () => {
     await page.goto('/');
     await expect(page).toHaveURL(/#\/app$/, { timeout: 30_000 });
     await hash直达(page, `/#/intentions/${意向编号}`);
-    // 编辑表单按权威 DTO 预填：月薪 20-30K，兼职未选中
-    await expect(page.getByText('20-30K')).toBeVisible({ timeout: 15_000 });
+    // 编辑表单按权威 DTO 预填：月薪 20–30K（Task 8 / Spec §8A 显示合同），兼职未选中
+    await expect(page.getByText('20–30K')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: '兼职' })).toHaveAttribute('aria-pressed', 'false');
     // 切兼职（月→月不清上下限的既有行为）→ 保存
     await page.getByRole('button', { name: '兼职' }).click();
@@ -104,7 +104,7 @@ test.describe('核心编辑 意向薪资 @backend', () => {
 
     // 权威回读后重入编辑页：兼职选中、月薪区间不丢、无实习条件区
     await hash直达(page, `/#/intentions/${意向编号}`);
-    await expect(page.getByText('20-30K')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('20–30K')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: '兼职' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('实习可用时间')).toHaveCount(0);
   });

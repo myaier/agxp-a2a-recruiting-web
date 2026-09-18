@@ -94,11 +94,11 @@ test.describe('候选 onboarding Backend fixture @backend', () => {
     await expect(page).toHaveURL(/#\/basic$/);
     await expect(page.getByRole('heading', { name: '创建在线简历' })).toBeVisible();
 
-    // ── 历史点（完成清栈前仍保留）：后退回首屏，薪资行仍回显 30-40K，再前进回来。
+    // ── 历史点（完成清栈前仍保留）：后退回首屏，薪资行仍回显 30–40K（Task 8 / Spec §8A），再前进回来。
     //    完成注册会清掉整条注册流历史，所以这条断言放在最后的披露/头像步骤之前做 ──
     await page.goBack();
     await expect(page).toHaveURL(/#\/student$/);
-    await expect(page.getByRole('button', { name: '期望薪资', exact: true })).toContainText('30-40K');
+    await expect(page.getByRole('button', { name: '期望薪资', exact: true })).toContainText('30–40K');
     await page.goForward();
     await expect(page).toHaveURL(/#\/basic$/);
 

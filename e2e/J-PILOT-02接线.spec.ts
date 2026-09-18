@@ -581,7 +581,7 @@ async function 选首屏薪资(page: Page): Promise<void> {
   await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '30', exact: true }).click();
   await 抽屉.getByRole('button', { name: '确定' }).click();
   await expect(抽屉).toHaveCount(0);
-  await expect(入口行).toContainText('30-40K');
+  await expect(入口行).toContainText('30–40K');
 }
 
 /** 基本信息页 → 求职状态（选档）→ 学历四连页（Backend 学校/专业走 fixture 目录）。
@@ -784,7 +784,8 @@ test.describe('J-PILOT-02 候选 onboarding Backend fixture @backend', () => {
     await 日薪抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: '100', exact: true }).click();
     await 日薪抽屉.getByRole('button', { name: '确定' }).click();
     await expect(日薪抽屉).toHaveCount(0);
-    await expect(日薪行).toContainText('100-200/天');
+    // Task 8（Spec §8A）：日薪摘要行显示 `100–200 元/天`（en dash + 数字与单位一空格）
+    await expect(日薪行).toContainText('100–200 元/天');
     await page.getByRole('button', { name: '下一步' }).click();
     await expect(page).toHaveURL(/#\/basic$/);
     await page.getByPlaceholder('身份证上的名字').fill('Fixture 实习生');

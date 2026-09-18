@@ -58,7 +58,7 @@ async function 选首屏薪资(page: Page, 档: string) {
   await 抽屉.getByRole('listbox', { name: '薪资下限' }).getByRole('option', { name: 档, exact: true }).click();
   await 抽屉.getByRole('button', { name: '确定' }).click();
   await expect(抽屉).toHaveCount(0);
-  await expect(行).toContainText('30-40K');
+  await expect(行).toContainText('30–40K');
 }
 
 test.describe('multi-role onboarding', () => {
@@ -425,7 +425,7 @@ test.describe('multi-role onboarding', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(行).toContainText('面议');
 
-    // 区间：重开抽屉点 30 档（联动上限 40）→ 行显示 30-40K
+    // 区间：重开抽屉点 30 档（联动上限 40）→ 行显示 30–40K（Task 8 / Spec §8A 显示合同）
     await 选首屏薪资(page, '30');
 
     // 替换导航（不是 push）：后退一步不回到旧薪资深链
