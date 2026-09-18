@@ -59,18 +59,6 @@ vi.mock('../../状态/应用状态', async (importOriginal) => ({
 }));
 vi.mock('../../路由/导航钩子', () => ({ use导航: () => ({ 返回: vi.fn(), 跳转: mock跳转 }) }));
 
-// 记录并透传：Backend 候选在谈卡绝不触发 use适配分 的 Mock 演示简历计算路径（Task 3）
-const { mock适配分 } = vi.hoisted(() => ({ mock适配分: vi.fn() }));
-vi.mock('../../状态/use适配分', async (importOriginal) => {
-  const 真模块 = await importOriginal<typeof import('../../状态/use适配分')>();
-  return {
-    use适配分: (源: Parameters<typeof 真模块.use适配分>[0]) => {
-      mock适配分(源);
-      return 真模块.use适配分(源);
-    },
-  };
-});
-
 const 意向ID = 'int_0123456789abcdef0123456789abcdef';
 const 职位ID = 'job_0123456789abcdef0123456789abcdef';
 const 别名 = 'candidate-0123456789ab';
@@ -296,7 +284,6 @@ describe('MatchCase列表 · 候选连续在谈（J-PILOT-01 Task 4）', () => {
     mock加载连续列表.mockClear();
     mock追加连续列表.mockClear();
     mock刷新连续列表.mockClear();
-    mock适配分.mockClear();
   });
 
   afterEach(() => {
@@ -495,10 +482,9 @@ describe('MatchCase列表 · 候选连续在谈（J-PILOT-01 Task 4）', () => {
     expect(阶段区?.textContent).toContain('初评中');
     expect(阶段区?.textContent).toContain('AI 正在评估');
     expect(阶段区?.textContent).toContain('需要你');
-    // 缺公司不引发额外读取：只有进屏那一次连续读，零业务派发、零 Mock 计算分
+    // 缺公司不引发额外读取：只有进屏那一次连续读，零业务派发
     expect(mock加载连续列表).toHaveBeenCalledTimes(1);
     expect(mock派发).not.toHaveBeenCalled();
-    expect(mock适配分).not.toHaveBeenCalled();
   });
 
   it('候选连续卡接组织摘要与匹配分：公司三件套 + Logo 图位 + 真实分；标签沿岗位属性顺序接技能', () => {
@@ -578,7 +564,6 @@ describe('MatchCase列表 · 招聘 Case open 工作区（Backend）', () => {
     mock加载连续列表.mockClear();
     mock追加连续列表.mockClear();
     mock刷新连续列表.mockClear();
-    mock适配分.mockClear();
   });
 
   afterEach(() => {

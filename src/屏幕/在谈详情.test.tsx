@@ -3,7 +3,7 @@
 // 强制读详情，不读 在谈列表、不水合 Mock 在谈单、不调公司档案/企业详情导航，匹配对齐卡与
 // 职位详情 Tab（P5.1 依赖）不再出现；Mock 分支仍按原 slug 导航、行为与接线前逐字一致。
 
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -199,6 +199,84 @@ describe('在谈详情 · Mock 公司卡仍按原 slug 导航', () => {
     // 对接人原位渲染（不再按取不到就整卡隐藏）
     expect(screen.getByText('林筱')).toBeTruthy();
     expect(screen.getByText('招聘顾问')).toBeTruthy();
+  });
+});
+
+// ── Task 7（Spec §7）：Mock 详情分与列表环同源 —— 固定六维快照，不按当前简历/JD 重算 ──
+describe('在谈详情 · Mock 固定六维快照（Task 7 / Spec §7）', () => {
+  beforeEach(() => {
+    mock跳转.mockClear();
+    mock返回.mockClear();
+    mock派发.mockClear();
+    mock应用状态 = {
+      数据源模式: 'mock',
+      状态: {
+        在谈列表,
+        决策: {},
+        决策快照: {},
+        叮嘱表: {},
+        简历文件名: '',
+        简历经历: [],
+        简历教育: [],
+        简历技能: [],
+      },
+      派发: mock派发,
+      操作: {
+        设置P5范围: mock设置P5范围,
+        读取详情: mock读取详情,
+        读取连续详情: mock读取连续详情,
+        新增叮嘱: mock新增叮嘱,
+      },
+    };
+  });
+
+  /** 渲染在指定单的「职位详情」（资料）Tab（Mock 分支） */
+  function 渲染Mock资料Tab(编号: string) {
+    return render(
+      <MemoryRouter initialEntries={[`/deal/${编号}?tab=job`]}>
+        <Routes>
+          <Route path="/deal/:id" element={<在谈详情 />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  /** 顶栏分数是文本位（适配 + 数值），无环；按分数组整体断言 */
+  function 断言顶栏分(分: string) {
+    const 组 = screen.getByText('适配', { exact: true }).parentElement;
+    expect(组?.textContent).toBe(`适配${分}`);
+  }
+
+  it('J-02 直接展开快照六维行：部分匹配技能计数在屏，顶栏 76 分与快照 total_points 同源', () => {
+    渲染Mock资料Tab('J-02');
+    断言顶栏分('76');
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('命中3/4个岗位关键词')).toBeTruthy();
+    // 有快照的记录不再显示「合法缺失」说明
+    expect(screen.queryByText('暂无该次匹配的详细分析')).toBeNull();
+  });
+
+  it('J-01（快照 null 条目）：分数固定 94 + 分析合法缺失；编辑简历后逐字不变', () => {
+    渲染Mock资料Tab('J-01');
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    cleanup();
+    mock应用状态.状态.简历技能 = ['Go', '高并发', '清结算', '稳定性治理'];
+    渲染Mock资料Tab('J-01');
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
+  });
+
+  it('编辑简历/JD 不改变快照：换一套简历事实，J-02 的顶栏分与六维行逐字不变', () => {
+    渲染Mock资料Tab('J-02');
+    断言顶栏分('76');
+    expect(screen.getByText('命中3/4个岗位关键词')).toBeTruthy();
+    cleanup();
+    // 全命中的简历事实曾会让本地评分改写卡面分（旧「分从行来」路径）；快照必须不动
+    mock应用状态.状态.简历经历 = [{ 公司: '字节跳动', 职位: '交易中台' }];
+    mock应用状态.状态.简历教育 = [{ 学校: '上海交通大学', 学历: '硕士' }];
+    mock应用状态.状态.简历技能 = ['Go', '架构设计', '全远程协作'];
+    渲染Mock资料Tab('J-02');
+    断言顶栏分('76');
+    expect(screen.getByText('命中3/4个岗位关键词')).toBeTruthy();
   });
 });
 

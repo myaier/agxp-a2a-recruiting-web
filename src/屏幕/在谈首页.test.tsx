@@ -5,7 +5,8 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 看市场.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 在谈首页 from './在谈首页';
 import { 在谈列表 } from '../数据/模拟数据';
@@ -20,18 +21,6 @@ if (!HTMLElement.prototype.scrollTo) {
 }
 
 const mock派发 = vi.fn();
-
-// 记录并透传：钉住「分数在 Mock 连接组件里算出后传入共享卡」（Task 3），Backend 不走这里
-const { mock适配分 } = vi.hoisted(() => ({ mock适配分: vi.fn() }));
-vi.mock('../状态/use适配分', async (importOriginal) => {
-  const 真模块 = await importOriginal<typeof import('../状态/use适配分')>();
-  return {
-    use适配分: (源: Parameters<typeof 真模块.use适配分>[0]) => {
-      mock适配分(源);
-      return 真模块.use适配分(源);
-    },
-  };
-});
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mock应用状态: any;
@@ -139,13 +128,26 @@ describe('在谈首页 · Mock 卡统一（Task 3：卡面迁到共享求职在�
     expect(screen.queryByLabelText('匹配分未知')).toBeNull();
   });
 
-  it('分数在连接组件里用 use适配分 算出后传入共享卡：每张卡一次，卡上环就是那份分', async () => {
+  it('分数来自固定六维快照（Task 7 / Spec §7）：卡上环与详情同源，不按当前简历重算', async () => {
     置Mock状态();
     render(<在谈首页 />);
     expect(await screen.findByText('资深后端工程师 · 交易网关')).toBeTruthy();
-    // 当前意向（后端工程师）五单 → 连接组件逐单调 hook（不是在映射函数里偷偷算）
-    expect(mock适配分).toHaveBeenCalledTimes(5);
-    expect(mock适配分).toHaveBeenCalledWith(在谈列表.find((单) => 单.编号 === 'J-01'));
+    // J-01 快照 null 条目保留种子 94；J-02 是快照对象条目（总分 76），不是本地评分结果
+    expect(screen.getAllByRole('img', { name: '适配 94 分' })).toHaveLength(1);
+    expect(screen.getAllByRole('img', { name: '适配 76 分' })).toHaveLength(1);
     expect(screen.getAllByRole('img', { name: /适配 \d+ 分/ }).length).toBeGreaterThan(0);
+  });
+
+  it('环变入口：点击只打开分析弹层，总分与缺失说明来自该行固定快照（J-01 null 条目）', async () => {
+    const 用户 = userEvent.setup();
+    置Mock状态();
+    render(<在谈首页 />);
+    expect(await screen.findByText('资深后端工程师 · 交易网关')).toBeTruthy();
+    await 用户.click(screen.getAllByRole('button', { name: '查看匹配分析' })[0]);
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(弹层.textContent).toContain('94 分');
+    expect(within(弹层).getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '关闭匹配度分析' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
   });
 });

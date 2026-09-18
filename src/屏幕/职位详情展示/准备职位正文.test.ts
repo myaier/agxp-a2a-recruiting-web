@@ -12,6 +12,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 准备Backend职位正文, 准备Mock职位正文 } from './准备职位正文';
 import { 公司区块 } from '../../组件/公司区块';
+import { Mock匹配解释 } from '../../数据/Mock匹配快照';
 import { 从P4CandidateJob, 从P4候选岗位 } from '../../数据/发现推荐映射';
 import { 市场列表, 取市场岗位详情 } from '../../数据/模拟数据';
 import { BFF候选岗位推荐样本, BFFCandidateJob样本, BFF企业档案样本, BFF公开企业样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
@@ -259,13 +260,13 @@ describe('准备Backend职位正文 · 有限依据与分数保真（DF-011 迁�
     expect(数据.匹配.上下文).toBe('原推荐不可用');
   });
 
-  it('Mock 路径：匹配也走模型（过渡形态，Task 7 接固定快照），分数取卡面种子分', () => {
+  it('Mock 路径：匹配 = 记录固定六维快照（Task 7 / Spec §7），上下文恒有来源', () => {
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-13');
     expect(岗).toBeTruthy();
     const 数据 = 准备Mock职位正文(岗!);
     expect(数据.匹配).toEqual({
-      分数: 岗!.适配分,
-      解释: null,
+      分数: Mock匹配解释('M-13')!.total_points,
+      解释: Mock匹配解释('M-13'),
       有限依据: [],
       上下文: '有来源',
     });
@@ -385,21 +386,26 @@ describe('准备Backend职位正文 · 公开企业补读（Spec §6.1）', () =
 });
 
 describe('准备Mock职位正文 · 原映射原样', () => {
-  it('M-13：读 模拟详情表；匹配走模型过渡形态（分数取卡面种子分，解释合法缺失，无核对行）', () => {
+  it('M-13：读 模拟详情表；匹配吃记录的固定六维快照（分数=total_points，与列表环同源）', () => {
     const 岗 = 市场列表.find((条) => 条.编号 === 'M-13');
     expect(岗).toBeTruthy();
     const 数据 = 准备Mock职位正文(岗!);
     expect(mock取市场岗位详情).toHaveBeenCalledWith(岗);
     expect(数据.职位).toBe('交易中台架构师');
     expect(数据.薪资).toBe('60-80K');
-    expect(数据.匹配).toEqual({
-      分数: 岗!.适配分,
-      解释: null,
-      有限依据: [],
-      上下文: '有来源',
-    });
+    // Task 7（Spec §7）：快照对象逐字来自 Mock匹配快照表（全匹配 100 分），无核对行
+    expect(数据.匹配.解释).toEqual(Mock匹配解释('M-13'));
+    expect(数据.匹配.分数).toBe(Mock匹配解释('M-13')!.total_points);
+    expect(数据.匹配.上下文).toBe('有来源');
+    expect(数据.匹配.有限依据).toEqual([]);
     expect(JSON.stringify(数据.匹配)).not.toContain('学历 本科及以上');
     expect(JSON.stringify(数据.匹配)).not.toContain('简历未提及');
+  });
+
+  it('M-04 无快照：匹配分数与解释都是 null（缺失展示，不回落种子、不造 0）', () => {
+    const 岗 = 市场列表.find((条) => 条.编号 === 'M-04')!;
+    const 数据 = 准备Mock职位正文(岗);
+    expect(数据.匹配).toEqual({ 分数: null, 解释: null, 有限依据: [], 上下文: '有来源' });
   });
 
   it('JD/发布人/公司逐字来自 取市场岗位详情：不在详情表的岗走原合成 fallback（职务/备注空值原样，不添未知）', () => {

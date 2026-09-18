@@ -43,15 +43,15 @@ import { 放大镜图标 } from '../组件/图标';
 import 求职推荐卡 from '../组件/列表卡片/求职推荐卡';
 import { use应用状态 } from '../状态/应用状态';
 import { 取有效当前意向编号 } from '../状态/领域/候选资料';
-import { use适配分 } from '../状态/use适配分';
 import { use导航, 标记看市场来路 } from '../路由/导航钩子';
 import { 路径 } from '../路由/路径表';
 import { 市场列表 } from '../数据/模拟数据';
+import { Mock匹配解释, Mock匹配分数 } from '../数据/Mock匹配快照';
 import type { 市场职位 } from '../数据/类型';
 import type { BFF附件简历 } from '../数据/BFF契约';
 import { 从P4候选岗位, P4已开案, 映射P4委托展示, 映射推荐依据 } from '../数据/发现推荐映射';
 import type { P4候选岗位页面 } from '../数据/招聘数据源类型';
-import type { 匹配分析模型 } from '../数据/匹配解释展示映射';
+import { 建匹配分析模型, type 匹配分析模型 } from '../数据/匹配解释展示映射';
 import { P4错误文案, P4范围键 } from '../状态/后端/发现推荐操作';
 import { P5范围键 } from '../状态/后端/MatchCase操作';
 import { 取P5候选横幅状态 } from '../状态/后端/MatchCase统计';
@@ -331,25 +331,37 @@ export default function 看市场() {
     [后端待选, 关键词]
   );
 
-  // Task 5（C3/Spec §3.1–3.2）：分析弹层模型 = 选中推荐 ID 在当前页权威快照里的那张卡。
-  // 打开即用该行已返回的解释（零网络补读）：分数 = wire match_score，解释 = 已展开批次
-  // 解释，有限依据 = 本卡 match_reasons 的已知原因。切 scope 后旧 ID 查不到 → 弹层消失。
-  const 分析卡 = 分析推荐编号 === null
+  // Task 5（C3/Spec §3.1–3.2）+ Task 7（Spec §7）：分析弹层模型按模式取该行权威数据，
+  // 打开零网络补读。Backend = 选中推荐 ID 在当前页权威快照里的那张卡（分数 = wire
+  // match_score，解释 = 已展开批次解释，有限依据 = 本卡 match_reasons）；Mock = 固定六维
+  // 快照表（列表环与详情总分同源）。切 scope 后旧 ID 查不到 → 弹层消失。
+  const 分析卡 = !是后端 || 分析推荐编号 === null
     ? null
     : 后端卡们.find(({ 卡 }) => 卡.recommendation_id === 分析推荐编号) ?? null;
-  const 分析模型: 匹配分析模型 | null = 分析卡 === null ? null : {
-    分数: 分析卡.卡.match_score,
-    解释: 分析卡.卡.match_explanation ?? null,
-    有限依据: 映射推荐依据(分析卡.卡.match_reasons),
-    上下文: '有来源',
-  };
-  // 承接义务 1（Spec §3.2）：当前记录的简短岗位上下文 —— 该行已返回的职位名与用人企业，
-  // 缺成员不造（公司缺席只给职位名）。
-  const 分析上下文 = 分析卡 === null
+  const 分析模型: 匹配分析模型 | null = 分析推荐编号 === null
     ? null
-    : [分析卡.卡.job.title, 分析卡.卡.job.organization?.display_name ?? null]
-      .filter((段): 段 is string => 段 !== null && 段.trim() !== '')
-      .join(' · ') || null;
+    : 分析卡 !== null
+      ? {
+        分数: 分析卡.卡.match_score,
+        解释: 分析卡.卡.match_explanation ?? null,
+        有限依据: 映射推荐依据(分析卡.卡.match_reasons),
+        上下文: '有来源',
+      }
+      : 是后端
+        ? null
+        : 建匹配分析模型(Mock匹配分数(分析推荐编号), Mock匹配解释(分析推荐编号), '有来源');
+  // 承接义务 1（Spec §3.2）：当前记录的简短岗位上下文 —— 该行已返回的职位名与用人企业
+  //（Backend），Mock 为快照记录的职位 · 公司；缺成员不造（公司缺席只给职位名）。
+  const 分析上下文 = 是后端
+    ? (分析卡 === null
+      ? null
+      : [分析卡.卡.job.title, 分析卡.卡.job.organization?.display_name ?? null]
+        .filter((段): 段 is string => 段 !== null && 段.trim() !== '')
+        .join(' · ') || null)
+    : (分析推荐编号 === null ? null : (() => {
+      const 岗 = 市场列表.find((条) => 条.编号 === 分析推荐编号);
+      return 岗 ? `${岗.职位} · ${岗.公司}` : null;
+    })());
 
   // Backend 列表态：无活跃意向 / 首载进行中 / 首载失败（给明确重试）；
   // 已有卡的快照不管阶段（刷新失败保留旧卡，错误单独一行交代）都算「有卡」。
@@ -485,6 +497,7 @@ export default function 看市场() {
                     <市场卡
                       key={卡.recommendation_id}
                       岗={视图.卡}
+                      匹配分={视图.卡.适配分}
                       已委托={展示 !== null}
                       已委托文字={委托文字}
                       委托禁用={委托中.has(委托键(视图.intentionId ?? '', 视图.jobId))}
@@ -519,6 +532,8 @@ export default function 看市场() {
                   <市场卡
                     key={岗.编号}
                     岗={岗}
+                    // Task 7（Spec §7）：Mock 环分数 = 固定快照分；环即分析入口
+                    匹配分={Mock匹配分数(岗.编号)}
                     已委托={状态.已委托.includes(岗.编号)}
                     委托={() => {
                       // 先记本次，再派发：否则这一派发就把卡从列表里过滤掉，
@@ -526,6 +541,7 @@ export default function 看市场() {
                       本次已委托.current.add(岗.编号);
                       派发({ 型: '委托入谈', 岗 });
                     }}
+                    查看匹配分析={() => 设分析推荐编号(岗.编号)}
                     按下={() => 跳转(路径.职位详情(岗.编号))}
                   />
                 ))
@@ -603,11 +619,12 @@ function 空结果({ 搜索词, 问代理 }: { 搜索词: string; 问代理: () 
 //   Backend 只读 / Mock 可编辑 —— 已于 2026-09-09 随删筛选整体删除；规则的增改删一律去 规则库 页。）
 
 /** 单张市场职位卡的薄连接包装（Task 2 提取）：卡面 JSX 已原样移入共享的
- *  组件/列表卡片/求职推荐卡（合同 D，求职端助手查询结果与市场列表共用同一张原生卡），
- *  本页只保留真实/Mock 分值计算 —— 分从行来(2026-08-31)：卡上的环与职位详情的环
- *  同一份计算分 —— 与布局/回调一比一透传，页面调用点不变。 */
+ *  组件/列表卡片/求职推荐卡（合同 D，求职端助手查询结果与市场列表共用同一张原生卡）。
+ *  Task 7（Spec §7）：分数由调用方按模式给 —— Backend = wire match_score，Mock = 固定
+ *  六维快照表（列表环与详情总分同源，不按当前简历重算）；布局/回调一比一透传。 */
 function 市场卡({
   岗,
+  匹配分,
   已委托,
   委托,
   按下,
@@ -616,6 +633,8 @@ function 市场卡({
   查看匹配分析,
 }: {
   岗: 市场职位;
+  /** 卡面环分数：Backend = wire 分；Mock = 快照分（无快照 null → 中性「—」） */
+  匹配分: number | null;
   已委托: boolean;
   委托: () => void;
   按下: () => void;
@@ -623,10 +642,9 @@ function 市场卡({
   已委托文字?: string;
   /** Backend 反馈/委托写进行中时禁用去谈键（并发写会被操作层单飞丢弃） */
   委托禁用?: boolean;
-  /** C3：分析入口回调（仅 Backend 推荐卡传入；Mock/历史卡不传 → 完全没有入口） */
+  /** C3：分析入口回调（Backend 推荐卡与 Mock 快照卡传入；历史卡不传 → 完全没有入口） */
   查看匹配分析?: () => void;
 }) {
-  const 计算适配分 = use适配分(岗);
   return (
     <求职推荐卡
       公司={岗.公司}
@@ -636,7 +654,7 @@ function 市场卡({
       职位={岗.职位}
       薪资={岗.薪资}
       标签={岗.标签}
-      匹配分={计算适配分}
+      匹配分={匹配分}
       发布人={岗.发布人}
       发布人首字={岗.发布人首字}
       发布人图片URL={岗.发布人图片URL}

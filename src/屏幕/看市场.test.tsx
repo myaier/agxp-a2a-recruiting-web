@@ -1741,7 +1741,8 @@ describe('看市场 · 匹配分析弹层（Backend）', () => {
     expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
     页.unmount();
 
-    // Mock 分支：无回调消费者不凭空出现分析入口（Task 7 才接 Mock 快照）
+    // Task 7（Spec §7）：Mock 分支吃固定六维快照 —— 同一个分析弹层、同一入口，
+    // 六维行与文本总分来自快照表（M-01 首卡），依旧零网络补读
     置应用状态({
       模式: 'mock',
       状态: {
@@ -1752,7 +1753,15 @@ describe('看市场 · 匹配分析弹层（Backend）', () => {
       },
     });
     render(<看市场 />);
-    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
+    const Mock入口 = screen.getAllByRole('button', { name: '查看匹配分析' })[0];
+    expect(Mock入口).toBeTruthy();
+    await user.click(Mock入口);
+    const Mock弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(Mock弹层.textContent).toContain('93 分'); // M-01 快照总分
+    expect(within(Mock弹层).getByText('命中19/20个岗位关键词')).toBeTruthy();
+    expect(within(Mock弹层).getByText('推荐生成时的匹配结果')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: '关闭匹配度分析' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
   });
 
   it('换意向（scope 切换）关闭旧弹层；再开新意向的卡显示那一批的分数，双批次不串值', async () => {

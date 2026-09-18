@@ -178,6 +178,9 @@ describe('真人会话 · Mock 公司卡仍按原 slug 导航', () => {
   it('看职位层公司卡可点，跳 公司路由键 生成的原 slug', async () => {
     await 打开看职位层();
     断言匹配卡在条件段与公司之前();
+    // Task 7（Spec §7）：J-01 快照 null 条目 —— 唯一总分环固定 94（与快照表同源）+ 分析合法缺失
+    expect(screen.getByRole('img', { name: '适配 94 分' })).toBeTruthy();
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: new RegExp(本单.公司) }));
     expect(mock公司路由键).toHaveBeenCalledWith(本单.公司);
     expect(mock跳转).toHaveBeenCalledWith(`/company/slug-${本单.公司}`);
