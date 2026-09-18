@@ -92,3 +92,13 @@
 .PDF全高 {
   height: 100%;
 }
+
+/* ── Task 6（Spec §3.5）：完整纸身下方的独立分析区 —— 单独白色区块与纸身留出间距，
+   块内 = 匹配分析块（标题 + 唯一总分环 + 六维行）。分析不进纸身正文各区。 ── */
+.纸下分析区 {
+  margin: 12px 16px calc(var(--安全区下) + 16px);
+  padding: 4px 14px 14px;
+  background: var(--白);
+  border: 1px solid var(--描边);
+  border-radius: 12px;
+}

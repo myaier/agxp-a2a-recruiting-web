@@ -1,6 +1,8 @@
 // 匹配分析块（冻结公共合同 C3 / Spec §3.1–3.2、§4）：双端与 Mock 共用的六维匹配分析组件。
 // props 核心为 模型: 匹配分析模型 + 藏环?: boolean —— 组件只消费已解码模型，不自行从
 // 正文、分数大小或旧依据推断任何状态（映射边界在 数据/匹配解释展示映射.ts）。
+// 旧「JD 三态核对块」（求职核对块）已随 Task 6 迁完最后两个消费者（真人会话 / 职位资料）
+// 删除，其遗留样式类一并清理 —— 六维解释展示只有本组件一条路径。
 //
 // 版式（Spec §4 最终紧凑勾选行）：头行[标题「匹配度分析」+ 分数环/文本总分] →
 // 「推荐生成时的匹配结果」→ 六维行[左状态图标 + 维度名 + 小号 points/max_points，
@@ -16,7 +18,6 @@
 
 import 样式 from './匹配分析块.module.css';
 import 适配环 from './适配环';
-import type { 对齐行 } from '../数据/匹配对齐';
 import type { BFF匹配状态 } from '../数据/BFF契约';
 import {
   匹配分析行们,
@@ -141,77 +142,6 @@ export function 匹配分析块({ 模型, 藏环 = false }: { 模型: 匹配分�
           <p className={样式.技能说明}>技能按关键词命中核对，不代表能力认证。</p>
         </>
       )}
-    </>
-  );
-}
-
-// ── 旧「JD 三态核对块」（2026-08-31 求职端定稿效果图）—— 临时兼容承载，非 C3 组件 ──
-// C3 改造后「匹配分析块」之名已归上面的模型组件；本旧版式（JD 要求 vs 简历证据的三态
-// 核对行 + 分析段）按 Plan 仅存续至 Task 5（职位正文展示）与 Task 6（真人会话 / 职位
-// 资料）把消费者迁到模型组件，届时连同其样式类（分析段/点有/点空/要求/证据）一并删除。
-// 不再新增消费者；不得用于六维解释展示。
-
-export function 求职核对块({
-  分,
-  行们,
-  分析,
-  藏环 = false,
-}: {
-  分: number;
-  行们: 对齐行[];
-  分析: { 墨句: string; 灰句: string } | null;
-  /** 同屏别处已有分数时藏掉环,避免一屏两个分(与旧对齐卡同一口径) */
-  藏环?: boolean;
-}) {
-  if (行们.length === 0) return null;
-  return (
-    <>
-      <div className={样式.头}>
-        <span className={样式.标题}>匹配度分析</span>
-        {藏环 ? null : <适配环 分={分} 标={null} 尺寸={44} />}
-      </div>
-      {分析 && (分析.墨句 || 分析.灰句) ? (
-        <div className={样式.分析段}>
-          {分析.墨句}
-          {分析.灰句 ? <span className={样式.灰句}>{分析.灰句}</span> : null}
-        </div>
-      ) : null}
-      {行们.map((行) => (
-        <div key={行.要求} className={样式.旧行}>
-          {行.态 === '有证据' ? (
-            <span className={样式.点有}>
-              <svg width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden>
-                <path
-                  d="M2.6 7.4 L5.8 10.6 L11.4 3.8"
-                  stroke="#fff"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
-          ) : (
-            <span className={样式.点空}>
-              {行.态 === '不满足' ? (
-                <svg width="8" height="8" viewBox="0 0 12 12" fill="none" aria-hidden>
-                  <path
-                    d="M3 3 L9 9 M9 3 L3 9"
-                    stroke="var(--弱化)"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              ) : null}
-            </span>
-          )}
-          <span className={`${样式.要求} ${行.态 === '未提及' ? 样式.要求淡 : ''} 单行`}>
-            {行.要求}
-          </span>
-          <span className={`${样式.证据} 单行`}>
-            {行.态 === '有证据' ? 行.证据 : 行.态 === '未提及' ? '简历未提及' : '未达到要求'}
-          </span>
-        </div>
-      ))}
     </>
   );
 }

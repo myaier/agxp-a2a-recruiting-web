@@ -1,6 +1,6 @@
-/* 匹配分析块（C3 / Spec §4）：上半是共用六维组件的新版式，下半（分析段/点有/点空/
-   要求/旧行/证据）是旧「JD 三态核对块」的遗留样式 —— 遗留块仅存续至 Task 5/6 把
-   消费者迁到模型组件，届时随 求职核对块 一并删除，不为它新增任何样式。 */
+/* 匹配分析块（C3 / Spec §4）：共用六维组件版式。旧「JD 三态核对块」的遗留样式
+   （分析段/灰句/旧行/点有/点空/要求/要求淡/证据）已随 求职核对块 在 Task 6 删除
+   （最后两个消费者 真人会话/职位资料 已迁到模型组件）。 */
 
 .头 {
   display: flex;
@@ -155,66 +155,3 @@
   margin: 8px 0 0;
 }
 
-/* ── 旧「JD 三态核对块」遗留样式（随 求职核对块 在 Task 5/6 删除）── */
-
-.分析段 {
-  font-size: 13px;
-  line-height: 1.85;
-  color: var(--墨);
-  margin: 10px 0 4px;
-}
-
-.灰句 {
-  color: var(--弱化);
-}
-
-.旧行 {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 9px;
-  padding: 7.5px 0;
-}
-
-.点有 {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--亮绿);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.点空 {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1.5px solid var(--描边深);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.要求 {
-  flex: none;
-  max-width: 62%;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--墨);
-}
-
-.要求淡 {
-  color: var(--弱化);
-  font-weight: 400;
-}
-
-.证据 {
-  flex: 1;
-  min-width: 0;
-  text-align: right;
-  font-size: 12px;
-  color: var(--弱化);
-}

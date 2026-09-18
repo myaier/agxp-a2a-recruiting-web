@@ -14,6 +14,7 @@ import { use真人会话资料 } from './use真人会话资料';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 候选详情DTO, 招聘详情DTO, 状态 } from '../P5/MatchCase详情.测试辅助';
 import { BFF安全职位资料样本, BFF公司摘要样本 } from '../../测试/展示资料样本';
+import { BFF匹配解释92分样本 } from '../../测试/BFF样本';
 import type { P5详情快照 } from '../../状态/后端/类型';
 import type { P7会话项 } from '../../数据/招聘数据源/真人会话';
 
@@ -470,5 +471,59 @@ describe('use真人会话资料 · review-r3 修复', () => {
     企业B结算();
     rerender();
     await waitFor(() => expect(result.current.副标题).toBe('B 公司 · 招聘负责人'));
+  });
+});
+
+// ── Task 6（Spec §3.5）：招聘聊天「看在线简历」层的独立分析区输入 ──
+// 在线简历分析来自与页头/纸身同一份 gated 明细（本轮读取落地 + 快照成功无错 + 不在刷新中），
+// 只用本会话 Case 的响应；失权/降级时恒 null（不因解释仍在缓存而展示旧分析）。
+describe('use真人会话资料 · 在线简历分析（Task 6，Spec §3.5）', () => {
+  it('招聘端 available：在线简历分析交付同响应的分数与解释；候选端恒 null', async () => {
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] = 快照({
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      matchScore: 92,
+      匹配解释: BFF匹配解释92分样本,
+    });
+    const 招聘 = renderHook(() => use真人会话资料('recruiter', 会话()));
+    await waitFor(() => expect(招聘.result.current.资料状态).toBe('available'));
+    expect(招聘.result.current.在线简历分析).not.toBeNull();
+    expect(招聘.result.current.在线简历分析!.分数).toBe(92);
+    expect(招聘.result.current.在线简历分析!.解释).toEqual(BFF匹配解释92分样本);
+    expect(招聘.result.current.在线简历分析!.上下文).toBe('有来源');
+    招聘.unmount();
+
+    mock应用状态.后端状态.P5详情 = {};
+    const 候选 = renderHook(() => use真人会话资料('candidate', 会话()));
+    await waitFor(() => expect(候选.result.current.标题).toBeTruthy());
+    expect(候选.result.current.在线简历分析).toBeNull();
+    候选.unmount();
+  });
+
+  it('本轮读取未落地（pending）与快照失败都不给分析：不消费缓存旧解释，失权即 null', async () => {
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] = 快照({
+      ...招聘详情DTO({ 别名: 'C-07' }),
+      state: 状态({ caseId: 'mc_3003' }),
+      matchScore: 92,
+      匹配解释: BFF匹配解释92分样本,
+    });
+    // 预置缓存也不放行：本轮读取 pending 期间恒 null（review-r1 同一门槛）
+    const pending = renderHook(() => use真人会话资料('recruiter', 会话()));
+    expect(pending.result.current.在线简历分析).toBeNull();
+    await waitFor(() => expect(pending.result.current.资料状态).toBe('available'));
+    pending.unmount();
+
+    // 授权失权：context unavailable → 恒 null（旧解释不残留）
+    const 失权 = renderHook(() => use真人会话资料('recruiter', 会话({ contextStatus: 'unavailable', context: null })));
+    await waitFor(() => expect(失权.result.current.资料状态).toBe('unavailable'));
+    expect(失权.result.current.在线简历分析).toBeNull();
+    失权.unmount();
+
+    // 快照失败（读取落了但带错）：不展示缓存旧分析
+    mock应用状态.后端状态.P5详情[P5范围键.detail('recruiter', 'mc_3003')] =
+      { 阶段: '失败', 刷新中: false, detail: null, error: '服务暂时不可用', generation: 1 };
+    const 失败 = renderHook(() => use真人会话资料('recruiter', 会话()));
+    await waitFor(() => expect(失败.result.current.资料状态).toBe('unavailable'));
+    expect(失败.result.current.在线简历分析).toBeNull();
   });
 });

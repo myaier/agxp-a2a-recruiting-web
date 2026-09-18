@@ -27,8 +27,10 @@ import 共用样式 from '../直聊会话.module.css';
 import { 轻提示 } from '../../组件/轻提示';
 import { 格式化聊天时间 } from '../../组件/聊天气泡';
 import { 候选详情DTO, 招聘详情DTO, 状态 } from '../P5/MatchCase详情.测试辅助';
-import { BFF招聘方档案样本 } from '../../测试/BFF样本';
+import { BFF招聘方档案样本, BFF匹配解释87分样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
+import { BFF安全职位资料样本 } from '../../测试/展示资料样本';
 import { BFF候选在线简历样本, BFF候选身份披露样本, BFF候选身份匿名样本 } from '../../测试/展示资料样本';
+import type { P5详情 } from '../../数据/招聘数据源/MatchCase';
 import type { P8ReportReceipt } from '../../数据/招聘数据源/P8控制面';
 
 const 导航 = vi.hoisted(() => ({ 跳转: vi.fn(), 返回: vi.fn() }));
@@ -140,7 +142,10 @@ function 披露简历详情(覆盖: {
   candidateResume?: typeof BFF候选在线简历样本 | null;
   candidateIdentity?: typeof BFF候选身份披露样本;
   别名?: string;
-} = {}): Record<string, unknown> {
+} = {}): {
+  阶段: string; 刷新中: boolean; error: null; generation: number;
+  detail: Extract<P5详情, { role: 'recruiter' }>;
+} {
   return {
     阶段: '成功', 刷新中: false, error: null, generation: 1,
     detail: {
@@ -148,7 +153,7 @@ function 披露简历详情(覆盖: {
       state: 状态({ caseId: 'mc_3003' }),
       candidateResume: 覆盖.candidateResume !== undefined ? 覆盖.candidateResume : BFF候选在线简历样本,
       candidateIdentity: 覆盖.candidateIdentity ?? { ...BFF候选身份披露样本, avatar_url: null },
-    },
+    } as Extract<P5详情, { role: 'recruiter' }>,
   };
 }
 
@@ -898,5 +903,96 @@ describe('Backend真人会话 · 在线简历纸身（Task 4）', () => {
     expect(Backend真人会话tsx源码).not.toContain('读取简历PDF');
     expect(Backend真人会话tsx源码).not.toContain('原始PDF正文');
     expect(Backend真人会话tsx源码).not.toContain('PDF对象租约');
+  });
+});
+
+// ── Task 6（Spec §3.5）：完整纸身下方独立白区分析（唯一总分环 + 六维行）──
+// 分析只用本会话 Case 的响应（use真人会话资料 同一 gated 明细）；失权随层一起消失，
+// 不因解释仍在缓存而残留；求职聊天沿用职位资料版式（块内唯一总分环）。
+describe('Backend真人会话 · 纸身独立分析区（Task 6，Spec §3.5）', () => {
+  it('招聘端：纸身之后出现独立分析区（标题 + 适配环 + 六维行），分析不进纸身各区', async () => {
+    环境({
+      role: 'recruiter',
+      P5详情: {
+        'p5:detail:recruiter:mc_3003': {
+          ...披露简历详情(),
+          detail: {
+            ...披露简历详情().detail,
+            matchScore: 92,
+            匹配解释: BFF匹配解释92分样本,
+          },
+        },
+      },
+    });
+    const 用户 = userEvent.setup();
+    render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看在线简历' }));
+    const 层 = within(screen.getByRole('dialog', { name: '看在线简历' }));
+    await waitFor(() => expect(层.getByText('沈亦舟')).toBeTruthy());
+    // 完整纸身原样（个人优势仍是纸身的最后一个区）
+    expect(层.getByText('个人优势')).toBeTruthy();
+    expect(层.getByText('四年全栈经验')).toBeTruthy();
+    // 纸身下方独立分析区：标题、唯一总分环、六维行、技能口径说明
+    expect(层.getByText('匹配度分析')).toBeTruthy();
+    expect(层.getByRole('img', { name: '适配 92 分' })).toBeTruthy();
+    expect(层.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(层.getByText('命中11/12个岗位关键词')).toBeTruthy();
+    expect(层.getByText('薪资范围接近')).toBeTruthy();
+    expect(层.getByText('技能按关键词命中核对，不代表能力认证。')).toBeTruthy();
+    // 阅读顺序：纸身的「个人优势」标题在「匹配度分析」之前（分析在纸身之后）
+    const 纸身优势 = 层.getByText('个人优势');
+    const 分析标题 = 层.getByText('匹配度分析');
+    expect(纸身优势.compareDocumentPosition(分析标题) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 分析不进工作经历/个人优势正文
+    expect(层.getByText('平台研发')).toBeTruthy();
+  });
+
+  it('招聘端：context 失权关层 —— 独立分析区与纸身一起消失（不残留旧解释）', async () => {
+    环境({
+      role: 'recruiter',
+      P5详情: {
+        'p5:detail:recruiter:mc_3003': {
+          ...披露简历详情(),
+          detail: { ...披露简历详情().detail, matchScore: 92, 匹配解释: BFF匹配解释92分样本 },
+        },
+      },
+    });
+    const 用户 = userEvent.setup();
+    const 页 = render(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看在线简历' }));
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: '看在线简历' })).getByText('匹配度分析')).toBeTruthy());
+    mock应用状态.后端状态.P7会话详情['p7:detail:recruiter:3003'] = 详情快照({
+      detail: 会话详情({ contextStatus: 'unavailable', context: null }),
+    });
+    页.rerender(<Backend真人会话 角色="recruiter" conversationId="3003" />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText('匹配度分析')).toBeNull();
+    expect(screen.queryByRole('img', { name: '适配 92 分' })).toBeNull();
+  });
+
+  it('候选端「看职位」：沿用职位资料版式，块内画唯一总分环（无顶栏分）', async () => {
+    环境({
+      P5详情: {
+        'p5:detail:candidate:mc_3003': {
+          阶段: '成功', 刷新中: false, error: null, generation: 1,
+          detail: {
+            ...候选详情DTO(),
+            state: 状态({ caseId: 'mc_3003' }),
+            jobDetail: BFF安全职位资料样本,
+            matchScore: 87,
+            匹配解释: BFF匹配解释87分样本,
+          },
+        },
+      },
+    });
+    const 用户 = userEvent.setup();
+    render(<Backend真人会话 角色="candidate" conversationId="3003" />);
+    await 用户.click(screen.getByRole('button', { name: '看职位' }));
+    const 层 = within(screen.getByRole('dialog', { name: '看职位' }));
+    await waitFor(() => expect(层.getByText('云衢科技')).toBeTruthy());
+    // 唯一总分位置 = 分析块内的环（聊天层没有顶栏）
+    expect(层.getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+    expect(层.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(层.getByText('薪资范围不匹配')).toBeTruthy();
   });
 });

@@ -20,6 +20,7 @@ import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { 映射P5详情 } from '../../数据/MatchCase展示映射';
 import { 从P5到职位资料 } from '../../数据/详情展示映射';
 import { 从P5详情取对方资料, 取姓名首字, 非空 } from '../消息列表展示/会话资料映射';
+import type { 匹配分析模型 } from '../../数据/匹配解释展示映射';
 import type { 职位资料信息 } from '../../组件/在谈详情/类型';
 import type { P7角色, P7会话项 } from '../../数据/招聘数据源/真人会话';
 
@@ -29,6 +30,13 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   对方头像URL: string | null;
   对方首字: string;
   职位资料: 职位资料信息 | null;
+  /**
+   * Task 6（Spec §3.5）：招聘聊天「看在线简历」层的独立分析区输入 = 本会话 Case 同一
+   * gated 明细的 match_score + match_explanation（唯一总分环 + 六维行）。与页头/纸身
+   * 同一读取门槛：本轮未落地 / 失权 / 快照失败一律 null —— 绝不因解释仍在缓存而展示
+   * 旧分析。候选角色恒 null（聊天层是职位资料）。
+   */
+  在线简历分析: 匹配分析模型 | null;
   资料状态: 'loading' | 'available' | 'unavailable';
   重读资料: () => void;
 } {
@@ -168,6 +176,7 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
   // alias、公司、岗位或占位文案推导（回落窗口同样不给假首字）。
   let 对方首字 = '·';
   let 职位资料: 职位资料信息 | null = null;
+  let 在线简历分析: 匹配分析模型 | null = null;
 
   if (明细 !== null) {
     const 发布方公司 = 公司链就绪 && 发布方编号 !== null && 状态.公开企业表[发布方编号] !== undefined
@@ -197,6 +206,15 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
     // 不拿当前岗位替代历史资料（Spec §11.3）
     const 视图 = 映射P5详情(明细);
     职位资料 = 视图.kind === '正常' && 明细.jobDetail !== null ? 从P5到职位资料(视图) : null;
+    // Task 6（Spec §3.5）：同一 gated 明细的解释 → 纸身下方独立分析区（仅招聘层消费）
+    if (明细.role === 'recruiter' && 视图.kind === '正常') {
+      在线简历分析 = {
+        分数: 明细.matchScore,
+        解释: 明细.匹配解释 ?? null,
+        有限依据: [],
+        上下文: '有来源',
+      };
+    }
   }
 
   const 重读资料 = useCallback(() => {
@@ -227,5 +245,5 @@ export function use真人会话资料(角色: P7角色, 详情: P7会话项 | nu
     }
   }, [角色, caseId, 范围, jobRef, 发布方编号, 操作]);
 
-  return { 标题, 副标题, 对方头像URL, 对方首字, 职位资料, 资料状态, 重读资料 };
+  return { 标题, 副标题, 对方头像URL, 对方首字, 职位资料, 在线简历分析, 资料状态, 重读资料 };
 }
