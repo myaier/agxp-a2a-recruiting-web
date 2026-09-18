@@ -4,7 +4,8 @@
 // 走 卡片分数 的未知占位，不补 0、不画环。整卡点击 = 打开；卡上没有收藏/委托/淘汰按钮。
 // 无 Provider 宿主：回调全部走 props。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import 招聘在谈卡 from './招聘在谈卡';
 import type { 候选卡信息, 招聘在谈卡属性, 在谈阶段信息 } from './类型';
@@ -106,5 +107,47 @@ describe('招聘在谈卡 · 行为', () => {
     fireEvent.click(键们[0] as Element);
     expect(属性.打开).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: /收藏|委托|淘汰/ })).toBeNull();
+  });
+});
+
+describe('招聘在谈卡 · 查看匹配分析入口（C3 / Spec §3.1：仅指定入口传回调）', () => {
+  it('有回调：分数环变为独立入口——点击只调回调不触发打开；键盘可达；不嵌套 button', async () => {
+    const 用户 = userEvent.setup();
+    const 查看匹配分析 = vi.fn();
+    const 属性 = 渲染卡({ 查看匹配分析 });
+    const 卡根 = screen.getByTestId('招聘在谈卡');
+    const 键们 = Array.from(卡根.querySelectorAll('button'));
+    expect(键们).toHaveLength(2); // 整卡 button + 独立入口
+    const 白卡键 = 键们[0] as HTMLButtonElement;
+    const 入口 = 键们.find((键) => 键.getAttribute('aria-label') === '查看匹配分析') as HTMLButtonElement;
+    // 只有圆环可见：入口内是原适配环；44px 触摸区类（环 40 + padding 2）
+    expect(within(入口).getByRole('img', { name: '适配 94 分' })).toBeTruthy();
+    expect(入口.className).toContain('分数入口');
+    fireEvent.click(入口);
+    expect(查看匹配分析).toHaveBeenCalledTimes(1);
+    expect(属性.打开).not.toHaveBeenCalled();
+    // 键盘可达（原生 button 语义）：Enter 触发回调
+    入口.focus();
+    await 用户.keyboard('{Enter}');
+    expect(查看匹配分析).toHaveBeenCalledTimes(2);
+    // 不嵌套原生按钮：入口不是整卡 button 的后代，整卡 button 内无第二层 button
+    expect(白卡键.contains(入口)).toBe(false);
+    expect(白卡键.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  it('匹配分 null 仍保留入口：— 占位在入口内（仍可查看缺失说明），不画假 0 分环', () => {
+    渲染卡({ 匹配分: null, 查看匹配分析: vi.fn() });
+    const 入口 = screen.getByRole('button', { name: '查看匹配分析' });
+    expect(within(入口).getByLabelText('匹配分未知')).toBeTruthy();
+    expect(within(入口).queryByRole('img', { name: /适配/ })).toBeNull();
+  });
+
+  it('无回调：完全没有分析入口，整卡 button 仍是唯一可点元素（历史卡永不传回调）', () => {
+    const 属性 = 渲染卡();
+    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
+    const 键们 = screen.getByTestId('招聘在谈卡').querySelectorAll('button');
+    expect(键们).toHaveLength(1);
+    fireEvent.click(键们[0] as Element);
+    expect(属性.打开).toHaveBeenCalledTimes(1);
   });
 });

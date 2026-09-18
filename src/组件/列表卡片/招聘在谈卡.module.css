@@ -23,3 +23,16 @@
   align-items: flex-end;
   gap: 4px;
 }
+
+/* 查看匹配分析独立入口（C3/Spec §3.1）：给了回调时分数环变成的这个按钮，绝对定位
+   与 .右列 同一落点（top/right 各让出 2px padding，环像素不动）；padding 2px 把
+   40px 环补成 44px 触摸区。点击只调 查看匹配分析 回调，不触发整卡详情导航。 */
+.分数入口 {
+  position: absolute;
+  top: 11px;
+  right: 13px;
+  padding: 2px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+}

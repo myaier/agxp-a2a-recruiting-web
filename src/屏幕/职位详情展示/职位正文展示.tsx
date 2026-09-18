@@ -9,7 +9,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import 样式 from '../职位详情.module.css';
 import { 公司区块 } from '../../组件/公司区块';
-import { 匹配分析块 } from '../../组件/匹配分析块';
+import { 求职核对块 } from '../../组件/匹配分析块';
 import 适配环 from '../../组件/适配环';
 import type { 图位, 职位正文展示属性 } from './类型';
 
@@ -56,7 +56,8 @@ export function 职位正文展示({ 数据, 打开公司, 直接聊 }: 职位�
           44×44 中性分数位 —— 不绘制进度、不传 0/NaN */}
       <div className={样式.卡}>
         {匹配.种类 === '核对' ? (
-          <匹配分析块 分={匹配.分} 行们={匹配.行们} 分析={匹配.分析} />
+          // 旧 JD 三态核对版式（求职核对块）：按 Plan 在 Task 5 迁到模型组件 匹配分析块
+          <求职核对块 分={匹配.分} 行们={匹配.行们} 分析={匹配.分析} />
         ) : (
           <>
             <div className={样式.适配头}>

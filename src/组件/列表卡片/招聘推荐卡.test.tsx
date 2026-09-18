@@ -3,7 +3,8 @@
 // 这里只验证卡片自身的行为契约：占位与分数位、来源标保留、底部操作的动作归属
 // （callback 次数 / 滑开零动作 / 禁用零动作 / 回执不渲染委托按钮）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import 招聘推荐卡 from './招聘推荐卡';
 import type { 候选卡信息, 招聘推荐卡属性 } from './类型';
@@ -153,5 +154,52 @@ describe('招聘推荐卡 · 底部行为', () => {
     expect(screen.queryByRole('button', { name: '让AI代理去聊' })).toBeNull();
     fireEvent.click(screen.getByText('本次未能继续'));
     expect(属性.委托).not.toHaveBeenCalled();
+  });
+});
+
+describe('招聘推荐卡 · 查看匹配分析入口（C3 / Spec §3.1：仅指定入口传回调）', () => {
+  it('有回调：分数环变为独立入口——点击只调回调，不触发打开/切收藏/委托；键盘可达', async () => {
+    const 用户 = userEvent.setup();
+    const 查看匹配分析 = vi.fn();
+    const 属性 = 渲染卡({ 查看匹配分析 });
+    const 入口 = screen.getByRole('button', { name: '查看匹配分析' }) as HTMLButtonElement;
+    // 只有圆环可见：入口内是原适配环；44px 触摸区类（环 40 + padding 2）
+    expect(within(入口).getByRole('img', { name: '适配 87 分' })).toBeTruthy();
+    expect(入口.className).toContain('分数入口');
+    fireEvent.click(入口);
+    expect(查看匹配分析).toHaveBeenCalledTimes(1);
+    expect(属性.打开).not.toHaveBeenCalled();
+    expect(属性.切收藏).not.toHaveBeenCalled();
+    expect(属性.委托).not.toHaveBeenCalled();
+    // 键盘可达（原生 button 语义）：Enter 与 Space 都触发回调
+    入口.focus();
+    await 用户.keyboard('{Enter}');
+    await 用户.keyboard(' ');
+    expect(查看匹配分析).toHaveBeenCalledTimes(3);
+    // 不嵌套原生按钮：卡主体（第一个 button）内没有第二层 button，入口不在其内
+    const 卡主体键 = screen.getByTestId('招聘推荐卡').querySelector('button') as HTMLButtonElement;
+    expect(卡主体键.contains(入口)).toBe(false);
+    expect(卡主体键.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  it('滑开时入口让位滑动行：点击不触发回调，也不触发打开（卡内点击全部让位的既有约定）', () => {
+    const 查看匹配分析 = vi.fn();
+    const 属性 = 渲染卡({ 滑开: true, 查看匹配分析 });
+    fireEvent.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(查看匹配分析).not.toHaveBeenCalled();
+    expect(属性.打开).not.toHaveBeenCalled();
+  });
+
+  it('匹配分 null 仍保留入口：— 占位在入口内（仍可查看缺失说明），不画假 0 分环', () => {
+    渲染卡({ 匹配分: null, 查看匹配分析: vi.fn() });
+    const 入口 = screen.getByRole('button', { name: '查看匹配分析' });
+    expect(within(入口).getByLabelText('匹配分未知')).toBeTruthy();
+    expect(within(入口).queryByRole('img', { name: /适配/ })).toBeNull();
+  });
+
+  it('无回调：完全没有分析入口，按钮位与既有卡面一致（卡主体/★/›/去聊）', () => {
+    渲染卡();
+    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
+    expect(screen.getByTestId('招聘推荐卡').querySelectorAll('button')).toHaveLength(4);
   });
 });

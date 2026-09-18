@@ -38,12 +38,38 @@ export default function 求职在谈卡({
   阶段,
   禁用 = false,
   打开,
+  查看匹配分析,
 }: 求职在谈卡属性) {
   const 标签们 = 有效标签们(标签);
   const 公司名 = 已知文(公司);
   const 公司简介文 = 已知文(公司简介);
+  // 右列（分数 + 薪资横排）：C3/Spec §3.1 给了 查看匹配分析 回调时整列移出白卡 button
+  // （分数环变独立 .分数入口，不嵌套原生按钮），绝对定位落点不变、薪资像素不动；
+  // 不传回调则在原位（公司头行内），卡面与既有消费逐字不变。
+  const 右列 = (
+    <div className={样式.右列} data-card-region="score">
+      {查看匹配分析 ? (
+        <button
+          type="button"
+          className={`${样式.分数入口} 可点`}
+          aria-label="查看匹配分析"
+          onClick={查看匹配分析}
+        >
+          <卡片分数 分={匹配分} />
+        </button>
+      ) : (
+        <卡片分数 分={匹配分} />
+      )}
+      {/* 原展示破折号行为（Mock 卡沿用至今）：仅把 - 换成 –，不改币种/单位/数值 */}
+      <span className={`${样式.薪资} 薪资体`} data-card-region="salary">
+        {薪资.replace('-', '–')}
+      </span>
+    </div>
+  );
   return (
     <div className={样式.根} data-testid="求职在谈卡">
+      {/* 查看匹配分析独立入口模式下，右列挂卡根（.根 是绝对定位锚点），先于白卡渲染 */}
+      {查看匹配分析 ? 右列 : null}
       {/* 禁用（助手查询快照的不可查看项目）：白卡不挂 按下 → 退化为不可点容器；
           默认 false，既有调用方的整卡 button 逐字不变 */}
       <白卡 按下={禁用 ? undefined : 打开} 类名={样式.卡}>
@@ -70,13 +96,7 @@ export default function 求职在谈卡({
             </div>
             <div className={`${样式.公司简介} 单行`}>{公司简介文 ?? '公司简介未知'}</div>
           </div>
-          <div className={样式.右列} data-card-region="score">
-            <卡片分数 分={匹配分} />
-            {/* 原展示破折号行为（Mock 卡沿用至今）：仅把 - 换成 –，不改币种/单位/数值 */}
-            <span className={`${样式.薪资} 薪资体`} data-card-region="salary">
-              {薪资.replace('-', '–')}
-            </span>
-          </div>
+          {查看匹配分析 ? null : 右列}
         </div>
 
         {/* 职位名 */}

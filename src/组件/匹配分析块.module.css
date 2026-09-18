@@ -1,6 +1,6 @@
-/* 匹配分析块(2026-08-31 定稿效果图):分析段 + 紧凑单行核对表。
-   行内两栏:要求(墨,左)/ 证据(浅,右对齐可截断),一行一条不换行 —— 与旧对齐卡
-   「一条占两行」的版式区分,整块高度约为旧表一半 */
+/* 匹配分析块（C3 / Spec §4）：上半是共用六维组件的新版式，下半（分析段/点有/点空/
+   要求/旧行/证据）是旧「JD 三态核对块」的遗留样式 —— 遗留块仅存续至 Task 5/6 把
+   消费者迁到模型组件，届时随 求职核对块 一并删除，不为它新增任何样式。 */
 
 .头 {
   display: flex;
@@ -16,6 +16,147 @@
   color: var(--次要浅);
 }
 
+/* ── 六维组件（Spec §4 最终紧凑勾选行）── */
+
+/* 弹层形态的文本总分（Spec §3.2：弹层用紧凑文本，不再画环） */
+.文本总分 {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--墨);
+}
+
+/* 详情形态缺分占位：与适配环同位（44px）的中性「—」，不画假 0 分环 */
+.缺分位 {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--弱化);
+}
+
+/* 副标（Spec §4：新解释标题下显示「推荐生成时的匹配结果」） */
+.副标 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--次要浅);
+  margin: 10px 0 2px;
+}
+
+/* 六维行：左图标 + 维度名 + 小号分项，右弱化原因与状态文字。
+   flex-wrap 让窄屏上过长的右侧说明折到本行下方，不截断关键原因、不挤掉分项。 */
+.行 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 9px;
+  padding: 7.5px 0;
+}
+
+.态符 {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 图标右侧的维度名 + 分项一组：不参与右侧说明的换行让位 */
+.行主 {
+  flex: none;
+  max-width: 52%;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.行头 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.维度名 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--墨);
+  white-space: nowrap;
+}
+
+/* 次级小号 points/max_points（Spec §4） */
+.分项 {
+  font-size: 11px;
+  color: var(--弱化);
+}
+
+/* 技能行的「命中X/Y个岗位关键词」：归一化关键词命中不是能力认证 */
+.命中文 {
+  font-size: 11px;
+  color: var(--弱化);
+}
+
+/* 右侧说明：较弱但可读；自然换行（不加 单行/省略号），长原因允许折到行下 */
+.行注 {
+  flex: 1 1 12em;
+  min-width: 0;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--弱化);
+}
+
+.原因 {
+  color: var(--弱化);
+}
+
+/* 状态词与原因同时在场（不只靠图标颜色）；比原因重一档便于扫读 */
+.状态词 {
+  color: var(--次要);
+  font-weight: 600;
+}
+
+.状态词::before {
+  content: ' · ';
+  font-weight: 400;
+}
+
+/* 合法缺失（Spec §5.2）：缺失说明 / 上下文说明 / 有限依据 */
+.缺失说明 {
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--弱化);
+  margin: 10px 0 4px;
+}
+
+.有限依据 {
+  margin-top: 6px;
+}
+
+.有限依据标 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--次要浅);
+  margin-bottom: 2px;
+}
+
+.依据行 {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--次要浅);
+}
+
+/* 口径说明（Spec §4）：技能按关键词命中核对，不代表能力认证 */
+.技能说明 {
+  font-size: 11px;
+  color: var(--次要浅);
+  margin: 8px 0 0;
+}
+
+/* ── 旧「JD 三态核对块」遗留样式（随 求职核对块 在 Task 5/6 删除）── */
+
 .分析段 {
   font-size: 13px;
   line-height: 1.85;
@@ -27,7 +168,7 @@
   color: var(--弱化);
 }
 
-.行 {
+.旧行 {
   display: flex;
   flex-direction: row;
   align-items: center;

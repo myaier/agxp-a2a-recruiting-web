@@ -80,6 +80,18 @@
   color: var(--深绿);
 }
 
+/* 查看匹配分析独立入口（C3/Spec §3.1）：给了回调时分数环变成的这个按钮（仍在 .右列
+   内，整列移出白卡 button —— 不嵌套原生按钮）。padding 2px 把 40px 环补成 44px 触摸
+   区；负 margin 抵消 padding 的布局占位 —— 薪资与环的像素位置都不动（不挤薪资）。 */
+.分数入口 {
+  flex: none;
+  padding: 2px;
+  margin: -2px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+}
+
 /* 职位名（标注 22:46：17 太大导致卡片占位，收到 15.5）*/
 .职位名 {
   font-size: 15.5px;
