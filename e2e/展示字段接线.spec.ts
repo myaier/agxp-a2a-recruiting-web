@@ -600,7 +600,8 @@ for (const 宽度 of 后端宽度们) {
 
       // A 卡（有组织坐标）：进详情零 canonical job GET（快照命中），公开企业补读只打 A 自己的坐标
       await page.getByRole('button', { name: '查看职位详情' }).nth(0).click();
-      await expect(page).toHaveURL(new RegExp(`#/job/${'job_00112233445566778899aabbccddee01'}$`), { timeout: 10_000 });
+      // C2 四坐标：市场卡导航在 query 携带推荐坐标（Task 7 接线；Task 10 迁移锚点）
+      await expect(page).toHaveURL(new RegExp(`#/job/job_00112233445566778899aabbccddee01\\?`), { timeout: 10_000 });
       await expect(page.getByText('展接FIX 交易中台架构师', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       expect(请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/jobs/'))).toEqual([]);
       await expect.poll(() =>
@@ -618,7 +619,7 @@ for (const 宽度 of 后端宽度们) {
       await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
       const 公开读前 = 请求.filter((条) => 条.method === 'GET' && 条.path.startsWith('/api/v1/organizations/')).length;
       await page.getByRole('button', { name: '查看职位详情' }).nth(1).click();
-      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee02$/, { timeout: 10_000 });
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee02\\?/, { timeout: 10_000 });
       // JD 卡标题只在独立职位详情渲染：先等详情 DOM 提交，claim 名称断言不落在切换前的列表卡上
       await expect(page.getByText('岗位信息与职位详情', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('展接FIX 缺口补齐工程师', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
@@ -633,7 +634,7 @@ for (const 宽度 of 后端宽度们) {
       await page.getByRole('button', { name: '市场', exact: true }).click();
       await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
       await page.getByRole('button', { name: '查看职位详情' }).nth(3).click();
-      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee04$/, { timeout: 10_000 });
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee04\\?/, { timeout: 10_000 });
       await expect(page.getByText('展接FIX 局部空岗位：JD 描述这节有值，职位要求这节合法空。', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('职位要求未知', { exact: true }).first()).toBeVisible();
       await expect(page.getByText('职位详情未知', { exact: true })).toHaveCount(0);
@@ -644,7 +645,7 @@ for (const 宽度 of 后端宽度们) {
       await page.getByRole('button', { name: '市场', exact: true }).click();
       await expect(page.getByText('展接FIX 交易中台架构师').first()).toBeVisible({ timeout: 15_000 });
       await page.getByRole('button', { name: '查看职位详情' }).nth(2).click();
-      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee03$/, { timeout: 10_000 });
+      await expect(page).toHaveURL(/#\/job\/job_00112233445566778899aabbccddee03\\?/, { timeout: 10_000 });
       await expect(page.getByText('岗位信息与职位详情', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('测'.repeat(80), { exact: true }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText('展'.repeat(48)).first()).toBeVisible();

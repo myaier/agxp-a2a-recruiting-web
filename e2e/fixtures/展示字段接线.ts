@@ -453,6 +453,9 @@ function 候选Case详情(caseId: string, 覆盖: { matchScore: number | null; j
     intention_id: 编号.意向,
     match_score: 覆盖.matchScore,
     job_detail: 覆盖.jobDetail,
+    // include=match_explanation 展开读取（C2）：解释键必在；null = 已展开无溯源。
+    // 嵌套 case_detail 与外层同模式解码（Task 10：候选聚合详情缺键即整包拒绝）。
+    match_explanation: null,
     // S0–S3 连续筛选合并（2026-09-15）：version 1 = 历史 Case，连续块四成员整组缺席合法。
     continuity_version: 1,
   };

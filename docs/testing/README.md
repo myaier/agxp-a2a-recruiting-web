@@ -648,3 +648,62 @@ npm run test:e2e -- e2e/suites/隐私与实名.spec.ts --grep '聊天推荐前�
 - 清单：本次 `test:list -- --write` 后 `--check` 归零（第一层 6105 项，第二层 367 项 =
   功能 341 + 视觉 26）；`e8206931` 新增的「创建候选操作 · 聚合链收尾的 next 基底（fix-r2）」
   一行已入清单。
+
+## Task 10 对账（六维解释浏览器接线、视觉场景与清单，2026-09-18）
+
+### 基线与修复（fixture 层）
+
+- Task 1–9 交付后，`e2e/fixtures/bff` 三个域 fixture 尚未携带 `match_explanation`
+  展开键：C2 展开读取在 strict decode 上整包拒绝，五个数据源 Suite 的 @backend
+  选集基线为 **73 failed / 102 passed**（`--grep 六维展示对齐` 为 0 tests）。
+- 修复：`发现推荐.ts` 新增 `P4匹配解释` 构造器（总分 0–100 按 C1 闭表确定性分解，
+  本轮以 tsx 对全部总分复核 分项和=总分=match_score、matched=满分、U/N=0、
+  技能分=floor(35·命中/总数)；tsx 脚本一次性验证后未入库）；候选/招聘卡工厂按
+  最终 match_score 同源生成展开键，覆盖键显式在场（含 null）原样下发。
+  `MatchCase.ts` 的招聘 open/history 行、双端详情、聚合卡与嵌套 case_detail 同批接线。
+- 顺带修一处 Task 4 层次缺陷（浏览器实测）：`求职在谈卡.module.css` 的 `.右列`
+  传回调态挂卡根且先于白卡渲染，同为 positioned 的 `.卡` 按 DOM 序盖住环，
+  点环被白卡吃掉变成打开详情 —— `z-index: 1` 提回上层（Spec §3.1 点击不触发卡动作）。
+
+### 选集与执行结果（workers=2 / retries=0）
+
+```bash
+npm run test:e2e -- e2e/suites/发现推荐.spec.ts e2e/suites/MatchCase.spec.ts \
+  e2e/suites/连续委托.spec.ts e2e/suites/真人消息.spec.ts e2e/suites/展示与交互.spec.ts \
+  --grep 六维展示对齐 --list    # 9 tests in 4 files（0 tests 不算过的对照）
+# 实跑 9 passed（复跑两次稳定；其中一次并行负载下 1 例纵序翻红，已改为层内定位）
+```
+
+Task 9 递延的基线红遮蔽断言随 8B fixture 落地复验：五个 Suite 全量
+（95 tests）在 fixture 修复前 20 failed，断言迁移（URL 四坐标锚、include 矩阵串、
+卡传回调态 DOM 顺序、退役文案「未提供判定/匹配分析缺失/推荐依据」、旧合并轮次行）
+后全绿；`e2e/P1展示统一.spec.ts`（含 `匹配度分析标题` 关键元素场景）与
+`e2e/展示字段接线.spec.ts`（含 `wiring-job-top`）同批通过（Task 9 已改两 fixture 的
+展开键与 URL 锚，本轮只复验未再改）。
+
+### 视觉（Task 4/10 义务）
+
+- 清单单测：`npm test -- e2e/视觉回归/场景.test.ts`（5 例，场景 38 个、唯一性 +
+  Task 10 前缀分组：四态/技能部分 0/缺失/弹层/招聘纸身独立分析 + 传回调态卡入口）。
+- 采集：`UI_CAPTURE_DIR=test-results/match-explanation-visual npm run ui:capture --
+  --grep 'match-explanation-' --workers=2 --retries=0`（12 场景 captured；复跑会清理
+  该目录，本轮证据以逐张看图结论为准）。
+- 逐张人工看图结论（320/360 窄屏与 390 普通宽度）：四态行图标/计数/状态文字齐备、
+  320 下技能行长说明行内换行不溢出；技能 1/100 → 0/35 仍部分匹配；缺失场景「—」+
+  「暂无该次匹配的详细分析」无假六行；弹层藏环文本总分与岗位上下文行在位；
+  招聘纸身层分析在纸身之后独立白区（须滚动入画后采集）；三档宽度的市场/在谈卡
+  薪资串与 44px 入口环同排不互挤、公司名按省略号截断；招聘在谈卡匿名头行 + 环入口
+  正常。第一版招聘纸身场景未滚动导致分析截不入图，已改为就绪时 scrollIntoView。
+
+### 清单（Task 10 收尾）
+
+`npm run test:list -- --write` 后 `--check` 归零（第一层 6331 项，第二层 389 项 =
+功能 351 + 视觉 38）；`docs/testing/cases.md` 仅自动区变更。
+
+### 已知边界
+
+- 视觉采集固定 mock 源：招聘推荐卡的传回调态入口只在 Backend 数据源存在（Mock
+  人才库卡按 Task 7 as-built 无入口），该卡的 44px 入口几何与截图证据由
+  展示与交互「卡片统一 招聘推荐卡两模式」用例承担（44×44 实测断言 + 截图）。
+- 真实后端行为（OpenAPI 实际下发 match_explanation/step/exchange_ref）未由
+  fixture 证明；真实环境未验收，由用户负责。

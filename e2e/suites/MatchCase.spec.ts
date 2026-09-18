@@ -840,7 +840,7 @@ test.describe('六维展示对齐 @backend', () => {
     await expect(page.getByText('已回答事项').first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('六维展示对齐 step+ref 整页：v2 对话步骤与问答引用同屏、坏响应重试只重发权威 GET @backend', async ({ page }) => {
+  test('六维展示对齐 step+ref 整页与写后重读：问答引用同屏、坏响应重试与写后权威重读同源 @backend', async ({ page }) => {
     test.setTimeout(150_000);
     const 请求序: string[] = [];
     const fixture = 创建P5MatchCasefixture();
@@ -916,6 +916,18 @@ test.describe('六维展示对齐 @backend', () => {
     // 66 分解释同屏（step+ref+解释整页成功）：顶栏唯一总分是同响应权威分
     await expect(page.getByText('66', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
     expect(fixture.变更请求).toEqual([]); // 观察旅程零写请求
+
+    // ── 写后重读：本端 accept（真实 POST）→ 权威重读仍带 include，同记录解释不丢 ──
+    const 重读前 = 详情GET数();
+    await page.getByRole('button', { name: '接受', exact: true }).click();
+    await expect(page.getByRole('button', { name: '接受', exact: true })).toHaveCount(0, { timeout: 10_000 });
+    const 协同POST = fixture.变更请求.filter((项) => 项.path === `/api/v1/me/match-cases/${P5编号.丁}/coordination/${P5编号.协同}/decisions`);
+    expect(协同POST).toHaveLength(1);
+    expect(协同POST[0]!.body).toEqual({ action: 'accept' });
+    // POST 之后必有权威重读（C2：重读恰带 include=match_explanation），同记录 66 分解释保留
+    await expect.poll(详情GET数, { timeout: 15_000 }).toBeGreaterThan(重读前);
+    await expect(page.getByText('66', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('招聘 Agent 判断中')).toBeVisible({ timeout: 15_000 });
   });
 
   test('六维展示对齐 §8B.5 旅程回归：S1 三来源进 S2、招聘侧 finish 后仍展示 S2 不提前进 S3 @backend', async ({ page }) => {
