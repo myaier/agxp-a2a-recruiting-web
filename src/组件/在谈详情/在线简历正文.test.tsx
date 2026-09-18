@@ -14,20 +14,18 @@ import { 在线简历正文 } from './在线简历正文';
 import { 映射招聘匹配依据 } from '../../数据/招聘匹配依据映射';
 import { 解匹配解释 } from '../../数据/招聘数据源/匹配解释';
 import { BFF匹配解释92分样本 } from '../../测试/BFF样本';
+import { 建匹配分析模型 } from '../../数据/匹配解释展示映射';
 import { 从Mock到简历正文, 从安全资料到简历正文 } from '../../数据/在线简历正文映射';
 import { 匿名简历表 } from '../../数据/企业端模拟数据';
 import type { 匿名简历档 } from '../../数据/企业端模拟数据';
-import type { 对齐行 } from '../../数据/匹配对齐';
 import type { 在线简历展示资料 } from './类型';
 
 // A-01：项目/经历/技能齐备；A-02：项目为空（空态用例）。测试不是展示层，可以读夹具表。
 const 档A01 = 匿名简历表['A-01'];
 const 档A02 = 匿名简历表['A-02'];
 
-const 对齐行样本: 对齐行[] = [
-  { 要求: 'Go 主栈', 证据: '字节跳动 · 交易中台 · Go · 9 年', 态: '有证据', 类: '必须' },
-  { 要求: '带过团队', 证据: null, 态: '未提及', 类: '必须' },
-];
+/** 六维分析模型样本（Task 7 起 Mock 详情亦走此形态；旧对齐卡版式已退役） */
+const 分析样本 = 建匹配分析模型(92, BFF匹配解释92分样本, '有来源');
 
 /** Mock 档 → 正文内容（真名/求职状态/薪资结论由调用方给，同旧正文默认口径） */
 function Mock内容(档: 匿名简历档 | null, 选项: { 真名?: string | null; 求职状态?: string | null } = {}) {
@@ -52,11 +50,11 @@ function 断言顺序(正文: Element, 文们: readonly string[]): void {
 }
 
 describe('在线简历正文 · 默认兼容（独立简历页 Mock 链路，不传 完整布局）', () => {
-  it('A-01 全部信息区按顺序在场：画像/职位行 → 匹配依据 → 个人优势 → 期望 → 工作 → 项目 → 教育 → 技能 → 页尾', () => {
+  it('A-01 全部信息区按顺序在场：画像/职位行 → 匹配分析 → 个人优势 → 期望 → 工作 → 项目 → 教育 → 技能 → 页尾', () => {
     const { container } = render(
       <在线简历正文
         内容={Mock内容(档A01, { 求职状态: '在职看机会' })}
-        对齐行们={对齐行样本}
+        匹配分析={分析样本}
       />,
     );
     const 正文 = container.firstElementChild;
@@ -64,7 +62,7 @@ describe('在线简历正文 · 默认兼容（独立简历页 Mock 链路，不
     expect(正文.className).toContain('页体');
     expect(screen.getByText('交易中台研发专家 · 现任字节跳动')).toBeTruthy();
     expect(screen.getByText('匹配度分析')).toBeTruthy();
-    expect(screen.getByText('Go 主栈')).toBeTruthy();
+    expect(screen.getByText('命中11/12个岗位关键词')).toBeTruthy();
     expect(screen.getByText(档A01.自述)).toBeTruthy();
     expect(screen.getByText('交易 / 支付后端，上海')).toBeTruthy();
     expect(screen.getByText('薪资带已进入初筛')).toBeTruthy(); // 适配层带来的既有默认结论
@@ -119,7 +117,7 @@ describe('在线简历正文 · 默认兼容（独立简历页 Mock 链路，不
 describe('在线简历正文 · 完整布局=true（详情第二 Tab 显式选择）', () => {
   it('档齐备：九个信息区一个不缺；空项目保留标题与空状态（「暂无项目经历」）', () => {
     const { container } = render(
-      <在线简历正文 内容={Mock内容(档A02)} 完整布局 对齐行们={对齐行样本} />,
+      <在线简历正文 内容={Mock内容(档A02)} 完整布局 匹配分析={分析样本} />,
     );
     const 正文 = container.firstElementChild;
     if (!(正文 instanceof HTMLElement)) throw new Error('正文根节点缺失');

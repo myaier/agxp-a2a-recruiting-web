@@ -125,6 +125,16 @@ describe('候选详情 · Mock 分支原行为且零 P5 请求', () => {
     expect(mock读取详情).not.toHaveBeenCalled();
     expect(mock新增叮嘱).not.toHaveBeenCalled();
   });
+
+  it('Task 7（Spec §7）：在线简历 Tab 匹配区 = 招聘端固定六维快照（A-01），旧 JD×简历对齐卡退场', async () => {
+    const 用户 = userEvent.setup();
+    渲染候选详情页('A-01');
+    await 用户.click(await screen.findByRole('button', { name: '在线简历' }));
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('命中35/36个岗位关键词')).toBeTruthy();
+    // 旧「岗位硬性条件 × 简历证据」对齐卡不再出现
+    expect(screen.queryByText('匹配分析缺失')).toBeNull();
+  });
 });
 
 // ── review-r1 F2（Spec §5.3）：Mock 招聘侧顶栏按已有岗位事实提供岗位上下文行 ──

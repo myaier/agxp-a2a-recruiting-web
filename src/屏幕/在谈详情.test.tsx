@@ -1,6 +1,6 @@
 // 在谈详情 · P5 Task 5：Backend 分支的接线契约（旧 P1C「公司槽只读」面随 P5 详情整体退场）。
 // Backend 下这一屏只渲染共享 P5 详情（屏幕/P5/MatchCase详情）：按 URL case_id + 已认证角色
-// 强制读详情，不读 在谈列表、不水合 Mock 在谈单、不调公司档案/企业详情导航，匹配对齐卡与
+// 强制读详情，不读 在谈列表、不水合 Mock 在谈单、不调公司档案/企业详情导航，旧对齐卡与
 // 职位详情 Tab（P5.1 依赖）不再出现；Mock 分支仍按原 slug 导航、行为与接线前逐字一致。
 
 import { cleanup, render, screen } from '@testing-library/react';

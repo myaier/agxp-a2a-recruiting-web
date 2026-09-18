@@ -5,7 +5,7 @@
 //     绝不造 Mock 公司 slug；公开企业页只在 hiring_organization_ref 在场时可进；
 //     委托每次都要 确认层 披露确认，成功后原地停留（不跳 P5 在谈详情），
 //     进行中回执按节拍轮询、连败五次被中性文案覆盖；
-//  3. 匹配对齐卡 在接线前后都位于职位条件段与公司区块之前（推荐卡路径带真实分，
+//  3. 匹配度分析区 在接线前后都位于职位条件段与公司区块之前（推荐卡路径带真实分，
 //     详情直取路径 wire 无匹配分，藏环不伪造）。
 // 测试宿主：mock 应用状态 / 导航钩子（同 看市场.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
@@ -286,6 +286,28 @@ describe('职位详情 · 让 AI 代理去谈（Mock 原样）', () => {
     断言匹配卡在条件段与公司之前('PingCAP');
     await 用户.click(screen.getByRole('button', { name: /PingCAP/ }));
     expect(mock跳转).toHaveBeenCalledWith('/company/slug-PingCAP');
+  });
+
+  // ── Task 7（Spec §7）：Mock 详情吃固定六维快照 —— 列表环、详情总分与六维行同源 ──
+  it('M-13 快照六维行直接展开：全匹配 100 分（快照 total_points，不再沿用旧种子 97）', () => {
+    渲染('M-13');
+    expect(screen.getByRole('img', { name: '适配 100 分' })).toBeTruthy();
+    expect(screen.getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(screen.getByText('已命中全部岗位关键词')).toBeTruthy();
+    expect(screen.queryByText('暂无该次匹配的详细分析')).toBeNull();
+  });
+
+  it('M-12 快照真实总分 0：0 分环照常画，六行真实 0，不当作缺失', () => {
+    渲染('M-12');
+    expect(screen.getByRole('img', { name: '适配 0 分' })).toBeTruthy();
+    expect(screen.getByText('未命中岗位关键词')).toBeTruthy();
+  });
+
+  it('M-04 无快照：中性「匹配分未知」分数位 + 暂无分析，不回落种子、不造 0', () => {
+    渲染('M-04');
+    expect(screen.getByLabelText('匹配分未知')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /适配/ })).toBeNull();
+    expect(screen.getByText('暂无该次匹配的详细分析')).toBeTruthy();
   });
 });
 

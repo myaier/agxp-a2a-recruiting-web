@@ -12,7 +12,8 @@
 /// <reference types="node" />
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import 企业在谈候选 from './企业在谈候选';
 import type { 候选 } from '../数据/类型';
@@ -126,6 +127,22 @@ describe('企业在谈候选 · 去名改版卡面（定稿 2026-09-08）', () =
     }
   });
 
+  it('Task 7（Spec §7）：环变分析入口，弹层六维行来自招聘端固定快照（A-01 94 分），点击不导航', async () => {
+    const 用户 = userEvent.setup();
+    置Mock状态();
+    render(<企业在谈候选 />);
+    await screen.findAllByRole('img', { name: '男' });
+    await 用户.click(screen.getAllByRole('button', { name: '查看匹配分析' })[0]);
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(弹层.textContent).toContain('94 分');
+    expect(within(弹层).getByText('命中35/36个岗位关键词')).toBeTruthy();
+    expect(within(弹层).getByText('推荐生成时的匹配结果')).toBeTruthy();
+    await 用户.click(screen.getByRole('button', { name: '关闭匹配度分析' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+    // 点击环只开弹层，不透传卡片导航
+    expect(mock跳转).not.toHaveBeenCalled();
+  });
+
   it('验收1 · 阶段区：需要你 的卡有呼吸点，不需要你 的没有；阶段标签在标签行下方', async () => {
     置Mock状态();
     render(<企业在谈候选 />);
@@ -137,8 +154,9 @@ describe('企业在谈候选 · 去名改版卡面（定稿 2026-09-08）', () =
     for (const 卡 of 卡们) {
       const 区域们 = Array.from(卡.querySelectorAll('[data-card-region]'))
         .map((元) => 元.getAttribute('data-card-region'));
-      // 阶段区在标签行下方：tags 先于 stage；右列分数位在最前
-      expect(区域们).toEqual(['score', 'head', 'work', 'education', 'tags', 'stage']);
+      // 阶段区在标签行下方：tags 先于 stage。Task 7（Spec §3.1）起环是独立可点入口：
+      // 分数位移出整卡 button 到卡尾部（不嵌套原生按钮），head 在最前
+      expect(区域们).toEqual(['head', 'work', 'education', 'tags', 'stage', 'score']);
     }
   });
 

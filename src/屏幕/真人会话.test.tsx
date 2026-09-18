@@ -1,5 +1,5 @@
 // 真人会话 · P1C Task 5（Mock 分支）：「看职位」全屏层的公司槽接线契约 ——
-// Mock 公司卡仍按原 slug 导航，匹配对齐卡位于职位条件段与公司区块之前。
+// Mock 公司卡仍按原 slug 导航，匹配分析块位于职位条件段与公司区块之前。
 // P7 Task 4：本屏改为模式/参数双开关 —— Backend 参数路由把 conversationId 交给
 // P7 Backend 真人会话；Backend 访问无参路由 fail closed 成「会话不可用」；
 // Mock 无参路由保留 J-01 剧情。P1C 时代的「Backend 看职位层公司槽只读」契约
