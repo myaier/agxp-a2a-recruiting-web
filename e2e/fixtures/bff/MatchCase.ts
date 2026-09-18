@@ -4,7 +4,7 @@
 // 可变状态归每次 安装BFF路由 所有。
 
 import { P6标记 } from './Agent规则';
-import { P4编号, type P4摘要形 } from './发现推荐';
+import { P4编号, P4匹配解释, type P4摘要形 } from './发现推荐';
 import { 信封, type 路由上下文形 } from './协议';
 
 // ── P5 MatchCase 域样本与工厂 ──
@@ -106,6 +106,16 @@ export type P5状态词 = 'running' | 'needs_user' | 'passed' | 'attention_requi
 export type P5角色词 = 'candidate' | 'recruiter';
 export type P5意向词 = '' | 'confirm' | 'decline';
 
+/**
+ * include=match_explanation 展开键的 wire 值（Task 10）：用例显式给 解释 时原样下发
+ * （对象或显式 null 都合法）；缺省按 分 数值同源生成（分 null = 无溯源 → 显式 null）。
+ * 与同响应 match_score 同源同分由构造保证 —— decode 的闭合校验是最终权威。
+ */
+export function P5解释wire(分: number | null, 解释?: unknown): unknown {
+  if (解释 !== undefined) return 解释;
+  return 分 === null ? null : P4匹配解释(分);
+}
+
 export interface P5时间线wire形 {
   event_id: string;
   stage: P5阶段词;
@@ -177,6 +187,8 @@ export interface P5Case记录形 {
   candidateResume?: Record<string, unknown>;
   /** release/0.2.5：招聘行/详情恒在场的可溯源推荐分；缺省 = 显式 null（无溯源） */
   matchScore?: number | null;
+  /** Task 10：include=match_explanation 展开键的显式覆盖（缺省按 matchScore 同源生成） */
+  解释?: unknown;
   /** release/0.2.5：Case 作用域候选身份；缺省 = anonymous 三 null，'disclosed' 才给真名/头像 */
   身份?: 'anonymous' | 'disclosed';
   /** P7（Task 7）：completed + complete 时的已发布会话坐标；handoff_pending 恒 null。 */
@@ -298,8 +310,9 @@ export function P5身份wire(c: P5Case记录形): Record<string, unknown> {
   };
 }
 
-/** 列表行 wire：招聘端 open 展开读取（include=candidate_summary）必须携带 candidate_summary
- *  （null 合法 —— 摘要字段缺席语义）；历史行必不携带。候选端行只带 intention_id。 */
+/** 列表行 wire：招聘端 open 展开读取（include=candidate_summary,match_explanation）必须携带
+ *  candidate_summary 与 match_explanation（均 null 合法）；历史行带 match_explanation 不带
+ *  摘要；候选端行是默认合同（两键都必缺席）。 */
 export function P5列表项wire(c: P5Case记录形, 角色: P5角色词): Record<string, unknown> {
   const 项: Record<string, unknown> = {
     state: P5状态wire(c),
@@ -310,10 +323,12 @@ export function P5列表项wire(c: P5Case记录形, 角色: P5角色词): Record
   // 2026-09-09 摘要接线：recruiter open 展开行必带 candidate_summary（显式 null 也合法）；
   // candidate 行与历史行的闭合白名单没有这个键，多带即契约漂移，所以只在 open+recruiter 装配。
   if (角色 === 'recruiter' && c.lifecycle === 'open') 项.candidate_summary = c.摘要 ?? null;
-  // release/0.2.5：招聘行（默认页与历史页都）恒带可溯源推荐分与 Case 作用域候选身份
+  // release/0.2.5：招聘行（默认页与历史页都）恒带可溯源推荐分与 Case 作用域候选身份；
+  // Task 10：两页都带 include=match_explanation（展开读取），解释键按同源分数装配
   if (角色 === 'recruiter') {
     项.match_score = c.matchScore ?? null;
     项.candidate_identity = P5身份wire(c);
+    项.match_explanation = P5解释wire(c.matchScore ?? null, c.解释);
   }
   return 项;
 }
@@ -366,6 +381,8 @@ export function P5详情wire(c: P5Case记录形, 角色: P5角色词): Record<st
     // 冻结正文缺席合法档），不补读当前 Job/Resume；样本用例可自带冻结职位 wire。
     match_score: c.matchScore ?? null,
     job_detail: c.jobDetail ?? null,
+    // Task 10：详情 GET 恒带 include=match_explanation（C2）—— 解释键必在，缺省按分数同源生成
+    match_explanation: P5解释wire(c.matchScore ?? null, c.解释),
     // S0–S3 连续筛选合并（2026-09-15）：continuity_version 是详情 required 键。
     // 缺省 v1（历史 Case）：连续块四成员整组缺席即合法档，命令层也因此保持 v1 纯
     // {action} body（不冒充 v2 待办语义）；Task 7 样本显式给 v2 四员齐备 wire。
@@ -452,6 +469,8 @@ export interface P5连续记录形 {
   公开评: { decision: 'fit' | 'not_fit' | 'uncertain'; summary: string } | null;
   /** release/0.2.5：可溯源原始推荐分；缺省 = 显式 null（无溯源） */
   matchScore?: number | null;
+  /** Task 10：include=match_explanation 展开键的显式覆盖（缺省按 matchScore 同源生成） */
+  解释?: unknown;
 }
 
 /** 连续记录的动态事实：shelf、needs_action、case_state/case_detail 全部按当前 fixture 求值。 */
@@ -544,8 +563,10 @@ export function P5连续卡wire(
     created_at: r.createdAt,
     updated_at: r.updatedAt,
     archived_at: r.archivedAt,
-    // release/0.2.5：可溯源原始推荐分（0 是合法真实分，null 是无溯源）
+    // release/0.2.5：可溯源原始推荐分（0 是合法真实分，null 是无溯源）；
+    // Task 10：negotiations 列表/详情都带 include=match_explanation，解释键按同源分数装配
     match_score: r.matchScore ?? null,
+    match_explanation: P5解释wire(r.matchScore ?? null, r.解释),
   };
 }
 

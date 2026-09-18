@@ -59,6 +59,123 @@ export const P4补充编号 = {
 export type P4委托状态形 = 'accepted' | 'evaluating' | 'case_started' | 'needs_user' | 'refused' | 'failed';
 export type P4淘汰原因形 = 'experience_insufficient' | 'direction_mismatch' | 'primary_stack_mismatch' | 'other';
 
+// ── match_explanation 展开键（Task 10）：wire 六维解释构造器 ──
+// 与 BFF契约.BFF匹配解释 同构的就地 wire 形（fixture 不反向依赖 src）。解匹配解释 的
+// 闭合约束（C1）在 fixture 侧同样成立：总分=分项和=同响应 match_score、matched=满分、
+// unknown/not_matched=0、薪资部分匹配固定 5、技能分=floor(35*命中/总数)。
+
+export type P4解释维度名 =
+  | 'direction' | 'skills' | 'experience' | 'location' | 'workplace_mode' | 'compensation';
+
+/** 单维覆盖：给就原样替换该维对应成员（reason/status/计数组合的合法性由用例自证 —— decode fail closed）。 */
+export type P4维度覆盖形 = {
+  status?: string;
+  points?: number;
+  reason_code?: string;
+  matched_count?: number;
+  required_count?: number;
+};
+
+/** 六维冻结权重（与 src/数据/招聘数据源/匹配解释.ts 的 维度满分 同表）。 */
+const P4解释维度满分: Record<P4解释维度名, number> = {
+  direction: 25, skills: 35, experience: 15, location: 10, workplace_mode: 5, compensation: 10,
+};
+
+/** 全有全无维的 wire 行（matched=满分；未取=0 分不匹配词）。 */
+function P4全有全无行(
+  维度: Exclude<P4解释维度名, 'skills' | 'compensation'>,
+  取: boolean,
+): Record<string, unknown> {
+  const 满分 = P4解释维度满分[维度];
+  const 词表 = {
+    direction: ['category_matched', 'category_not_matched'],
+    experience: ['experience_met', 'experience_not_met'],
+    location: ['location_matched', 'location_not_matched'],
+    workplace_mode: ['workplace_mode_matched', 'workplace_mode_not_matched'],
+  } as const;
+  const [正词, 负词] = 词表[维度];
+  return 取
+    ? { dimension: 维度, status: 'matched', points: 满分, max_points: 满分, reason_code: 正词 }
+    : { dimension: 维度, status: 'not_matched', points: 0, max_points: 满分, reason_code: 负词 };
+}
+
+/** 技能维：任意 0–35 分都按计数公式反推合法计数（35=all matched，0=no overlap，余=partial）。 */
+function P4技能行(分: number): Record<string, unknown> {
+  const 基础 = { dimension: 'skills', points: 分, max_points: 35 };
+  if (分 === 35) {
+    return { ...基础, status: 'matched', reason_code: 'all_keywords_matched', matched_count: 5, required_count: 5 };
+  }
+  if (分 === 0) {
+    return { ...基础, status: 'not_matched', reason_code: 'no_keyword_overlap', matched_count: 0, required_count: 5 };
+  }
+  // floor(35*命中/100) = 分 的最小命中数（分 ≤ 34 时命中 ≤ 98 < 总数 100，恒为 partial）
+  return {
+    ...基础,
+    status: 'partially_matched',
+    reason_code: 'partial_keyword_overlap',
+    matched_count: Math.ceil((100 * 分) / 35),
+    required_count: 100,
+  };
+}
+
+/** 薪资维：闭表三分档（10=overlap / 5=near_miss 固定 5 分 / 0=disjoint）。 */
+function P4薪资行(分: 0 | 5 | 10): Record<string, unknown> {
+  if (分 === 10) return { dimension: 'compensation', status: 'matched', points: 10, max_points: 10, reason_code: 'compensation_overlap' };
+  if (分 === 5) return { dimension: 'compensation', status: 'partially_matched', points: 5, max_points: 10, reason_code: 'compensation_near_miss' };
+  return { dimension: 'compensation', status: 'not_matched', points: 0, max_points: 10, reason_code: 'compensation_disjoint' };
+}
+
+/**
+ * P4 六维解释构造器：总分 0–100 → 合法 wire 六维对象（分项和=总分；分数观感优先大维
+ * matched、薪资次之、技能兜底任意余数）。用例可用 覆盖 按维替换具体成员（如把方向换成
+ * unknown 缺失词）—— 覆盖后行内容原样下发，decode 的闭合校验是最终权威。
+ */
+export function P4匹配解释(
+  总分: number,
+  覆盖: Partial<Record<P4解释维度名, P4维度覆盖形>> = {},
+): Record<string, unknown> {
+  if (!Number.isSafeInteger(总分) || 总分 < 0 || 总分 > 100) {
+    throw new Error(`P4匹配解释 总分越界：${总分}`);
+  }
+  // 枚举 全有全无四维 × 薪资三档 的组合，取「余数落在技能 0–35」的第一份确定性组合
+  //（位序 8/4/2/1 = 方向/经验/地点/办公方式，降序即大维优先 matched；薪资外层 10 > 5 > 0）。
+  let 选中的: { 方向: boolean; 经验: boolean; 地点: boolean; 办公: boolean; 薪资: 0 | 5 | 10; 余: number } | null = null;
+  for (const 薪资 of [10, 5, 0] as const) {
+    for (let 位 = 15; 位 >= 0; 位 -= 1) {
+      const 方向 = (位 & 8) !== 0;
+      const 经验 = (位 & 4) !== 0;
+      const 地点 = (位 & 2) !== 0;
+      const 办公 = (位 & 1) !== 0;
+      const 余 = 总分 - 薪资 - (方向 ? 25 : 0) - (经验 ? 15 : 0) - (地点 ? 10 : 0) - (办公 ? 5 : 0);
+      if (余 >= 0 && 余 <= 35) {
+        选中的 = { 方向, 经验, 地点, 办公, 薪资, 余 };
+        break;
+      }
+    }
+    if (选中的 !== null) break;
+  }
+  if (选中的 === null) throw new Error(`P4匹配解释 无法分解总分：${总分}`);
+  const 覆盖行 = (行: Record<string, unknown>, 维度: P4解释维度名): Record<string, unknown> => {
+    const 覆盖项 = 覆盖[维度];
+    return 覆盖项 === undefined ? 行 : { ...行, ...覆盖项 };
+  };
+  return {
+    schema_version: 'match-explanation.v1',
+    ranking_version: 'discovery-ranking.v2',
+    basis: 'batch_snapshot',
+    total_points: 总分,
+    max_points: 100,
+    dimensions: [
+      覆盖行(P4全有全无行('direction', 选中的.方向), 'direction'),
+      覆盖行(P4技能行(选中的.余), 'skills'),
+      覆盖行(P4全有全无行('experience', 选中的.经验), 'experience'),
+      覆盖行(P4全有全无行('location', 选中的.地点), 'location'),
+      覆盖行(P4全有全无行('workplace_mode', 选中的.办公), 'workplace_mode'),
+      覆盖行(P4薪资行(选中的.薪资), 'compensation'),
+    ],
+  };
+}
+
 /** P4 wire 委托摘要（与 BFF契约.BFF委托摘要 同构） */
 export interface P4委托摘要形 {
   delegation_id: string;
@@ -137,6 +254,8 @@ export interface P4候选推荐形 {
   structured_requirements_confirmed: boolean;
   job: P4CandidateJob形;
   delegation: P4委托摘要形 | null;
+  /** include=match_explanation 展开读取必带（对象或显式 null）；缺省 = 工厂按最终 match_score 生成 */
+  match_explanation?: Record<string, unknown> | null;
 }
 
 /** P4 wire 招聘候选教育段（与 BFF契约.BFF招聘候选教育 同构） */
@@ -199,6 +318,8 @@ export interface P4招聘推荐形 {
   delegation: P4委托摘要形 | null;
   /** include=candidate_summary 展开页才有；单项详情/历史响应绝不携带（闭合白名单） */
   candidate_summary?: P4摘要形 | null;
+  /** include=match_explanation 展开读取必带（对象或显式 null）；缺省 = 工厂按最终 match_score 生成 */
+  match_explanation?: Record<string, unknown> | null;
 }
 
 /** release/0.2.5：招聘单项详情恒在场的 candidate_resume（RecruiterCandidateResume 七键闭合）。
@@ -334,23 +455,29 @@ export function P4深克隆<T>(值: T): T {
   return JSON.parse(JSON.stringify(值)) as T;
 }
 
-/** P4 招聘腿展开页：行带 candidate_summary（include=candidate_summary 的展开契约）。
- *  卡对象上缺省摘要时按「显式 null」下发 —— decode 两种都收，卡面据此出未知占位。 */
+/** P4 招聘腿展开页：行带 candidate_summary,match_explanation 两键（C2 展开契约，均显式
+ *  null 合法）。卡对象上缺省摘要时按「显式 null」下发 —— decode 两种都收，卡面据此出未知占位。 */
 export function P4招聘分页(
   items: P4招聘推荐形[],
   游标: string | null,
 ): { recommendations: unknown[]; next_cursor: string | null } {
   return P4分页(
-    items.map((卡) => ({ ...卡, candidate_summary: 卡.candidate_summary ?? null })),
+    items.map((卡) => ({
+      ...卡,
+      candidate_summary: 卡.candidate_summary ?? null,
+      match_explanation: 卡.match_explanation ?? null,
+    })),
     false,
     游标,
   );
 }
 
-/** P4 单项详情是非展开响应：candidate_summary 键一出现就是契约漂移，route 侧剥掉 */
+/** P4 单项详情只以 match_explanation 展开（candidate_summary 不在详情键集合里）：
+ *  candidate_summary 键一出现就是契约漂移，route 侧剥掉；解释键由详情 route 按卡补齐。 */
 export function P4非展开卡(卡: P4招聘推荐形): P4招聘推荐形 {
   const 克隆 = P4深克隆(卡);
   delete 克隆.candidate_summary;
+  delete 克隆.match_explanation;
   return 克隆;
 }
 
@@ -455,7 +582,7 @@ export function P4CandidateJob(覆盖: Partial<P4CandidateJob形> = {}): P4Candi
 }
 
 export function P4候选卡(覆盖: Partial<P4候选推荐形> = {}): P4候选推荐形 {
-  return {
+  const 卡 = {
     recommendation_id: P4编号.candidateRecommendation,
     batch_id: 'bat_p4fixture_c1',
     intention_id: P4编号.intention,
@@ -467,11 +594,14 @@ export function P4候选卡(覆盖: Partial<P4候选推荐形> = {}): P4候选�
     job: P4CandidateJob(),
     delegation: null,
     ...覆盖,
-  };
+  } as P4候选推荐形 & { match_explanation?: Record<string, unknown> | null };
+  // 展开键恒按「最终」match_score 同源生成（覆盖改分也不漂移）；覆盖键显式在场（含
+  // null = 已展开无溯源合法档）时原样下发，不用默认对象顶替显式 null。
+  return { ...卡, match_explanation: 'match_explanation' in 覆盖 ? 卡.match_explanation ?? null : P4匹配解释(卡.match_score) };
 }
 
 export function P4招聘卡(覆盖: Partial<P4招聘推荐形> = {}): P4招聘推荐形 {
-  return {
+  const 卡 = {
     recommendation_id: P4编号.recruiterRecommendation,
     batch_id: 'bat_p4fixture_r1',
     job_id: P4编号.recruiterJob,
@@ -495,7 +625,9 @@ export function P4招聘卡(覆盖: Partial<P4招聘推荐形> = {}): P4招聘�
     delegation: null,
     candidate_summary: P4摘要(),
     ...覆盖,
-  };
+  } as P4招聘推荐形 & { match_explanation?: Record<string, unknown> | null };
+  // 同 P4候选卡：覆盖键显式在场（含 null）原样下发；缺省按最终 match_score 同源生成
+  return { ...卡, match_explanation: 'match_explanation' in 覆盖 ? 卡.match_explanation ?? null : P4匹配解释(卡.match_score) };
 }
 
 export function P4意向(覆盖: Partial<P4意向形> & Pick<P4意向形, 'intention_id' | 'job_category'>): P4意向形 {
@@ -815,8 +947,16 @@ export async function 处理发现推荐域(
       await route.fulfill({ status: 404, json: { error: { type: 'recommendation_not_found', message: '推荐不存在' } } });
       return true;
     }
-    // release/0.2.5：DiscoveryRecruiterDetail 恒带 candidate_resume（键集闭合，缺键即漂移）
-    await route.fulfill({ status: 200, json: 信封({ ...P4非展开卡(卡), candidate_resume: P4在线简历() }) });
+    // release/0.2.5：DiscoveryRecruiterDetail 恒带 candidate_resume + match_explanation
+    //（详情仅以解释展开，candidate_summary 不在详情键集合 —— 缺键即漂移）
+    await route.fulfill({
+      status: 200,
+      json: 信封({
+        ...P4非展开卡(卡),
+        candidate_resume: P4在线简历(),
+        match_explanation: 卡.match_explanation ?? null,
+      }),
+    });
     return true;
   }
 

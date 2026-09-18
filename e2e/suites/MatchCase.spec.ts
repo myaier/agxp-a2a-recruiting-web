@@ -750,3 +750,274 @@ test.describe('P5 Mock 数据源隔离 @mock', () => {
     expect(apiRequests).toEqual([]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 六维展示对齐（Task 10）：Case 域 include=match_explanation / step / exchange_ref 的
+// 浏览器验收。open 与历史详情各读自己的解释（同响应 match_score 同源），历史列表无
+// 评分入口；0 分与 null 解释不互换；错误重试只重发权威 GET。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('六维展示对齐 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('六维展示对齐 Case open/历史详情：URL include、open 弹层零请求、历史行无入口、历史详情读本记录分析 @backend', async ({ page }) => {
+    test.setTimeout(150_000);
+    const 请求序: string[] = [];
+    const fixture = await 装P5招聘(page, {
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+    // 同源分数样本：甲（open）88 真实解释；戊（ended）42；己（completed）真实 0
+    fixture.cases[P5编号.甲]!.matchScore = 88;
+    fixture.cases[P5编号.戊]!.matchScore = 42;
+    fixture.cases[P5编号.己]!.matchScore = 0;
+    // 己 补 v2 固定总结（已回答事项标题的来源；四员齐备的 v2 合同）
+    fixture.cases[P5编号.己]!.连续块 = {
+      pending_actions: [],
+      dialogue_progress: null,
+      reconsideration: null,
+      confirmation_summary: {
+        version: 2,
+        created_at: '2026-08-27T04:00:00Z',
+        confirmed_facts: [{ text: 'P5 Fixture 己：已确认到岗时间', source_refs: ['ref-fixture-101'] }],
+        agreed_arrangements: [],
+        unresolved_items: [],
+        incomplete_items: [],
+        confirmation_meaning: 'continue_discussion_without_accepting_all_terms',
+      },
+    };
+
+    // ── open 工作区：列表 URL include 两键；甲的分数环变独立分析入口 ──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    const 甲卡 = page.getByTestId('招聘在谈卡').first();
+    await expect(甲卡).toBeVisible({ timeout: 15_000 });
+    expect(请求序.some((项) => 项.startsWith('GET /api/v1/recruiter/match-cases?') && 项.includes('include=candidate_summary,match_explanation'))).toBe(true);
+    const 弹层前请求数 = 请求序.length;
+    await 甲卡.getByRole('button', { name: '查看匹配分析' }).click();
+    const 弹层 = page.getByRole('dialog', { name: '匹配度分析' });
+    await expect(弹层).toBeVisible({ timeout: 10_000 });
+    await expect(弹层.getByText('88 分')).toBeVisible();
+    await expect(弹层.getByText('命中66/100个岗位关键词')).toBeVisible();
+    expect(请求序.length).toBe(弹层前请求数); // 弹层零额外请求
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(弹层).toHaveCount(0);
+
+    // ── open 详情：读自己的解释（在线简历 Tab 六行），薪资后缀恰好一次 ──
+    await 甲卡.click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/candidate/${P5编号.甲}$`), { timeout: 15_000 });
+    await expect.poll(() => 请求序.filter((项) => 项 === `GET /api/v1/recruiter/match-cases/${P5编号.甲}?include=screening_records,match_explanation`).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+    // 顶栏岗位上下文（冻结职位 · 城市 · 薪资带）：wire 串 30-45K·15薪 规范为 30–45K x 15，唯一
+    const 顶栏薪资 = page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · 30–45K x 15`);
+    await expect(顶栏薪资.first()).toBeVisible({ timeout: 15_000 });
+    expect(await 顶栏薪资.count()).toBe(1);
+    await page.getByRole('button', { name: '在线简历', exact: true }).click();
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('命中66/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('23/35').first()).toBeVisible();
+    await expect(page.getByText('88', { exact: true }).first()).toBeVisible(); // 顶栏唯一总分
+
+    // ── 历史列表：无任何评分/分析入口（历史卡永不传回调）──
+    await hash直达(page, '/#/hr/archived');
+    await expect(page.getByText(P5标记.戊职位名)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '查看匹配分析' })).toHaveCount(0);
+    await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(0);
+
+    // ── 历史详情（ended 42 分）：从历史进入详情仍可查看本记录分析 ──
+    await page.getByText(P5标记.戊职位名).click();
+    await expect(page.getByText('本次代谈已结束').first()).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => 请求序.filter((项) => 项 === `GET /api/v1/recruiter/match-cases/${P5编号.戊}?include=screening_records,match_explanation`).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+    await page.getByRole('button', { name: '在线简历', exact: true }).click();
+    // 42 分的构造：薪资10 + 方向25 + 办公5 + 技能2（6/100 命中）
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('2/35')).toBeVisible();
+    await expect(page.getByText('命中6/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('命中66/100个岗位关键词')).toHaveCount(0); // 不串甲的解释
+
+    // ── completed 0 分：0 是合法真实分（不显示缺位「—」，不等于 null）──
+    await hash直达(page, `/#/hr/candidate/${P5编号.己}`);
+    await expect(page.getByText(P5标记.己职位名).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('已通过', { exact: true }).first()).toBeVisible();
+    await page.getByRole('button', { name: /意向确认/ }).click();
+    await expect(page.getByText('已回答事项').first()).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('六维展示对齐 step+ref 整页：v2 对话步骤与问答引用同屏、坏响应重试只重发权威 GET @backend', async ({ page }) => {
+    test.setTimeout(150_000);
+    const 请求序: string[] = [];
+    const fixture = 创建P5MatchCasefixture();
+    // S2 进行样本（双 accept 前）：对话进度 step=assessing（招聘 Agent 判断中）+
+    // s2_answer 待办携带 question 引用；S1/S2 记录块带配对 ref；甲式解释缺席（显式 null）
+    const 丁 = fixture.cases[P5编号.丁]!;
+    丁.matchScore = 66;
+    丁.连续块 = {
+      pending_actions: [{
+        id: `cpa_${'0'.repeat(30)}c1`, role: 'candidate', purpose: 's2_answer',
+        created_at: '2026-08-29T02:00:00Z', deadline: '2026-09-01T02:00:00Z',
+        exchange_ref: `cex_${'ab123456'.repeat(4)}`,
+      }],
+      dialogue_progress: {
+        stage: 'needs_coordination', asking_role: 'recruiter',
+        recruiter_round: 1, candidate_round: 0, round_budget: 2,
+        step: 'assessing',
+      },
+      reconsideration: null,
+      confirmation_summary: null,
+    };
+    const 协同记录 = {
+      messages: [
+        {
+          id: 'msg_p5_d_q1', kind: 'question', role: 'recruiter', stage: 'needs_coordination',
+          asking_role: 'recruiter', round: 1, text: 'P5 Fixture 丁：可以接受偶尔出差吗？',
+          exchange_ref: `cex_${'ab123456'.repeat(4)}`,
+          occurred_at: '2026-08-29T02:10:00Z',
+        },
+        {
+          id: 'msg_p5_d_a1', kind: 'answer', role: 'candidate', stage: 'needs_coordination',
+          asking_role: 'recruiter', round: 1, answer_status: 'answered', answer_source: 'agent',
+          text: 'P5 Fixture 丁：可以接受每月一两次出差',
+          exchange_ref: `cex_${'ab123456'.repeat(4)}`,
+          occurred_at: '2026-08-29T02:12:00Z',
+        },
+      ],
+      summaries: [],
+    };
+    // v2 记录块仍挂在 S0 段（stage 标签随消息走，冻结合同 §6.5）：S2 问答装进匿名初筛区的展开块
+    丁.阶段区们[0]!.screening_records = 协同记录;
+    let 失败数 = 0;
+    await 装P5候选(page, {
+      fixture,
+      覆盖: {
+        [`GET /api/v1/me/negotiations/${P5连续编号.丁}`]: () => {
+          // 前两笔都失败（首答 + 传输层受控重试同键）：失败递到屏层；重试只重发权威 GET
+          if (失败数 < 2) {
+            失败数 += 1;
+            return { status: 500, 响应: { error: { type: 'internal_error', message: 'fixture 首读失败' } } };
+          }
+          return undefined; // 重试放行给权威应答
+        },
+      },
+      请求拦截: ({ path, method }) => 请求序.push(`${method} ${path}`),
+    });
+
+    // 首读 500×2 → 失败态可重试；重试只重发权威 GET（不做本地变异）
+    await hash直达(page, `/#/deal/${P5连续编号.丁}`);
+    const 详情GET数 = () => 请求序.filter((项) => 项 === `GET /api/v1/me/negotiations/${P5连续编号.丁}`).length;
+    await expect.poll(详情GET数, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    await expect(page.getByText('服务返回异常，请稍后重试').first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '重试' }).click();
+    await expect(page.getByText(P5标记.丁职位名).first()).toBeVisible({ timeout: 15_000 });
+
+    // step 与 ref 同屏：S2 段内问答配对引用落进时间序，步骤说明替代旧「当前由招聘方发问」
+    await expect(page.getByText('招聘 Agent 判断中')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('招聘方已问 1/2 轮')).toBeVisible();
+    await expect(page.getByText('cex_')).toHaveCount(0); // 引用是不透明 ID，不透出
+    const S2段 = page.locator('[class*="分段"]').filter({ hasText: '差异协同' });
+    await expect(S2段.getByText('P5 Fixture 丁：可以接受偶尔出差吗？')).toBeVisible();
+    await expect(S2段.getByText('P5 Fixture 丁：可以接受每月一两次出差')).toBeVisible();
+    // 66 分解释同屏（step+ref+解释整页成功）：顶栏唯一总分是同响应权威分
+    await expect(page.getByText('66', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+    expect(fixture.变更请求).toEqual([]); // 观察旅程零写请求
+  });
+
+  test('六维展示对齐 §8B.5 旅程回归：S1 三来源进 S2、招聘侧 finish 后仍展示 S2 不提前进 S3 @backend', async ({ page }) => {
+    test.setTimeout(180_000);
+    const fixture = 创建P5MatchCasefixture();
+    // 候选端丙二（S1 解析失败行）当 S1 来源样本：招聘侧初筛 continue 后服务端进 S2
+    const 单 = fixture.cases[P5编号.丙二]!;
+    const 进S2 = (步骤: 'assessing' | 'answering' | null, 招聘待办: boolean) => {
+      单.stage = 'needs_coordination';
+      // 矩阵行：open+needs_coordination 只认 needs_user/attention_required 两档
+      单.status = 招聘待办 ? 'attention_required' : 'needs_user';
+      单.step = 'coordinating';
+      单.updatedAt = '2026-08-29T03:35:00Z';
+      单.候选 = { needsAction: false, actions: [] };
+      单.招聘 = { needsAction: true, actions: ['decide_coordination'] };
+      单.协同 = {
+        issue_id: P5编号.协同, kind: 'work_mode', required_roles: ['candidate', 'recruiter'],
+        candidate_decided: false, recruiter_decided: false,
+      };
+      单.连续块 = {
+        pending_actions: [{
+          id: `cpa_${'0'.repeat(30)}e1`, role: 'recruiter', purpose: 's2_answer',
+          created_at: '2026-08-29T03:30:00Z', deadline: '2026-12-01T03:30:00Z',
+          exchange_ref: `cex_${'cd987654'.repeat(4)}`,
+        }],
+        dialogue_progress: {
+          stage: 'needs_coordination', asking_role: 'recruiter',
+          recruiter_round: 1, candidate_round: 0, round_budget: 2,
+          ...(步骤 === null ? {} : { step: 步骤 }),
+        },
+        reconsideration: null,
+        confirmation_summary: null,
+      };
+    };
+    await 装P5候选(page, { fixture });
+    await hash直达(page, `/#/deal/${P5连续编号.丙二}`);
+    await expect(page.getByText(P5标记.丙二职位名).first()).toBeVisible({ timeout: 20_000 });
+    // S1 起点：解析失败行的递交简历段在位
+    await expect(page.getByRole('button', { name: '重试校验' }).first()).toBeVisible({ timeout: 10_000 });
+
+    // ── 来源一（S1 Agent continue，服务端推进）：无 step 的旧响应不猜执行方 ──
+    进S2(null, false);
+    await expect(page.getByText('差异协同', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('双方 AI 正在确认是否还有待协调事项').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('当前由招聘方发问', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('招聘 Agent 判断中')).toHaveCount(0); // 缺 step 不从 asking_role 猜
+
+    // ── 来源二（招聘侧 s1_continue 完成后的 S2 assessing）与来源三（reconsider 恢复
+    //    回 S2）同形：服务端 S2 响应被原样消费，前端不因 open items 为空跳 S3 ──
+    进S2('assessing', true);
+    await expect(page.getByText('招聘 Agent 判断中')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('招聘方已问 1/2 轮')).toBeVisible();
+
+    // ── 招聘侧 finish（服务端单侧 accept）：本端仍展示 S2（候选 Agent 判断中），
+    //    绝不提前进入 S3；只有服务端推进后 S3 才上屏 ──
+    单.status = 'needs_user';
+    单.候选 = { needsAction: true, actions: ['decide_coordination'] };
+    单.招聘 = { needsAction: false, actions: [] };
+    单.协同 = {
+      issue_id: P5编号.协同, kind: 'work_mode', required_roles: ['candidate', 'recruiter'],
+      candidate_decided: false, recruiter_decided: true,
+    };
+    单.连续块 = {
+      ...单.连续块!,
+      pending_actions: [],
+      dialogue_progress: {
+        stage: 'needs_coordination', asking_role: 'candidate',
+        recruiter_round: 1, candidate_round: 1, round_budget: 2,
+        step: 'assessing',
+      },
+    };
+    await expect(page.getByText('候选 Agent 判断中')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '确认意向' })).toHaveCount(0);
+
+    // ── 服务端推进进 S3：此时才展示 S3（意向确认段激活、确认卡在位）──
+    单.stage = 'intent_confirmation';
+    单.status = 'needs_user';
+    单.step = 'awaiting_confirmations';
+    单.协同 = undefined;
+    单.候选 = { needsAction: true, actions: ['confirm_intent', 'decline_intent'] };
+    单.招聘 = { needsAction: false, actions: [] };
+    // v2 的 S3 确认卡走本人待办（s3_confirm 携带所确认的总结版本）+ 本屏总结版本
+    单.连续块 = {
+      ...单.连续块!,
+      pending_actions: [{
+        id: `cpa_${'0'.repeat(30)}e2`, role: 'candidate', purpose: 's3_confirm',
+        created_at: '2026-08-29T03:50:00Z', deadline: '2026-12-01T03:50:00Z',
+        summary_version: 2,
+      }],
+      dialogue_progress: null,
+      confirmation_summary: {
+        version: 2,
+        created_at: '2026-08-29T03:45:00Z',
+        confirmed_facts: [{ text: 'P5 Fixture 丙二：已确认到岗时间', source_refs: ['ref-fixture-201'] }],
+        agreed_arrangements: [],
+        unresolved_items: [],
+        incomplete_items: [],
+        confirmation_meaning: 'continue_discussion_without_accepting_all_terms',
+      },
+    };
+    await expect(page.getByRole('button', { name: '确认意向' })).toBeVisible({ timeout: 15_000 });
+    // S1/S2 累积历史中的 S0 语义不回归：S0 段仍按服务端记录原样展示
+    await expect(page.getByText('匿名初筛', { exact: true }).first()).toBeVisible();
+  });
+});

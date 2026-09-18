@@ -824,3 +824,197 @@ test.describe('P4 Mock 数据源隔离 @mock', () => {
     await page.screenshot({ path: 'test-results/S0S3展示统一/mock-独立匿名简历-390.png', fullPage: true });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 六维展示对齐（Task 10）：include=match_explanation 展开链路的浏览器验收。
+// 断言以 fixture 存证与 URL include 为主：列表/详情各自按 C2 矩阵携带解释键，弹层
+// 打开零额外请求，六维行只来自同记录同批次响应；解释缺席（显式 null）走有限依据。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('六维展示对齐 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('六维展示对齐 招聘筛选卡弹层与匿名详情：URL include、弹层零额外请求、换记录清旧行 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const 请求序: string[] = [];
+    const fixture = P4发现fixture();
+    // 甲 = 默认 88 分真实解释；乙 = 显式 null（无溯源）+ 一条已知依据（有限依据样本）
+    fixture.招聘可用 = {
+      [P4编号.recruiterJob]: [
+        P4招聘卡(),
+        P4招聘卡({
+          recommendation_id: P4补充编号.招聘候选乙,
+          candidate_alias: 'P4候选乙', rank: 2, match_score: 76,
+          highlights: ['category_matched'],
+          match_explanation: null,
+        }),
+      ],
+    };
+    await 装P4招聘(page, {
+      fixture,
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+
+    // ── 列表：include=candidate_summary,match_explanation 恒在（C2 招聘推荐列表）──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/hr$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '推荐', exact: true }).click();
+    await expect(page.getByRole('img', { name: P4标记.candidateRing }).first()).toBeVisible({ timeout: 15_000 });
+    const 列表URL = `GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?limit=50&include=candidate_summary,match_explanation`;
+    expect(请求序.filter((项) => 项.startsWith(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations?`)).every((项) => 项.includes('include=candidate_summary,match_explanation'))).toBe(true);
+    expect(请求序).toContain(列表URL);
+
+    // ── 筛选卡弹层：原分数环位变独立入口，点击只开本行分析（零额外请求）──
+    const 弹层前请求数 = 请求序.length;
+    await page.getByRole('button', { name: '查看匹配分析' }).first().click();
+    const 弹层 = page.getByRole('dialog', { name: '匹配度分析' });
+    await expect(弹层).toBeVisible({ timeout: 10_000 });
+    // 岗位上下文行 = 该行已返回的职位名；藏环文本总分 = 88 分（同响应 match_score）
+    await expect(弹层.getByText(`${P4标记.jobTitle}`)).toBeVisible();
+    await expect(弹层.getByText('88 分')).toBeVisible();
+    // 六维行只来自甲的展开响应：分项 points/max 与固定说明逐字在位
+    await expect(弹层.getByText('25/25')).toBeVisible();
+    await expect(弹层.getByText('23/35')).toBeVisible();
+    await expect(弹层.getByText('命中66/100个岗位关键词')).toBeVisible();
+    await expect(弹层.getByText('求职方向与岗位方向匹配')).toBeVisible();
+    await expect(弹层.getByText('薪资范围匹配')).toBeVisible();
+    expect(请求序.length).toBe(弹层前请求数); // 弹层零额外请求
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(弹层).toHaveCount(0);
+    expect(请求序.length).toBe(弹层前请求数); // 关闭同样零请求
+
+    // ── 匿名详情：详情仅以 match_explanation 展开，六维行与列表弹层同源 ──
+    await page.getByRole('button', { name: '查看候选画像' }).first().click();
+    await expect(page).toHaveURL(new RegExp(`#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4编号.recruiterRecommendation}$`));
+    await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 15_000 });
+    expect(请求序).toContain(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations/${P4编号.recruiterRecommendation}?include=match_explanation`);
+    // 正文匹配区 = 甲自己的六行（与弹层同源）：技能部分匹配行原样，无「未提供判定」旧版式
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible();
+    await expect(page.getByText('命中66/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('23/35')).toBeVisible();
+    await expect(page.getByText('薪资范围匹配').first()).toBeVisible();
+    await expect(page.getByText('未提供判定')).toHaveCount(0);
+    await expect(page.getByText('暂无该次匹配的详细分析')).toHaveCount(0);
+
+    // ── 换记录（乙 显式 null）：甲的六行整组清除 → 缺失说明 + 有限依据一行 ──
+    await hash直达(page, `/#/hr/jobs/${P4编号.recruiterJob}/recommendations/${P4补充编号.招聘候选乙}`);
+    await expect(page.getByText('个人优势').first()).toBeVisible({ timeout: 15_000 });
+    expect(请求序).toContain(`GET /api/v1/recruiter/jobs/${P4编号.recruiterJob}/candidate-recommendations/${P4补充编号.招聘候选乙}?include=match_explanation`);
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
+    await expect(page.getByText('有限依据')).toBeVisible();
+    await expect(page.getByText('职位方向匹配')).toBeVisible(); // 乙 highlights 的已知依据
+    await expect(page.getByText('命中66/100个岗位关键词')).toHaveCount(0);
+    await expect(page.getByText('技能 · 命中部分岗位关键词')).toHaveCount(0);
+    // 顶栏分数仍是乙自己的 76（不借甲的 88）
+    await expect(page.getByText('76', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('88', { exact: true })).toHaveCount(0);
+  });
+
+  test('六维展示对齐 市场精确上下文硬刷：四坐标 URL、刷新恢复原记录解释、批次不符不可用、直达不造分 @backend', async ({ page }) => {
+    test.setTimeout(120_000);
+    const 请求序: string[] = [];
+    const fixture = P4发现fixture();
+    // 通用直达样本：备选岗位在 canonical job 表里（无任何推荐上下文）
+    fixture.候选岗位 = {
+      ...fixture.候选岗位,
+      [P4补充编号.备选岗位]: P4CandidateJob({ job_id: P4补充编号.备选岗位, title: 'P4 Fixture 备选岗位' }),
+    };
+    await 装P4候选(page, {
+      fixture,
+      覆盖: {
+        'GET /api/v1/organizations/org-fixture-p4': () => ({ status: 200, 响应: 信封(null) }),
+      },
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+
+    // ── 列表 → 详情：URL query 精确四坐标（recommendation/batch/intention + 路由 job_id）──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+    await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
+    expect(请求序.some((项) => 项.startsWith('GET /api/v1/me/job-recommendations?') && 项.includes('include=match_explanation'))).toBe(true);
+    // 薪资跨页同文（§8A：同一记录列表卡与详情正文同一格式化输出，后缀恰好一次）
+    const 卡薪资 = page.getByText('30–50K x 15').first();
+    await expect(卡薪资).toBeVisible();
+    await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
+    await page.getByRole('button', { name: '查看职位详情' }).first().click();
+    await expect(page).toHaveURL(new RegExp(`#/job/${P4编号.job}\\?`), { timeout: 15_000 });
+    expect(page.url()).toContain(`recommendation_id=${P4编号.candidateRecommendation}`);
+    expect(page.url()).toContain(`batch_id=${encodeURIComponent('bat_p4fixture_c1')}`);
+    expect(page.url()).toContain(`intention_id=${P4编号.intention}`);
+    // 详情正文同记录同薪资串（跨页一致），后缀不重复
+    const 详情薪资 = page.getByText('30–50K x 15');
+    await expect(详情薪资.first()).toBeVisible({ timeout: 15_000 });
+    expect(await 详情薪资.count()).toBe(1);
+    // 六维行随四坐标恢复（同记录同批次解释）
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('27/35')).toBeVisible();
+
+    // ── 硬刷新：只按 URL 四坐标恢复原记录，解释照常（快照缓存/重读都指向同一批）──
+    await page.reload();
+    await expect(page.getByText(P4标记.jobTitle).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('命中部分岗位关键词').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('27/35')).toBeVisible();
+    expect(page.url()).toContain(`recommendation_id=${P4编号.candidateRecommendation}`);
+
+    // ── 批次不符（服务端批次已推进）：穷尽未找到 → 原上下文不可用，绝不替换成新批次 ──
+    fixture.候选推荐[P4编号.intention] = [P4候选卡({ batch_id: 'bat_p4fixture_c9' })];
+    await page.reload();
+    await expect(page.getByText(P4标记.jobTitle).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('该次推荐上下文已不可用')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
+    await expect(page.getByText('27/35')).toHaveCount(0);
+    await expect(page.getByText('命中78/100个岗位关键词')).toHaveCount(0); // 新批次解释不顶替
+
+    // ── 通用岗位直达（无坐标）：不扫描推荐，无分缺位 + 无推荐上下文，不造评分 ──
+    await hash直达(page, `/#/job/${P4补充编号.备选岗位}`);
+    await expect(page.getByText('P4 Fixture 备选岗位').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible();
+    await expect(page.getByText('当前职位没有特定推荐上下文')).toBeVisible();
+    await expect(page.getByRole('img', { name: '匹配分未知' })).toBeVisible();
+    await expect(page.getByRole('img', { name: /适配/ })).toHaveCount(0);
+  });
+
+  test('六维展示对齐 迟到隔离：切意向旧 scope 的解释整包作废，切回重读不串批次 @backend', async ({ page }) => {
+    const fixture = P4发现fixture();
+    let 放行!: () => void;
+    const 门 = new Promise<void>((ok) => { 放行 = ok; });
+    fixture.意向们 = [
+      P4意向({ intention_id: P4编号.intention, job_category: { id: 'job-fixture-p4-cat-a', display_name: 'P4 意向甲' } }),
+      P4意向({ intention_id: P4补充编号.意向乙, job_category: { id: 'job-fixture-p4-cat-b', display_name: 'P4 意向乙' } }),
+    ];
+    fixture.候选推荐 = {
+      [P4编号.intention]: [P4候选卡({ match_score: 61, batch_id: 'bat_p4fixture_late' })],
+      [P4补充编号.意向乙]: [],
+    };
+    fixture.分支 = { 挂起候选读取: { 意向: P4编号.intention, 门 } };
+    await 装P4候选(page, { fixture });
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await page.getByRole('button', { name: '市场', exact: true }).click();
+    // 甲 scope 的首页 GET 被挂起（响应带着 61 分解释在飞）：列表停在加载态
+    await expect(page.getByText('正在为你挑岗位…')).toBeVisible({ timeout: 15_000 });
+
+    // 切到乙：甲的 scope 代际已作废；乙空批次先落定
+    await page.getByRole('button', { name: 'P4 意向乙' }).click();
+    await expect(page.getByText('这个意向下暂时没有新职位')).toBeVisible({ timeout: 15_000 });
+
+    // 此刻放行甲的迟到解释：整包丢弃 —— 61 分卡与其分析入口绝不闪进新列表
+    放行();
+    await page.waitForTimeout(1500);
+    await expect(page.getByText('这个意向下暂时没有新职位')).toBeVisible();
+    await expect(page.getByText(P4标记.jobTitle)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '查看匹配分析' })).toHaveCount(0);
+
+    // 切回甲：新代际重读同一批次（解释仍同源可达）
+    await page.getByRole('button', { name: 'P4 意向甲' }).click();
+    await expect(page.getByText(P4标记.jobTitle)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: '查看匹配分析' }).first().click();
+    const 弹层 = page.getByRole('dialog', { name: '匹配度分析' });
+    await expect(弹层).toBeVisible({ timeout: 10_000 });
+    await expect(弹层.getByText('61 分')).toBeVisible();
+    // 61 分的构造：薪资10 + 方向25 + 经验15 + 地点10 + 技能1（3/100 命中）
+    await expect(弹层.getByText('1/35')).toBeVisible();
+    await expect(弹层.getByText('命中3/100个岗位关键词')).toBeVisible();
+  });
+});

@@ -576,3 +576,73 @@ test.describe('DF-008 dogfood 回归 @backend', () => {
     expect(history读取数()).toBe(预访问历史数);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 六维展示对齐（Task 10）：候选聚合（me/negotiations）链路的解释展开与嵌套解码。
+// 列表卡/弹层吃外层 wire 的分数+解释，详情吃同一外层键并完整解码嵌套 case_detail
+// —— 外层与嵌套同源同分，绝不拼接两条记录。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('六维展示对齐 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('六维展示对齐 pre-Case→Case 嵌套：列表 include、弹层零请求、外层/嵌套同源、跨页薪资一致 @backend', async ({ page }) => {
+    test.setTimeout(150_000);
+    const 请求序: string[] = [];
+    const fixture = await 装P5候选(page, {
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+    // 丁（S2 协同行，嵌套 Case 在场）：外层连续记录与嵌套 Case 同一 54 分同源
+    fixture.连续记录[P5连续编号.丁]!.matchScore = 54;
+    fixture.cases[P5编号.丁]!.matchScore = 54;
+    // 戊（ended 历史行）分数 null：解释键仍必在（显式 null = 无溯源合法档）
+    fixture.连续记录[P5连续编号.戊]!.matchScore = null;
+
+    // ── 列表：include=match_explanation 恒在；丁卡带薪资与分数入口 ──
+    await page.goto('/');
+    await expect(page).toHaveURL(/#\/app$/, { timeout: 20_000 });
+    await expect(page.getByText(P5标记.丁职位名)).toBeVisible({ timeout: 15_000 });
+    expect(请求序.some((项) => 项.startsWith('GET /api/v1/me/negotiations?shelf=active') && 项.includes('include=match_explanation'))).toBe(true);
+    const 卡薪资 = page.getByTestId('求职在谈卡').first().getByText('30–45K x 15');
+    await expect(卡薪资.first()).toBeVisible();
+    expect(await 卡薪资.count()).toBe(1); // §8A：年薪月数后缀恰好一次（不重复拼接）
+    const 弹层前请求数 = 请求序.length;
+    await page.getByTestId('求职在谈卡').first().getByRole('button', { name: '查看匹配分析' }).click();
+    const 弹层 = page.getByRole('dialog', { name: '匹配度分析' });
+    await expect(弹层).toBeVisible({ timeout: 10_000 });
+    await expect(弹层.getByText('54 分')).toBeVisible();
+    // 54 分的构造：方向25 + 经验15 + 地点10 + 技能4（12/100 命中）
+    await expect(弹层.getByText('4/35')).toBeVisible();
+    await expect(弹层.getByText('命中12/100个岗位关键词')).toBeVisible();
+    expect(请求序.length).toBe(弹层前请求数); // 弹层零额外请求
+    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(弹层).toHaveCount(0);
+
+    // ── 详情：外层解释与嵌套 Case 同一 54 分（同源同分，无第二来源拼接）──
+    await page.getByTestId('求职在谈卡').first().click();
+    await expect(page).toHaveURL(new RegExp(`#/deal/${P5连续编号.丁}$`), { timeout: 15_000 });
+    await expect.poll(() => 请求序.filter((项) => 项 === `GET /api/v1/me/negotiations/${P5连续编号.丁}?include=match_explanation`).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+    // 嵌套 case_detail 完整解码：S2 段与协同卡点照常（嵌套解释与外层不双渲染）
+    await expect(page.getByText('差异协同', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: '接受', exact: true })).toBeVisible({ timeout: 10_000 });
+    // 跨页薪资一致：列表卡与详情副标题同文（同串各渲染一次，后缀不重复）
+    const 详情薪资 = page.getByText('30–45K x 15').locator('visible=true');
+    await expect(详情薪资.first()).toBeVisible();
+    expect(await 详情薪资.count()).toBe(1);
+    // 外层 54 分（顶栏唯一总分）+ 资料 Tab 六行同源
+    await expect(page.getByText('54', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '职位详情', exact: true }).click();
+    await expect(page.getByText('匹配度分析').first()).toBeVisible();
+    await expect(page.getByText('命中12/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('未命中岗位关键词')).toHaveCount(0);
+
+    // ── 历史架：无解释分数的终局行照常解码（显式 null），详情缺分析不造行 ──
+    await hash直达(page, '/#/archived');
+    await expect(page.getByText(P5标记.戊职位名)).toBeVisible({ timeout: 15_000 });
+    await page.getByText(P5标记.戊职位名).click();
+    await expect(page.getByText('本次代谈已结束').first()).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => 请求序.filter((项) => 项 === `GET /api/v1/me/negotiations/${P5连续编号.戊}?include=match_explanation`).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+    await page.getByRole('button', { name: '职位详情', exact: true }).click();
+    await expect(page.getByText('暂无该次匹配的详细分析')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('命中12/100个岗位关键词')).toHaveCount(0); // 丁的解释不串戊
+  });
+});

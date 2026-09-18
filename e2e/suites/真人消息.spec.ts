@@ -2,7 +2,7 @@
 // C6：原「P7 真人会话 fixture / P7 Mock 数据源隔离」等价迁入。
 
 import { expect, test } from '../fixtures/test';
-import { 安装P7事件桩, P7带消息fixture, hash直达 } from '../fixtures/数据源交互';
+import { 安装P7事件桩, P7带消息fixture, 断言纵序, hash直达 } from '../fixtures/数据源交互';
 import { P4招聘岗位 } from '../fixtures/bff/发现推荐';
 import { P1C标记, P1C招聘组织Fixture, P1C管理员关系, P1C组织甲, 带企业关系, 一像素PNG } from '../fixtures/bff/招聘组织';
 import { P3隐私fixture } from '../fixtures/bff/隐私与实名';
@@ -596,5 +596,70 @@ test.describe('P7 Mock 数据源隔离 @mock', () => {
       ((window as any).__P7套接字们 as Array<{ url: string }>)
         .filter((套) => 套.url.includes('/api/v1/events/live')).length);
     expect(事件套接字数).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 六维展示对齐（Task 10）：聊天两端资料层的解释接线。招聘端「看在线简历」层的纸身
+// 之后是本会话 Case 同一 gated 明细的独立分析区（不改纸身正文）；候选端「看职位」
+// 全屏层吃 Case 冻结职位资料的分析空档 —— 两端都只用会话 Case 自己的响应。
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('六维展示对齐 @backend', () => {
+  test.use({ baseURL: 'http://127.0.0.1:4182' });
+
+  test('六维展示对齐 聊天两端资料：招聘纸身独立分析同源、URL include 在案 @backend', async ({ page }) => {
+    const fixture = 创建P7fixture();
+    fixture.messages[P7会话编号.会话] = [{
+      message_id: '4004', kind: 'user_text', sender_role: 'recruiter', content: P7标记.招聘消息, created_at: '2026-09-16T01:09:00Z',
+    }];
+    // 会话 Case 带 84 分与真实解释（同 Case match_score 同源）；详情 GET 恒带 include
+    const 案例 = fixture.case们![P7会话编号.案例]!;
+    案例.matchScore = 84;
+    const 请求序: string[] = [];
+    await 装P7招聘(page, {
+      fixture,
+      请求拦截: ({ path, method, query }) => 请求序.push(`${method} ${path}${query ?? ''}`),
+    });
+
+    await hash直达(page, `/#/hr/chat/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    await expect.poll(() => 请求序.filter((项) => 项 === `GET /api/v1/recruiter/match-cases/${P7会话编号.案例}?include=screening_records,match_explanation`).length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+
+    // ── 招聘端：看在线简历层 —— 纸身正文之后是独立分析区（唯一六维来源 = 会话 Case）──
+    await page.getByRole('button', { name: '看在线简历' }).click();
+    await expect(page.getByRole('dialog', { name: '看在线简历' })).toBeVisible();
+    await expect(page.getByText('手机：—')).toBeVisible({ timeout: 10_000 }); // 纸身在位
+    // 84 分的构造：薪资10 + 方向25 + 经验15 + 地点10 + 办公5 + 技能19（55/100 命中）
+    await expect(page.getByText('匹配度分析', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('命中55/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('19/35')).toBeVisible();
+    await expect(page.getByText('薪资范围匹配').first()).toBeVisible();
+    // 分析在纸身之后：先简历段标、后分析标题（独立白区，不混入正文）
+    await 断言纵序(page, ['个人优势', '匹配度分析']);
+    await page.getByRole('button', { name: '继续沟通' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  test('六维展示对齐 候选端聊天职位层：Case 冻结资料分析与唯一薪资后缀同层渲染 @backend', async ({ page }) => {
+    const fixture = P7带消息fixture(P7标记.招聘消息);
+    const 案例 = fixture.case们![P7会话编号.案例]!;
+    案例.matchScore = 47;
+    await 装P7候选(page, { fixture });
+
+    await hash直达(page, `/#/chat/human/${P7会话编号.会话}`);
+    await expect(page.getByText(P7标记.招聘消息)).toBeVisible({ timeout: 15_000 });
+    // 47 分的构造：薪资10 + 方向25 + 地点10 + 技能2（6/100 命中）
+    await page.getByRole('button', { name: '看职位' }).click();
+    await expect(page.getByRole('dialog', { name: '看职位' })).toBeVisible();
+    await expect(page.getByText(P7资料标记.冻结职位说明)).toBeVisible({ timeout: 10_000 });
+    // 层内岗位摘要薪资 = 会话 Case 同一响应的薪资带（§8A 后缀恰好一次，不重复）
+    const 层薪资 = page.getByRole('dialog').getByText('30–45K x 15');
+    await expect(层薪资.first()).toBeVisible();
+    expect(await 层薪资.count()).toBe(1);
+    await expect(page.getByText('命中6/100个岗位关键词')).toBeVisible();
+    await expect(page.getByText('2/35')).toBeVisible();
+    await expect(page.getByText('求职方向与岗位方向匹配')).toBeVisible();
+    await page.getByRole('button', { name: '继续沟通' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 });

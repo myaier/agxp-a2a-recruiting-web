@@ -73,6 +73,10 @@
   flex-direction: row-reverse; /* 标记里环在前，反向后环靠右、薪资在左 */
   align-items: center;
   gap: 8px;
+  /* Task 10 浏览器实测：传回调态整列挂卡根且先于白卡渲染，同为 positioned 的
+     .卡 按 DOM 序盖住环 → 命中测试被白卡吃掉（点环变成打开详情）。提回上层，
+     恢复「环可点且不触发卡片动作」（Spec §3.1）；非回调态列在卡内，视觉不变。 */
+  z-index: 1;
 }
 
 .薪资 {
