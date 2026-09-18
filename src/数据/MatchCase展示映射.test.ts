@@ -53,7 +53,7 @@ const 期望步骤说明 = {
   awaiting_resume_parse: '正在解析简历',
   screening_resume: '招聘方 AI 正在初筛已提交简历',
   awaiting_recruiter_decision: '等待招聘方决定',
-  coordinating: '双方 AI 正在核对剩余差异',
+  coordinating: '双方 AI 正在确认是否还有待协调事项',
   awaiting_candidate_decision: '等待候选人确认协同事项',
   awaiting_confirmations: '等待双方确认意向',
   awaiting_candidate_confirmation: '等待候选人确认意向',
@@ -1105,7 +1105,8 @@ const S0候选完整记录: P5S0筛选记录 = {
     { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
       text: '这个岗位是否需要固定晚班？', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
     { id: 's0a_1', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-      text: '没有固定晚班。', answerStatus: 'answered', answerSource: 'agent', occurredAt: '2026-08-23T10:02:00Z' },
+      text: '没有固定晚班。', answerStatus: 'answered', answerSource: 'agent', exchangeRef: null,
+      occurredAt: '2026-08-23T10:02:00Z' },
   ],
   summaries: [
     { id: 's0s_0', phase: 'initial', summary: '需要确认岗位的值班安排。',
@@ -1147,7 +1148,7 @@ describe('映射P5详情：S0 展开块投影', () => {
         { id: 's0q_1', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
           text: '这个岗位是否需要固定晚班？', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
         { id: 's0a_2', kind: 'answer', role: 'recruiter', stage: 'anonymous_screening', askingRole: 'candidate', round: 1,
-          answerStatus, answerSource: 'agent', occurredAt: '2026-08-23T10:02:00Z' },
+          answerStatus, answerSource: 'agent', exchangeRef: null, occurredAt: '2026-08-23T10:02:00Z' },
       ],
       summaries: [],
     };
@@ -1380,7 +1381,7 @@ describe('映射P5详情：连续筛选块', () => {
       messages: [
         { id: 'q_s0', kind: 'question', role: 'candidate', stage: 'anonymous_screening', askingRole: 'candidate', round: 1, text: 'S0 的问题', exchangeRef: null, occurredAt: '2026-08-23T10:01:00Z' },
         { id: 'q_s1', kind: 'question', role: 'recruiter', stage: 'resume_submission', askingRole: 'recruiter', round: 1, text: 'S1 的问题', exchangeRef: null, occurredAt: '2026-08-24T10:01:00Z' },
-        { id: 'a_s2', kind: 'answer', role: 'candidate', stage: 'needs_coordination', askingRole: 'recruiter', round: 1, text: 'S2 的本人回答', answerStatus: 'answered', answerSource: 'human', occurredAt: '2026-08-25T10:01:00Z' },
+        { id: 'a_s2', kind: 'answer', role: 'candidate', stage: 'needs_coordination', askingRole: 'recruiter', round: 1, text: 'S2 的本人回答', answerStatus: 'answered', answerSource: 'human', exchangeRef: null, occurredAt: '2026-08-25T10:01:00Z' },
       ],
       summaries: [
         { id: 's_0', phase: 'initial', summary: '初评结论', occurredAt: '2026-08-23T10:00:30Z' },
@@ -1413,7 +1414,7 @@ describe('映射P5详情：连续筛选块', () => {
     expect(视图.确认总结?.version).toBe(2);
     expect(视图.确认总结?.含义说明).toBe('确认表示你愿意继续讨论，不代表接受全部条件');
     expect(视图.确认总结?.分节们.map((节) => [节.键, 节.标题, 节.条目们.map((条) => 条.文本)])).toEqual([
-      ['confirmed', '已知事实', ['岗位在浦东园区']],
+      ['confirmed', '已回答事项', ['岗位在浦东园区']],
       ['agreed', '已达成的安排', []],
       ['unresolved', '仍未解决', ['远程比例仍未定']],
       ['incomplete', '未完成', ['出差频率未完成确认']],
@@ -1422,18 +1423,46 @@ describe('映射P5详情：连续筛选块', () => {
       .toBe('没有双方公开接受的安排（继续或确认都不是接受证据）');
   });
 
-  it('发问块计数按服务端记账投影，前端不自行加一', () => {
-    const 视图 = 断言正常(映射P5详情(造详情({
+  it('发问块计数按服务端记账投影成步骤+轮次两行，前端不自行加一、不猜执行方', () => {
+    // step 缺席（旧响应）：不显示推测的当前动作，仅显示服务端轮次
+    const 旧响应 = 断言正常(映射P5详情(造详情({
       连续块: {
         continuityVersion: 2,
         dialogueProgress: {
           stage: 'needs_coordination', askingRole: 'recruiter',
-          recruiterRound: 1, candidateRound: 0, roundBudget: 2,
+          recruiterRound: 1, candidateRound: 0, roundBudget: 2, step: null,
         },
       },
     })));
-    expect(视图.对话进度).toEqual({
-      stage: 'needs_coordination', 轮次说明: '当前由招聘方发问，已问 1/2 轮',
+    expect(旧响应.对话进度).toEqual({
+      stage: 'needs_coordination',
+      当前步骤说明: null,
+      轮次说明: '招聘方已问 1/2 轮',
     });
+  });
+
+  it('dialogue_progress.step 映射：assessing 是发问 Agent、answering 是对端 Agent、awaiting_human 不说明等谁', () => {
+    const 映射进度 = (step: 'assessing' | 'answering' | 'awaiting_human' | 'complete',
+      askingRole: 'candidate' | 'recruiter') => 断言正常(映射P5详情(造详情({
+      连续块: {
+        continuityVersion: 2,
+        dialogueProgress: {
+          stage: 'needs_coordination', askingRole,
+          recruiterRound: 1, candidateRound: 0, roundBudget: 2, step,
+        },
+      },
+    }))).对话进度!;
+    // 表驱动：assessing/answering 按 asking_role 分化（answering 的执行方是发问侧对端）
+    expect(映射进度('assessing', 'recruiter').当前步骤说明).toBe('招聘 Agent 判断中');
+    expect(映射进度('assessing', 'candidate').当前步骤说明).toBe('候选 Agent 判断中');
+    expect(映射进度('answering', 'recruiter').当前步骤说明).toBe('候选 Agent 回答中');
+    expect(映射进度('answering', 'candidate').当前步骤说明).toBe('招聘 Agent 回答中');
+    // awaiting_human 不说明具体等谁（待办归属唯一读 pending_actions），两种发问侧同一文案
+    expect(映射进度('awaiting_human', 'recruiter').当前步骤说明).toBe('等待真人补充回答');
+    expect(映射进度('awaiting_human', 'candidate').当前步骤说明).toBe('等待真人补充回答');
+    // complete 只表示本轮问答完成，不是整个 S2 完成
+    expect(映射进度('complete', 'recruiter').当前步骤说明).toBe('本轮问答已完成');
+    // 轮次说明恒读服务端记账，不因 step 变化
+    expect(映射进度('answering', 'recruiter').轮次说明).toBe('招聘方已问 1/2 轮');
   });
 });

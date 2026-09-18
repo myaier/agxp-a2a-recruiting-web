@@ -30,6 +30,7 @@ import type {
   BFFMatchCase视图,
   BFFMatchCase工作区职位,
   BFFMatchCase阶段区,
+  BFFMatchCase对话进度,
   BFFMatchCase终局摘要,
   BFF候选MatchCase详情,
   BFF招聘MatchCase详情,
@@ -546,6 +547,19 @@ export const P5工作区职位Wire: BFFMatchCase工作区职位 = {
     public_salary_range: '300-500 元/天',
     required_skills: ['Python'],
   },
+};
+
+/**
+ * Spec §8B.2：发问块计数 wire 样本（S2 招聘方发问、第 1/2 轮，带可选 step 闭词）。
+ * 测试需要其它 step 词或 asker 时展开覆盖；早于该字段的响应样本直接省略 step 键。
+ */
+export const P5对话进度Wire: BFFMatchCase对话进度 = {
+  stage: 'needs_coordination',
+  asking_role: 'recruiter',
+  recruiter_round: 1,
+  candidate_round: 0,
+  round_budget: 2,
+  step: 'assessing',
 };
 
 export const P5阶段区组Wire: BFFMatchCase阶段区[] = [

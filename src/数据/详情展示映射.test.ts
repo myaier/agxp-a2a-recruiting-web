@@ -828,13 +828,36 @@ describe('从P5到详情分段', () => {
       阶段区块: 四段({
         resume_submission: { 状态: 'active', 状态文案: '进行中' },
       }),
-      对话进度: { stage: 'resume_submission', 轮次说明: '当前由招聘方发问，已问 1/3 轮' },
+      对话进度: { stage: 'resume_submission', 当前步骤说明: null, 轮次说明: '招聘方已问 1/3 轮' },
     }), 详情DTO({ stage: 'resume_submission' }), null);
     expect(v2[0]!.段首说明).toBeUndefined();
-    expect(v2[1]!.段首说明).toEqual(['等待人工决定是否继续', '当前由招聘方发问，已问 1/3 轮']);
+    expect(v2[1]!.段首说明).toEqual(['等待人工决定是否继续', '招聘方已问 1/3 轮']);
     const v1 = 从P5到详情分段(分段视图({ 轮次: { 当前: 2, 预算: 5 } }), 详情DTO({ stage: 'anonymous_screening' }), null);
     expect(v1[0]!.段首说明).toEqual(['等待人工决定是否继续', '轮次 2/5']);
     expect(v1[1]!.段首说明).toBeUndefined();
+  });
+
+  it('当前步骤说明只挂当前段并排在轮次之前：非当前段不套用另一阶段的实时步骤', () => {
+    // 当前段 = S1：step 在场时，步骤说明替代旧「当前由X发问」与轮次分开两行
+    const 当前段 = 从P5到详情分段(分段视图({
+      阶段区块: 四段({
+        resume_submission: { 状态: 'active', 状态文案: '进行中' },
+      }),
+      对话进度: {
+        stage: 'resume_submission', 当前步骤说明: '候选 Agent 回答中', 轮次说明: '招聘方已问 1/2 轮',
+      },
+    }), 详情DTO({ stage: 'resume_submission' }), null);
+    expect(当前段[1]!.段首说明).toEqual(['等待人工决定是否继续', '候选 Agent 回答中', '招聘方已问 1/2 轮']);
+    // Case 已推进到 S3：S2 段（对话进度所属段）只保留轮次说明，实时步骤不跨段套用
+    const 非当前段 = 从P5到详情分段(分段视图({
+      阶段区块: 四段({
+        needs_coordination: { 状态: 'passed', 状态文案: '已通过' },
+      }),
+      对话进度: {
+        stage: 'needs_coordination', 当前步骤说明: '招聘 Agent 判断中', 轮次说明: '招聘方已问 2/2 轮',
+      },
+    }), 详情DTO({ stage: 'intent_confirmation' }), null);
+    expect(非当前段[2]!.段首说明).toEqual(['招聘方已问 2/2 轮']);
   });
 
   it('未到达段保留折叠段与待推进说明：状态文/小结退场、记录为空，不把将来阶段写成接口缺失', () => {

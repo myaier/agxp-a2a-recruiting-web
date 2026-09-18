@@ -126,14 +126,14 @@ describe('阶段对话流 · S0 记录渲染缝（Task 3）', () => {
     expect(within(无时间.parentElement as HTMLElement).queryByText(/:/)).toBeNull();
   });
 
-  it('段首说明：附件之下、往来记录之前的上下文行（步骤/轮次提示），不计入条数', () => {
+  it('段首说明：附件之下、往来记录之前的上下文行（步骤/轮次分行提示），不计入条数', () => {
     render(
       <阶段对话流
         分段们={[
           {
             阶段: '递交简历',
             态: '当前',
-            段首说明: ['正在解析简历', '当前由招聘方发问，已问 1/3 轮'],
+            段首说明: ['正在解析简历', '候选 Agent 回答中', '招聘方已问 1/3 轮'],
             附件: { 文件名: '简历_样本_v1.pdf' },
             附件常驻: true,
             记录: [{ kind: '气泡', 编号: 'q', 方: '对方', 角色: '', 时间: '10:00', 内容: '请说明职责。' }],
@@ -141,12 +141,14 @@ describe('阶段对话流 · S0 记录渲染缝（Task 3）', () => {
         ]}
       />,
     );
-    const 说明 = screen.getByText('当前由招聘方发问，已问 1/3 轮');
+    const 步骤 = screen.getByText('候选 Agent 回答中');
+    const 轮次 = screen.getByText('招聘方已问 1/3 轮');
     const 附件 = screen.getByText('简历_样本_v1.pdf');
     const 气泡 = screen.getByText('请说明职责。');
     expect(screen.getByText('正在解析简历')).toBeTruthy();
-    expect(附件.compareDocumentPosition(说明) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(说明.compareDocumentPosition(气泡) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(附件.compareDocumentPosition(步骤) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(步骤.compareDocumentPosition(轮次) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(轮次.compareDocumentPosition(气泡) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText('1 条')).toBeTruthy();
   });
 });
@@ -208,7 +210,7 @@ describe('阶段对话流 · 连续筛选展示槽', () => {
         版本说明: '本次确认的总结版本：第 1 版',
         含义说明: '确认表示你愿意继续讨论，不代表接受全部条件',
         分节们: [
-          { 键: 'confirmed', 标题: '已知事实', 空说明: '暂无已确认的公开事实', 条目们: [{ 编号: 'c0', 文本: '岗位在浦东园区' }] },
+          { 键: 'confirmed', 标题: '已回答事项', 空说明: '暂无已回答事项', 条目们: [{ 编号: 'c0', 文本: '岗位在浦东园区' }] },
           { 键: 'agreed', 标题: '已达成的安排', 空说明: '没有双方公开接受的安排（继续或确认都不是接受证据）', 条目们: [] },
           { 键: 'unresolved', 标题: '仍未解决', 空说明: '暂无未决事项', 条目们: [{ 编号: 'u0', 文本: '远程比例仍未定' }] },
           { 键: 'incomplete', 标题: '未完成', 空说明: '没有因技术原因未完成的事项', 条目们: [{ 编号: 'i0', 文本: '出差频率未完成确认' }] },
@@ -218,7 +220,7 @@ describe('阶段对话流 · 连续筛选展示槽', () => {
     render(<阶段对话流 分段们={[分段]} />);
     expect(screen.getByText('本次确认的总结版本：第 1 版')).toBeTruthy();
     expect(screen.getByText('确认表示你愿意继续讨论，不代表接受全部条件')).toBeTruthy();
-    for (const 标题 of ['已知事实', '已达成的安排', '仍未解决', '未完成']) {
+    for (const 标题 of ['已回答事项', '已达成的安排', '仍未解决', '未完成']) {
       expect(screen.getByText(标题)).toBeTruthy();
     }
     expect(screen.getByText('岗位在浦东园区')).toBeTruthy();

@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BFF请求选项, BFF响应 } from '../HTTP客户端';
-import { P5候选详情Wire, P5招聘详情Wire, P5状态视图Wire, P5工作区职位Wire } from '../../测试/BFF样本';
+import { P5候选详情Wire, P5阶段区组Wire, P5招聘详情Wire, P5状态视图Wire, P5工作区职位Wire } from '../../测试/BFF样本';
 import { BFF公司摘要样本, BFF安全职位资料样本 } from '../../测试/展示资料样本';
 import {
   创建连续代谈数据源,
@@ -260,6 +260,54 @@ describe('连续代谈数据源', () => {
       不缓存: true,
     });
     expect(请求Mock.mock.calls[0][0].path).not.toContain('include');
+  });
+
+  it('嵌套 case_detail 复用 Case decoder：step 与 S1 问答引用同时在场整包解出（不复制解码器）', async () => {
+    const 引用 = 'cex_0123456789abcdef0123456789abcdef';
+    const v2嵌套详情 = {
+      ...P5候选详情Wire,
+      state: {
+        ...P5状态视图Wire, stage: 'needs_coordination', status: 'waiting', step: 'coordinating',
+      },
+      needs_action: false,
+      available_actions: [],
+      stages: P5阶段区组Wire.map((区, 下标) => (下标 === 0
+        ? {
+            ...区,
+            screening_records: {
+              messages: [
+                {
+                  id: 'q_s1', kind: 'question', role: 'recruiter', stage: 'resume_submission',
+                  asking_role: 'recruiter', round: 1, text: '请说明你的职责。',
+                  exchange_ref: 引用, occurred_at: '2026-09-10T02:00:00Z',
+                },
+                {
+                  id: 'a_s1', kind: 'answer', role: 'candidate', stage: 'resume_submission',
+                  asking_role: 'recruiter', round: 1, text: '我负责产品设计。',
+                  exchange_ref: 引用, answer_source: 'agent', answer_status: 'answered',
+                  occurred_at: '2026-09-10T02:01:00Z',
+                },
+              ],
+              summaries: [],
+            },
+          }
+        : 区)),
+      continuity_version: 2,
+      pending_actions: [],
+      dialogue_progress: {
+        stage: 'needs_coordination', asking_role: 'recruiter',
+        recruiter_round: 1, candidate_round: 0, round_budget: 2, step: 'assessing',
+      },
+      reconsideration: null,
+      confirmation_summary: null,
+    };
+    请求Mock.mockResolvedValueOnce(响应({ ...开案详情Wire, case_detail: v2嵌套详情 }));
+    const 详情 = await source.读取候选连续详情(案件记录ID);
+    expect(详情.case_detail?.dialogueProgress).toMatchObject({
+      stage: 'needs_coordination', step: 'assessing',
+    });
+    expect(详情.case_detail?.stages[0].screeningRecords?.messages.map((条) => 条.exchangeRef))
+      .toEqual([引用, 引用]);
   });
 
   it('retry 严格 body 为 {expected_retry_generation} 且带 Idempotency-Key；0 是合法第一代', async () => {

@@ -20,6 +20,7 @@ import type {
   P5待办,
   P5待办用途,
   P5对话进度,
+  P5对话步骤,
   P5确认总结,
   P5重新考虑,
   P5状态视图,
@@ -74,7 +75,7 @@ const 步骤说明表 = {
   awaiting_resume_parse: '正在解析简历',
   screening_resume: '招聘方 AI 正在初筛已提交简历',
   awaiting_recruiter_decision: '等待招聘方决定',
-  coordinating: '双方 AI 正在核对剩余差异',
+  coordinating: '双方 AI 正在确认是否还有待协调事项',
   awaiting_candidate_decision: '等待候选人确认协同事项',
   awaiting_confirmations: '等待双方确认意向',
   awaiting_candidate_confirmation: '等待候选人确认意向',
@@ -299,7 +300,8 @@ export interface P5终局摘要视图 {
  * 展开块的单条公开问答视图：技术字段原样保留，正文按 answer_status 投影。
  * stage/askingRole/round 全部来自服务端记录本身 —— 前端不重排、不重编号、不按位置猜块。
  * answerSource 'human' 是本人写的公开回答（双方可见）。exchangeRef 只在 S1/S2 的 question
- * 上出现，是它对应人工待办的不透明引用：只做精确相等比对，绝不解析、绝不从 id 推导。
+ * 与它的 answer 上出现，是人工待办与问答块的不透明引用：只做精确相等比对，绝不解析、
+ * 绝不从 id 推导、绝不显示给用户。
  */
 export interface P5S0消息视图 {
   id: string;
@@ -372,9 +374,14 @@ export interface P5待办视图 {
   summaryVersion: number | null;
 }
 
-/** 发问块计数（只属 S1/S2）：轮次由服务端唯一记账，前端不本地加一。 */
+/**
+ * 发问块计数（只属 S1/S2）：当前步骤与轮次分开表达 —— 步骤说明来自服务端 step 闭词
+ * （缺席为 null：不显示推测的当前动作，也不从 asking_role 猜执行方）；轮次由服务端唯一
+ * 记账，前端不本地加一。awaiting_human 不说明等谁（待办归属唯一读 pending_actions）。
+ */
 export interface P5对话进度视图 {
   stage: 'resume_submission' | 'needs_coordination';
+  当前步骤说明: string | null;
   轮次说明: string;
 }
 
@@ -607,13 +614,31 @@ function 映射待办(待办: P5待办, viewer: P5角色): P5待办视图 {
   };
 }
 
-/** 发问块计数 → 一行中文说明（服务端唯一记账；前端不本地加一、不自造总轮次）。 */
+/**
+ * dialogue_progress.step 闭词 → 当前步骤说明（Spec §8B.2）。assessing 是发问侧 Agent 在
+ * 判断；answering 的执行方是发问侧的对端 Agent（故按 asking_role 反查）；awaiting_human
+ * 不说明具体等谁；complete 只表示本轮问答完成，不是整个 S2 完成、更不触发 S3。
+ */
+const 对话步骤文案表 = {
+  assessing: { recruiter: '招聘 Agent 判断中', candidate: '候选 Agent 判断中' },
+  answering: { recruiter: '候选 Agent 回答中', candidate: '招聘 Agent 回答中' },
+  awaiting_human: '等待真人补充回答',
+  complete: '本轮问答已完成',
+} as const satisfies Record<P5对话步骤, unknown>;
+
+/** 发问块计数 → 分离的当前步骤/轮次说明（服务端唯一记账；前端不本地加一、不猜执行方）。 */
 function 映射对话进度(进度: P5对话进度 | null): P5对话进度视图 | null {
   if (进度 === null) return null;
   const 本侧轮 = 进度.askingRole === 'recruiter' ? 进度.recruiterRound : 进度.candidateRound;
+  const 步骤 = 进度.step;
   return {
     stage: 进度.stage,
-    轮次说明: `当前由${角色称呼表[进度.askingRole]}发问，已问 ${本侧轮}/${进度.roundBudget} 轮`,
+    当前步骤说明: 步骤 === null
+      ? null
+      : 步骤 === 'assessing' || 步骤 === 'answering'
+        ? 对话步骤文案表[步骤][进度.askingRole]
+        : 对话步骤文案表[步骤],
+    轮次说明: `${角色称呼表[进度.askingRole]}已问 ${本侧轮}/${进度.roundBudget} 轮`,
   };
 }
 
@@ -648,9 +673,11 @@ function 映射重新考虑(块: P5重新考虑 | null, viewer: P5角色): P5重
   };
 }
 
-/** C6 四个分节的固定标题与空态说明（继续/确认都不是接受证据，所以「安排」合法为空）。 */
+/** C6 四个分节的固定标题与空态说明（继续/确认都不是接受证据，所以「安排」合法为空）。
+ *  confirmed 是「公开记录中已有回答依据的事项」（Spec §8B.4）：回答可来自 Agent 或真人，
+ *  不表示真人确认、双方接受或条件达成一致，故标题统一「已回答事项」。 */
 const 确认分节文案表 = [
-  { 键: 'confirmed' as const, 标题: '已知事实', 空说明: '暂无已确认的公开事实' },
+  { 键: 'confirmed' as const, 标题: '已回答事项', 空说明: '暂无已回答事项' },
   { 键: 'agreed' as const, 标题: '已达成的安排', 空说明: '没有双方公开接受的安排（继续或确认都不是接受证据）' },
   { 键: 'unresolved' as const, 标题: '仍未解决', 空说明: '暂无未决事项' },
   { 键: 'incomplete' as const, 标题: '未完成', 空说明: '没有因技术原因未完成的事项' },
@@ -784,7 +811,7 @@ function 映射S0消息(消息: P5S0筛选消息): P5S0消息视图 {
     round: 消息.round,
     answerStatus: 消息.kind === 'answer' ? 消息.answerStatus : null,
     answerSource: 消息.kind === 'answer' ? 消息.answerSource : null,
-    exchangeRef: 消息.kind === 'question' ? 消息.exchangeRef : null,
+    exchangeRef: 消息.exchangeRef,
     occurredAt: 消息.occurredAt,
     内容: 消息.kind === 'question'
       ? 消息.text

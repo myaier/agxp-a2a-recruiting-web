@@ -213,6 +213,7 @@ const 回答来源全表 = ['agent', 'human', 'none'] as const;
 const 记录阶段序 = new Map<P5筛选阶段, number>(记录阶段全表.map((阶段, 序) => [阶段, 序]));
 const 待办ID模式 = /^cpa_[0-9a-f]{32}$/;
 const 交换ID模式 = /^cex_[0-9a-f]{32}$/;
+const 对话步骤全表 = ['assessing', 'answering', 'awaiting_human', 'complete'] as const satisfies readonly P5对话步骤[];
 
 /** 详情四个阶段区的固定 S0→S3 顺序（严格客户端同款）：数量与顺序都不可漂。 */
 const 阶段顺序 = ['anonymous_screening', 'resume_submission', 'needs_coordination', 'intent_confirmation'] as const;
@@ -336,10 +337,11 @@ export type P5回答来源 = 'agent' | 'human' | 'none';
 export type P5回答状态 = 'answered' | 'declined' | 'unknown' | 'not_available' | 'incomplete';
 
 /**
- * 展开块里的单条问答（冻结合同 §6.5）：question 只带原文，answer 按 answer_status 带或
- * 不带原文。每条记录都自述 stage/askingRole（answer 再带 answerSource），同一数组装着
- * S0/S1/S2 三段。answerSource 'human' 表示那是本人写的公开回答，双方都看得到；
- * question 的 exchangeRef 只在 S1/S2 出现，是它对应人工待办的不透明引用（可能缺席）。
+ * 展开块里的单条问答（冻结合同 §6.5 + Spec §8B.3）：question 只带原文，answer 按
+ * answer_status 带或不带原文。每条记录都自述 stage/askingRole（answer 再带 answerSource），
+ * 同一数组装着 S0/S1/S2 三段。answerSource 'human' 表示那是本人写的公开回答，双方都看得到；
+ * exchangeRef 只在 S1/S2 的 question 与它的 answer 上出现（可能缺席），是人工待办与问答块
+ * 的不透明引用（可能缺席；解码层按块账强制 answer 与同轮 question 同值）。
  */
 interface P5筛选消息基础 {
   id: string;
@@ -351,11 +353,18 @@ interface P5筛选消息基础 {
 }
 export type P5S0筛选消息 =
   | (P5筛选消息基础 & { kind: 'question'; text: string; exchangeRef: string | null })
-  | (P5筛选消息基础 & { kind: 'answer'; text: string; answerStatus: 'answered'; answerSource: P5回答来源 })
+  | (P5筛选消息基础 & {
+      kind: 'answer';
+      text: string;
+      answerStatus: 'answered';
+      answerSource: P5回答来源;
+      exchangeRef: string | null;
+    })
   | (P5筛选消息基础 & {
       kind: 'answer';
       answerStatus: Exclude<P5回答状态, 'answered'>;
       answerSource: P5回答来源;
+      exchangeRef: string | null;
     });
 
 /** S0 总结：initial 无轮次，reevaluation 绑定真实轮次。 */
@@ -419,12 +428,17 @@ export interface P5待办 {
   summaryVersion: number | null;
 }
 
+/** 发问块自己的实时步骤闭词（Spec §8B.2）；wire 缺席归一 null，显式 null 及其它值拒绝。 */
+export type P5对话步骤 = 'assessing' | 'answering' | 'awaiting_human' | 'complete';
+
 export interface P5对话进度 {
   stage: 'resume_submission' | 'needs_coordination';
   askingRole: P5角色;
   recruiterRound: number;
   candidateRound: number;
   roundBudget: number;
+  /** wire 缺席归一 null（不显示推测的当前动作）；显式 null/空串/未知词/非字符串拒绝。 */
+  step: P5对话步骤 | null;
 }
 
 export type P5重新考虑不可用原因 =
@@ -665,14 +679,15 @@ function 解简历附件(input: unknown): P5简历附件 {
 }
 
 /**
- * 公开问答记录（冻结合同 §6.5）：kind↔role、text↔answer_status 的三分支 wire 形状逐一
- * 闭合，按分支构造判别联合。stage / asking_role 在**任何** continuity_version 上都是必需键
- * （公开 wire 对每条记录都发；历史 Service 的记录由 BFF 回填），answer 分支再必带
- * answer_source —— 缺任一键都是契约漂移，前端不按版本自行放宽、更不自造 wire 形状。
+ * 公开问答记录（冻结合同 §6.5 + Spec §8B.3）：kind↔role、text↔answer_status 的三分支
+ * wire 形状逐一闭合，按分支构造判别联合。stage / asking_role 在**任何** continuity_version
+ * 上都是必需键（公开 wire 对每条记录都发；历史 Service 的记录由 BFF 回填），answer 分支再
+ * 必带 answer_source —— 缺任一键都是契约漂移，前端不按版本自行放宽、更不自造 wire 形状。
  *
- * exchange_ref 是唯一的条件键：只出现在 S1/S2 发问块的 question 记录上，值与该问题对应的
- * 人工待办 pending_actions[].exchange_ref 相同；S0 记录与所有 answer 携带它即漂移。
- * 它是不透明引用 —— 只做精确相等比对，绝不解析编码，也绝不从 id 推导。
+ * exchange_ref 只出现在 S1/S2 发问块的 question 与它的 answer 上（pattern 统一
+ * ^cex_[0-9a-f]{32}$，显式 null/空串/坏格式/非字符串拒绝），值与该问题对应的人工待办
+ * pending_actions[].exchange_ref 相同；S0 记录携带它即漂移。它是不透明引用 —— 只做精确
+ * 相等比对，绝不解析编码，也绝不从 id 推导。
  */
 function 解筛选消息(input: unknown): P5S0筛选消息 {
   if (!是记录(input)) throw 契约错误();
@@ -687,7 +702,7 @@ function 解筛选消息(input: unknown): P5S0筛选消息 {
         input,
         ['id', 'kind', 'role', 'stage', 'asking_role', 'round', 'answer_status',
           'answer_source', 'occurred_at'],
-        ['text'],
+        ['text', 'exchange_ref'],
       );
   const role = 要求枚举(raw.role, 叮嘱主人全表);
   const stage = 要求枚举(raw.stage, 记录阶段全表);
@@ -709,20 +724,25 @@ function 解筛选消息(input: unknown): P5S0筛选消息 {
       ...基础,
       kind,
       text: 要求S0原文(raw.text),
-      exchangeRef: raw.exchange_ref === undefined ? null : 要求非空字符串(raw.exchange_ref),
+      exchangeRef: raw.exchange_ref === undefined ? null : 要求模式串(raw.exchange_ref, 交换ID模式),
     };
   }
   const answerStatus = 要求枚举(raw.answer_status, S0回答状态全表);
   const answerSource = 要求枚举(raw.answer_source, 回答来源全表);
+  // S0 的回答同样不指任何待办；S1/S2 的回答引用与 question 同一闭合模式。
+  if (raw.exchange_ref !== undefined && stage === 'anonymous_screening') throw 契约错误();
+  const exchangeRef = raw.exchange_ref === undefined
+    ? null
+    : 要求模式串(raw.exchange_ref, 交换ID模式);
   if (answerStatus === 'answered') {
     // 有正文的回答只可能来自 Agent 或本人；none 是「没有回答」的来源，不能带正文。
     if (answerSource === 'none') throw 契约错误();
-    return { ...基础, kind, text: 要求S0原文(raw.text), answerStatus, answerSource };
+    return { ...基础, kind, text: 要求S0原文(raw.text), answerStatus, answerSource, exchangeRef };
   }
   if (raw.text !== undefined) {
     throw 契约错误(); // 未回答不携带正文（显式 null 同样拒绝，绝不读成空回答）
   }
-  return { ...基础, kind, answerStatus, answerSource };
+  return { ...基础, kind, answerStatus, answerSource, exchangeRef };
 }
 
 /** S0 总结：initial 无 round（携带即漂移），reevaluation 必带 round；按 phase 构造判别联合。 */
@@ -754,7 +774,11 @@ export function 解S0小结(input: unknown): P5S0筛选总结 {
  * 每个「块 + 发问侧」内按轮不降、同轮问／答各最多一条且答必命中同轮已登记的问；S0 轮次
  * 仍受 Case round_budget 约束（S1/S2 的预算在 dialogue_progress，此处只要求 ≥1）。
  * summaries 只属 S0：initial 最多一条且先于全部 reevaluation，复评轮次预算内严格递增。
- * 原数组顺序原样返回（不 sort、不重编号，未答轮次的缺口保留）。
+ * 同一账本还登记每轮 question 的 exchangeRef（Spec §8B.3 严格配对）：answer 带引用时，
+ * 同块同侧同轮的 question 必须带完全相同的引用 —— question 缺引用、引用不等都是漂移；
+ * 跨侧/跨轮/跨阶段借引用因账本按块分册、按轮登记而结构性不可达；question 有引用而
+ * answer 缺引用、两者都缺引用都兼容旧响应。原数组顺序原样返回（不 sort、不重编号，
+ * 未答轮次的缺口保留）。
  */
 function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记录 {
   const raw = 要求闭合对象(input, ['messages', 'summaries']);
@@ -762,7 +786,9 @@ function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记�
   const summaries = 要求数组(raw.summaries).map(解S0小结);
   const 已见ID = new Set<string>();
   /** 每个「块 + 发问侧」各自记账：轮次不共享、不借额度、不交错。 */
-  const 块账 = new Map<string, { 问: Set<number>; 答: Set<number>; 前一轮: number }>();
+  const 块账 = new Map<string, {
+    问: Set<number>; 答: Set<number>; 前一轮: number; 问引用: Map<number, string | null>;
+  }>();
   let 前一块序 = 0;
   for (const 消息 of messages) {
     const 块序 = 记录阶段序.get(消息.stage) ?? -1;
@@ -775,7 +801,7 @@ function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记�
     const 块键 = `${消息.stage}|${消息.askingRole}`;
     let 账 = 块账.get(块键);
     if (账 === undefined) {
-      账 = { 问: new Set<number>(), 答: new Set<number>(), 前一轮: 0 };
+      账 = { 问: new Set<number>(), 答: new Set<number>(), 前一轮: 0, 问引用: new Map() };
       块账.set(块键, 账);
     }
     if (消息.round < 账.前一轮) throw 契约错误();
@@ -783,9 +809,12 @@ function 解S0筛选记录(input: unknown, roundBudget: number): P5S0筛选记�
     if (消息.kind === 'question') {
       if (账.问.has(消息.round)) throw 契约错误();
       账.问.add(消息.round);
+      账.问引用.set(消息.round, 消息.exchangeRef);
     } else if (账.答.has(消息.round) || !账.问.has(消息.round)) {
       throw 契约错误();
     } else {
+      const 问引用 = 账.问引用.get(消息.round) ?? null;
+      if (消息.exchangeRef !== null && 消息.exchangeRef !== 问引用) throw 契约错误();
       账.答.add(消息.round);
     }
   }
@@ -937,11 +966,16 @@ function 解待办们(input: unknown): P5待办[] {
   return 待办们;
 }
 
-/** 发问块计数：只属 S1/S2；轮次都在预算内，前端绝不本地推进。 */
+/**
+ * 发问块计数：只属 S1/S2；轮次都在预算内，前端绝不本地推进。
+ * step 是可选闭词（Spec §8B.2）：仅键缺席归一 null（不显示推测的当前动作）；显式 null、
+ * 空串、未知词、非字符串一律漂移。整个 dialogue_progress 对象的可空合同不变。
+ */
 function 解对话进度(input: unknown): P5对话进度 {
   const raw = 要求闭合对象(
     input,
     ['stage', 'asking_role', 'recruiter_round', 'candidate_round', 'round_budget'],
+    ['step'],
   );
   const roundBudget = 要求范围整数(raw.round_budget, 1, Number.MAX_SAFE_INTEGER);
   const recruiterRound = 要求范围整数(raw.recruiter_round, 0, roundBudget);
@@ -952,6 +986,7 @@ function 解对话进度(input: unknown): P5对话进度 {
     recruiterRound,
     candidateRound,
     roundBudget,
+    step: raw.step === undefined ? null : 要求枚举(raw.step, 对话步骤全表),
   };
 }
 

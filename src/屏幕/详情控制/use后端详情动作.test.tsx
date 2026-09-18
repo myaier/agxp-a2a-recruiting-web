@@ -1339,7 +1339,7 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
         pendingActions: [S2待办],
         dialogueProgress: {
           stage: 'needs_coordination', askingRole: 'recruiter',
-          recruiterRound: 1, candidateRound: 0, roundBudget: 2,
+          recruiterRound: 1, candidateRound: 0, roundBudget: 2, step: null,
         },
       },
       stages: 段们.map((区, 下标) => (下标 === 0
@@ -1358,7 +1358,7 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
     // 当前问题按 exchange_ref 与记录 id 精确相等取；轮次说明来自服务端记账
     // 当前问题按两侧 exchange_ref 精确相等取（绝不碰不透明的记录 id）
     expect(卡.提示们?.[0]).toBe('对方的问题：远程比例最多能到多少？');
-    expect(卡.提示们?.[1]).toBe('当前由招聘方发问，已问 1/2 轮');
+    expect(卡.提示们?.[1]).toBe('招聘方已问 1/2 轮');
     const 提交 = 取按钮(卡, 'answer_dialogue_submit');
     expect(提交.执行).toBeNull();
     expect(提交.禁用说明).toBe('请先写下回答，或勾选「暂时无法回答」');
@@ -1404,7 +1404,7 @@ describe('use后端详情动作 · S2 人工补答（v2）', () => {
     for (const 引用 of ['cex_ffffffffffffffffffffffffffffffff', null]) {
       const { result } = 挂动作(动作输入({ 详情: S2详情(引用) }));
       const 卡 = 取卡片(result, 'answer_dialogue');
-      expect(卡.提示们?.[0]).toBe('当前由招聘方发问，已问 1/2 轮');
+      expect(卡.提示们?.[0]).toBe('招聘方已问 1/2 轮');
       expect(JSON.stringify(卡.提示们)).not.toContain('远程比例最多能到多少？');
     }
   });

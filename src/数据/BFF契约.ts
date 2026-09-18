@@ -1007,16 +1007,22 @@ export type BFFS0筛选消息 =
   | {
       id: string; kind: 'question'; role: P5角色; round: number; text: string; occurred_at: string;
       stage?: BFF筛选记录阶段; asking_role?: P5角色;
+      /** 仅 S1/S2 的问题：对应人工待办的不透明引用（不透明 ID，只做精确相等比对）。 */
+      exchange_ref?: string;
     }
   | {
       id: string; kind: 'answer'; role: P5角色; round: number; text: string;
       answer_status: 'answered'; occurred_at: string;
       stage?: BFF筛选记录阶段; asking_role?: P5角色; answer_source?: 'agent' | 'human';
+      /** Spec §8B.3：本回答所指 question 的公开引用，与 question/待办同值（仅 S1/S2）。 */
+      exchange_ref?: string;
     }
   | {
       id: string; kind: 'answer'; role: P5角色; round: number;
       answer_status: 'declined' | 'unknown' | 'not_available' | 'incomplete'; occurred_at: string;
       stage?: BFF筛选记录阶段; asking_role?: P5角色; answer_source?: 'agent' | 'human' | 'none';
+      /** Spec §8B.3：无正文分支同样可带（incomplete/unknown 的回答仍按引用找到它的问题）。 */
+      exchange_ref?: string;
     };
 
 /** 初评（无轮次）与复评（绑定真实轮次）小结；轮次在 state.round_budget 内由 decoder 校验。 */
@@ -1079,6 +1085,12 @@ export interface BFFMatchCase对话进度 {
   recruiter_round: number;
   candidate_round: number;
   round_budget: number;
+  /**
+   * Spec §8B.2：发问块自己的实时步骤闭词（可选，早于该字段的响应缺席整个键）。
+   * awaiting_human 不说明等谁（待办归属唯一读 pending_actions）；complete 只表示本轮
+   * 问答完成，不是整个 S2 完成、更不触发 S3。
+   */
+  step?: 'assessing' | 'answering' | 'awaiting_human' | 'complete';
 }
 
 /** GET 实际只给 null / expired / case_unavailable（另两个词只作命令 409 码出现）。 */
