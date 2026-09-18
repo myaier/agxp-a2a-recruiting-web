@@ -575,6 +575,83 @@ export type BFFAgent设置 = BFF候选Agent设置 | BFF招聘Agent设置;
 export type BFFAgent设置补丁 = Partial<Pick<BFF候选Agent设置,
   'material_submission' | 'out_of_authority_concession'>>;
 
+// ── 匹配解释域 DTO（release/0.2.5：include=match_explanation 展开的六维批次解释）──
+// 字段名逐项复制自 mobile-v1 OpenAPI 的 MatchExplanation / MatchDimensionExplanation。
+// 固定版本三元组、六维固定顺序与权重、reason→status 闭表、skills 计数约束和
+// 分项和=total_points=同响应 match_score 由 招聘数据源/匹配解释.ts 的解匹配解释校验；
+// 词→固定中文说明在 匹配解释展示映射.ts。展开键可选：未请求 include 时整个键缺席，
+// 显式 null 是「无溯源」的合法缺失 —— 缺席与 null 是两种状态，不互相伪装（C1）。
+
+export type BFF匹配维度 =
+  | 'direction' | 'skills' | 'experience' | 'location' | 'workplace_mode' | 'compensation';
+export type BFF匹配状态 = 'matched' | 'partially_matched' | 'not_matched' | 'unknown';
+
+// 闭表 reason 词：每个词只属于一个维度并固定该维状态（词→状态矩阵见
+// 招聘数据源/匹配解释.ts 的 satisfies 双向锁定，词→中文说明见 匹配解释展示映射.ts）。
+export type BFF方向原因 =
+  | 'job_category_missing' | 'candidate_category_missing'
+  | 'category_matched' | 'category_not_matched';
+export type BFF技能原因 =
+  | 'job_keywords_missing' | 'candidate_skills_missing' | 'no_keyword_overlap'
+  | 'partial_keyword_overlap' | 'all_keywords_matched';
+export type BFF经验原因 =
+  | 'requirements_unconfirmed' | 'candidate_experience_missing'
+  | 'experience_met' | 'experience_not_met';
+export type BFF地点原因 =
+  | 'job_location_missing' | 'candidate_locations_missing'
+  | 'location_matched' | 'location_not_matched';
+export type BFF办公方式原因 =
+  | 'job_workplace_mode_missing' | 'candidate_workplace_modes_missing'
+  | 'workplace_mode_matched' | 'workplace_mode_not_matched';
+export type BFF薪资原因 =
+  | 'compensation_overlap' | 'compensation_near_miss' | 'compensation_disjoint'
+  | 'compensation_type_mismatch' | 'compensation_negotiable'
+  | 'candidate_compensation_missing' | 'job_compensation_missing'
+  | 'compensation_not_annualizable' | 'compensation_type_unsupported';
+export type BFF匹配原因 =
+  | BFF方向原因 | BFF技能原因 | BFF经验原因
+  | BFF地点原因 | BFF办公方式原因 | BFF薪资原因;
+
+interface BFF维度解释骨架<维度 extends BFF匹配维度, 原因 extends BFF匹配原因> {
+  dimension: 维度;
+  status: BFF匹配状态;
+  points: number;
+  max_points: number;
+  reason_code: 原因;
+}
+
+export interface BFF方向维度解释 extends BFF维度解释骨架<'direction', BFF方向原因> {}
+export interface BFF经验维度解释 extends BFF维度解释骨架<'experience', BFF经验原因> {}
+export interface BFF地点维度解释 extends BFF维度解释骨架<'location', BFF地点原因> {}
+export interface BFF办公方式维度解释 extends BFF维度解释骨架<'workplace_mode', BFF办公方式原因> {}
+export interface BFF薪资维度解释 extends BFF维度解释骨架<'compensation', BFF薪资原因> {}
+/** 仅技能维度携带 matched_count/required_count（0≤matched≤required 的整数）；其他维度出现即漂移。 */
+export interface BFF技能维度解释 extends BFF维度解释骨架<'skills', BFF技能原因> {
+  matched_count: number;
+  required_count: number;
+}
+
+export type BFF匹配维度解释 =
+  | BFF方向维度解释 | BFF技能维度解释 | BFF经验维度解释
+  | BFF地点维度解释 | BFF办公方式维度解释 | BFF薪资维度解释;
+
+export interface BFF匹配解释 {
+  schema_version: 'match-explanation.v1';
+  ranking_version: 'discovery-ranking.v2';
+  basis: 'batch_snapshot';
+  total_points: number;
+  max_points: 100;
+  /** 恰六项、固定顺序 direction/skills/experience/location/workplace_mode/compensation。 */
+  dimensions: [
+    BFF方向维度解释,
+    BFF技能维度解释,
+    BFF经验维度解释,
+    BFF地点维度解释,
+    BFF办公方式维度解释,
+    BFF薪资维度解释,
+  ];
+}
+
 // ── 发现推荐域 DTO（P4：job-recommendations / candidate-recommendations / 双端委托）──
 // 字段名与闭合 enum 逐项复制自 mobile-v1 OpenAPI 的 Discovery* 家族；
 // exact key set、rank/score 边界与条件可空由 招聘数据源/发现推荐.ts 的 decoder 校验。
@@ -605,6 +682,8 @@ export interface BFF候选岗位推荐 {
   structured_requirements_confirmed: boolean;
   job: BFFCandidateJob;
   delegation: BFF委托摘要 | null;
+  /** include=match_explanation 展开时出现（批次解释对象或显式 null）；默认列表没有该键。 */
+  match_explanation?: BFF匹配解释 | null;
 }
 
 export interface BFF招聘候选教育 {
@@ -649,6 +728,8 @@ export interface BFF招聘候选推荐 {
   delegation: BFF委托摘要 | null;
   /** include=candidate_summary 展开时出现（闭合对象或显式 null）；默认详情响应没有该键。 */
   candidate_summary?: BFF招聘候选摘要 | null;
+  /** include=match_explanation 展开时出现（批次解释对象或显式 null）；列表与详情各按自己的请求展开。 */
+  match_explanation?: BFF匹配解释 | null;
 }
 
 // ── 双端展示资料域 DTO（release/0.2.5 展示字段：JobOrganizationSummary / SafeJobDetail /
@@ -958,6 +1039,8 @@ export interface BFF招聘工作区项 {
   candidate_identity: BFF候选身份;
   /** include=candidate_summary 展开时出现（闭合对象或显式 null）；历史行没有该键。 */
   candidate_summary?: BFF招聘候选摘要 | null;
+  /** include=match_explanation 展开时出现（在谈与历史行都可携带；对象或显式 null）。 */
+  match_explanation?: BFF匹配解释 | null;
 }
 export interface BFF候选工作区页 { items: BFF候选工作区项[]; next_cursor: string | null }
 export interface BFF招聘工作区页 { items: BFF招聘工作区项[]; next_cursor: string | null }
@@ -1146,6 +1229,8 @@ export interface BFF候选MatchCase详情 extends BFFMatchCase连续块 {
    * 招聘数据源/MatchCase.ts 的 decoder 校验。
    */
   conversation_ref?: string;
+  /** include=match_explanation 展开时出现：本查看者对同一 match_score 的六维解释或显式 null。 */
+  match_explanation?: BFF匹配解释 | null;
 }
 export interface BFF招聘MatchCase详情 extends BFFMatchCase连续块 {
   state: BFFMatchCase视图;
@@ -1167,6 +1252,8 @@ export interface BFF招聘MatchCase详情 extends BFFMatchCase连续块 {
   candidate_identity: BFF候选身份;
   /** P7 Task 6：同 BFF候选MatchCase详情.conversation_ref。 */
   conversation_ref?: string;
+  /** include=match_explanation 展开时出现：同 BFF候选MatchCase详情.match_explanation。 */
+  match_explanation?: BFF匹配解释 | null;
 }
 
 // ── P7 真人会话域 wire DTO（双端 /api/v1/{me|recruiter}/conversations 家族）──

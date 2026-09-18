@@ -27,6 +27,7 @@ import type {
   BFF候选岗位推荐,
   BFF招聘候选推荐,
   BFF招聘候选摘要,
+  BFF匹配解释,
   BFFMatchCase视图,
   BFFMatchCase工作区职位,
   BFFMatchCase阶段区,
@@ -675,6 +676,46 @@ export const 招聘候选摘要样本: BFF招聘候选摘要 = {
   latest_experience: { company: '示例公司', title: '软件工程师' },
   latest_education: { institution: '示例大学', major: '计算机科学' },
   personal_highlights: ['带领5人团队交付'],
+};
+
+// ── 匹配解释（include=match_explanation 展开对象，冻结 C1 六维合同）──
+// 两个合法基线：测试用对象展开破坏单字段，保持其余五维与分项和自洽。
+
+/** 合法基线（对齐 mobile-v1 OpenAPI 示例）：总分 50 = 25+0+15+10+0+0。 */
+export const BFF匹配解释样本: BFF匹配解释 = {
+  schema_version: 'match-explanation.v1',
+  ranking_version: 'discovery-ranking.v2',
+  basis: 'batch_snapshot',
+  total_points: 50,
+  max_points: 100,
+  dimensions: [
+    { dimension: 'direction', status: 'matched', points: 25, max_points: 25, reason_code: 'category_matched' },
+    {
+      dimension: 'skills', status: 'unknown', points: 0, max_points: 35,
+      reason_code: 'candidate_skills_missing', matched_count: 0, required_count: 2,
+    },
+    { dimension: 'experience', status: 'matched', points: 15, max_points: 15, reason_code: 'experience_met' },
+    { dimension: 'location', status: 'matched', points: 10, max_points: 10, reason_code: 'location_matched' },
+    { dimension: 'workplace_mode', status: 'unknown', points: 0, max_points: 5, reason_code: 'candidate_workplace_modes_missing' },
+    { dimension: 'compensation', status: 'unknown', points: 0, max_points: 10, reason_code: 'compensation_negotiable' },
+  ],
+};
+
+/** 冻结反例基线：1/100 命中 floor 后 0 分仍为部分匹配；总分 65 = 25+0+15+10+5+10。 */
+export const BFF技能部分命中零分解释样本: BFF匹配解释 = {
+  ...BFF匹配解释样本,
+  total_points: 65,
+  dimensions: [
+    { dimension: 'direction', status: 'matched', points: 25, max_points: 25, reason_code: 'category_matched' },
+    {
+      dimension: 'skills', status: 'partially_matched', points: 0, max_points: 35,
+      reason_code: 'partial_keyword_overlap', matched_count: 1, required_count: 100,
+    },
+    { dimension: 'experience', status: 'matched', points: 15, max_points: 15, reason_code: 'experience_met' },
+    { dimension: 'location', status: 'matched', points: 10, max_points: 10, reason_code: 'location_matched' },
+    { dimension: 'workplace_mode', status: 'matched', points: 5, max_points: 5, reason_code: 'workplace_mode_matched' },
+    { dimension: 'compensation', status: 'matched', points: 10, max_points: 10, reason_code: 'compensation_overlap' },
+  ],
 };
 
 // ── Onboarding（stg 契约对齐 2026-09-14，Spec §4）──
