@@ -23,9 +23,10 @@
 //     同目标在飞不并发）：候选 callback 调 刷新连续列表('active')，招聘调 刷新工作区；
 //     本组件不持任何节拍。
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import 样式 from './MatchCase列表.module.css';
 import { 骨架卡组 } from '../../组件/通用';
+import 分析弹层 from '../../组件/分析弹层';
 import 招聘在谈卡 from '../../组件/列表卡片/招聘在谈卡';
 import 求职在谈卡 from '../../组件/列表卡片/求职在谈卡';
 import { use应用状态 } from '../../状态/应用状态';
@@ -35,6 +36,7 @@ import { 从招聘摘要到卡信息, 从P5到阶段, 从连续到阶段 } from 
 import { 映射连续列表项 } from '../../数据/连续代谈展示映射';
 import { 映射P5列表项, P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
+import type { 匹配分析模型 } from '../../数据/匹配解释展示映射';
 import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import { useMatchCase轮询 } from '../../状态/后端/useMatchCase轮询';
 import type { P5连续列表快照, P5列表快照 } from '../../状态/后端/类型';
@@ -56,6 +58,9 @@ function 候选连续在谈() {
   const { 后端状态, 操作 } = use应用状态();
   const { 跳转 } = use导航();
   const scope键 = P5范围键.negotiations('active');
+  // Task 6（承接义务 1 / Spec §3.1–3.2）：分析弹层的 page-local 选中记录 ID —— 只存
+  // canonical record_id，模型每渲染从当前权威快照重查，绝不闭包缓存旧记录对象。
+  const [分析记录编号, 设分析记录编号] = useState<string | null>(null);
   // 只选当前主体自己的快照：owner 不匹配（同角色换主体的过渡帧）按不存在处理
   const 当前SubjectId = 后端状态.主体?.last_used_role === 'candidate'
     ? 后端状态.主体.subject_id
@@ -71,6 +76,11 @@ function 候选连续在谈() {
     void 操作.加载连续列表('active').catch(() => undefined);
     return () => 操作.设置P5范围('candidate', null);
   }, [当前SubjectId, scope键, 操作]);
+
+  // Spec §3.1：换主体（scope 变化）时关闭旧分析弹层
+  useEffect(() => {
+    设分析记录编号(null);
+  }, [当前SubjectId]);
 
   // 可见 5 秒列表节拍（spec §5：复用既有 hook 的 callback 调 刷新连续列表，不新增永久
   // timer）：刷新从首屏重建已载窗口；隐藏当拍跳过、卸载即停、单拍失败吞掉（错误态由
@@ -95,6 +105,24 @@ function 候选连续在谈() {
   const 重试首载 = () => void 操作.加载连续列表('active', true).catch(() => undefined);
   const 重读窗口 = () => void 操作.刷新连续列表('active').catch(() => undefined);
   const 追加一页 = () => void 操作.追加连续列表('active').catch(() => undefined);
+
+  // Task 6（Spec §3.1–3.2）：弹层模型与岗位上下文 = 选中 ID 在当前权威快照里的那一行
+  // 已返回数据（分数/解释/有限依据/岗位名·公司），零网络补读；切 scope 后旧 ID 查不到
+  // → 弹层自动消失。
+  const 分析视图 = 分析记录编号 === null
+    ? null
+    : 视图们.find((视图) => 视图.recordId === 分析记录编号) ?? null;
+  const 分析模型: 匹配分析模型 | null = 分析视图 === null ? null : {
+    分数: 分析视图.匹配分,
+    解释: 分析视图.匹配解释 ?? null,
+    有限依据: [],
+    上下文: '有来源',
+  };
+  const 分析上下文 = 分析视图 === null
+    ? null
+    : [分析视图.职位名, 分析视图.公司]
+      .filter((段): 段 is string => 段 !== null && 段.trim() !== '')
+      .join(' · ') || null;
 
   return (
     <div className={样式.列表}>
@@ -128,6 +156,7 @@ function 候选连续在谈() {
               // 候选卡（2026-09-10 卡片统一）：与 Mock 在谈单同一张 求职在谈卡。
               // release/0.2.5：公司三件套/字标/Logo/匹配分/标签行都来自卡上已 decode 的
               // job.organization 与 match_score（映射层权威投影，无权威值 → 未知占位）。
+              // Task 6（C3/Spec §3.1）：匹配分环变独立「查看匹配分析」入口，点击只开弹层。
               <求职在谈卡
                 key={视图.recordId}
                 公司={视图.公司}
@@ -140,6 +169,7 @@ function 候选连续在谈() {
                 标签={视图.标签们}
                 阶段={从连续到阶段(视图)}
                 打开={() => 跳转(路径.在谈详情(视图.recordId))}
+                查看匹配分析={() => 设分析记录编号(视图.recordId)}
               />
             ))
           )}
@@ -152,6 +182,16 @@ function 候选连续在谈() {
           ) : null}
         </>
       )}
+
+      {/* Task 6（承接义务 1/2，Spec §3.2）：共享 分析弹层（可见关闭键 + 岗位上下文 +
+          匹配分析块藏环文本总分）。关闭只清选中 ID，零请求。 */}
+      {分析模型 !== null ? (
+        <分析弹层
+          模型={分析模型}
+          岗位上下文={分析上下文}
+          关闭={() => 设分析记录编号(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -161,6 +201,9 @@ function 候选连续在谈() {
 function Case在谈列表({ role, filterRef }: { role: P5角色; filterRef: string | null }) {
   const { 后端状态, 操作 } = use应用状态();
   const { 跳转 } = use导航();
+
+  // Task 6（承接义务 1 / Spec §3.1–3.2）：分析弹层的 page-local 选中记录 ID（同候选分支口径）
+  const [分析记录编号, 设分析记录编号] = useState<string | null>(null);
 
   // 只选当前 role+过滤 自己的快照：键按 scope 隔离，切换时旧 scope 数据天然进不来；
   // owner 与当前主体不匹配（同角色换主体的过渡帧）时按不存在处理，绝不渲染旧主体 items
@@ -177,6 +220,11 @@ function Case在谈列表({ role, filterRef }: { role: P5角色; filterRef: stri
     void 操作.加载工作区(role, filterRef).catch(() => undefined);
     return () => 操作.设置P5范围(role, null);
   }, [当前SubjectId, role, filterRef, scope键, 操作]);
+
+  // Spec §3.1：换 role/过滤（scope 变化）时关闭旧分析弹层
+  useEffect(() => {
+    设分析记录编号(null);
+  }, [role, filterRef]);
 
   // 可见 5 秒列表节拍（spec §10.3）：刷新已载窗口；隐藏当拍跳过、卸载即停、
   // 单拍失败吞掉（错误态由快照承载，页面给重试）—— 都在钩子内实现。
@@ -204,6 +252,21 @@ function Case在谈列表({ role, filterRef }: { role: P5角色; filterRef: stri
   const 重试首载 = () => void 操作.加载工作区(role, filterRef, true).catch(() => undefined);
   const 重读窗口 = () => void 操作.刷新工作区(role, filterRef).catch(() => undefined);
   const 追加一页 = () => void 操作.追加工作区(role, filterRef).catch(() => undefined);
+
+  // Task 6（Spec §3.1–3.2）：弹层模型与岗位上下文 = 选中 Case 在当前权威快照里的那一行
+  // 已返回数据（recruiter 行的 匹配分/匹配解释 与职位名），零网络补读；切 scope 后查不到即消失。
+  const 分析视图 = 分析记录编号 === null
+    ? null
+    : 视图们.find((视图) => 视图.kind === '正常' && 视图.caseId === 分析记录编号) ?? null;
+  const 分析模型: 匹配分析模型 | null = 分析视图 === null || 分析视图.kind !== '正常' ? null : {
+    分数: 分析视图.匹配分,
+    解释: 分析视图.匹配解释 ?? null,
+    有限依据: [],
+    上下文: '有来源',
+  };
+  const 分析上下文 = 分析视图 === null || 分析视图.kind !== '正常'
+    ? null
+    : 分析视图.职位.职位名;
 
   return (
     <div className={样式.列表}>
@@ -244,12 +307,14 @@ function Case在谈列表({ role, filterRef }: { role: P5角色; filterRef: stri
                 // （release/0.2.5：无溯源为 null，走未知占位），阶段/待办徽标/注意说明经 从P5到阶段
                 // 投影进卡底阶段区；candidate_identity 只留在数据域，不向卡面出姓名头像；
                 // 别名/通用匿名头像/冻结职位事实段退场（候选卡面见 候选连续在谈），Case 跳转坐标不变。
+                // Task 6（C3/Spec §3.1）：匹配分环变独立「查看匹配分析」入口，点击只开弹层。
                 <招聘在谈卡
                   key={视图.caseId}
                   信息={从招聘摘要到卡信息(视图.候选摘要 ?? null)}
                   匹配分={视图.匹配分}
                   阶段={从P5到阶段(视图)}
                   打开={() => 跳转(路径.候选详情(视图.caseId))}
+                  查看匹配分析={() => 设分析记录编号(视图.caseId)}
                 />
               ),
             )
@@ -263,6 +328,15 @@ function Case在谈列表({ role, filterRef }: { role: P5角色; filterRef: stri
           ) : null}
         </>
       )}
+
+      {/* Task 6（承接义务 1/2，Spec §3.2）：共享 分析弹层。关闭只清选中 ID，零请求。 */}
+      {分析模型 !== null ? (
+        <分析弹层
+          模型={分析模型}
+          岗位上下文={分析上下文}
+          关闭={() => 设分析记录编号(null)}
+        />
+      ) : null}
     </div>
   );
 }

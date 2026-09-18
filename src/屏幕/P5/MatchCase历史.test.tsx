@@ -20,11 +20,12 @@ import { P5范围键 } from '../../状态/后端/MatchCase操作';
 import type { P5连续列表快照, P5列表快照 } from '../../状态/后端/类型';
 import type { P5列表项, P5历史生命周期, P5状态视图 } from '../../数据/招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationShelf } from '../../数据/招聘数据源/连续代谈';
+import type { BFF匹配解释 } from '../../数据/BFF契约';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import type { P5角色 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import { 归档列表初始 } from '../../测试/P5Mock边界种子';
-import { BFF主体样本 } from '../../测试/BFF样本';
+import { BFF主体样本, BFF匹配解释87分样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
 
 const mock派发 = vi.fn();
 const mock跳转 = vi.fn();
@@ -72,6 +73,8 @@ interface 连续行选项 {
   refusalCode?: NegotiationCard['refusal_code'];
   actions?: Partial<NegotiationCard['actions']>;
   职位名?: string;
+  匹配分?: number | null;
+  匹配解释?: NegotiationCard['匹配解释'];
 }
 
 function 连续行(选项: 连续行选项): NegotiationCard {
@@ -104,7 +107,8 @@ function 连续行(选项: 连续行选项): NegotiationCard {
     actions: { retry: false, archive: false, open_case: false, ...选项.actions },
     retry_generation: 0,
     created_at: '2026-08-20T01:00:00Z', updated_at: '2026-08-29T02:00:00Z', archived_at: '2026-08-29T03:00:00Z',
-    match_score: null,
+    match_score: 选项.匹配分 ?? null,
+    ...(选项.匹配解释 === undefined ? {} : { 匹配解释: 选项.匹配解释 }),
   };
 }
 
@@ -189,15 +193,16 @@ function 候选终局行(选项: 行选项): P5列表项 {
   };
 }
 
-function 招聘终局行(选项: 行选项): P5列表项 {
+function 招聘终局行(选项: 行选项 & { 匹配分?: number | null; 匹配解释?: BFF匹配解释 | null }): P5列表项 {
   return {
     role: 'recruiter',
     state: 终局行状态(选项),
     needsAction: false,
     candidateAlias: 别名,
     job: 候选终局行(选项).job,
-    matchScore: null,
+    matchScore: 选项.匹配分 ?? null,
     candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
+    ...(选项.匹配解释 === undefined ? {} : { 匹配解释: 选项.匹配解释 }),
   };
 }
 
@@ -709,5 +714,57 @@ describe('归档谈判 / 企业归档 · P5 Backend 分支', () => {
     expect(mock加载连续列表).not.toHaveBeenCalled();
     expect(mock追加连续列表).not.toHaveBeenCalled();
     expect(mock刷新连续列表).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 6（Spec §3.6 冻结）：历史架子不加任何评分 UI 或分析入口 —— 行上有分/有解释
+// 也不出现「查看匹配分析」；详情自己的响应展示分析（列表绝不携带别条记录的解释补齐）。──
+describe('MatchCase历史 · 历史架子不加评分入口（Spec §3.6）', () => {
+  beforeEach(() => {
+    mock设置P5范围.mockClear();
+    mock加载历史.mockClear();
+    mock追加历史.mockClear();
+    mock刷新历史.mockClear();
+    mock加载连续列表.mockClear();
+    mock追加连续列表.mockClear();
+    mock刷新连续列表.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('候选历史行有分有解释也不出现分析入口（圆环原样不可点）', () => {
+    置候选历史状态({
+      连续快照: 连续快照({
+        items: [
+          连续行({
+            recordId: 'mc_h1', phase: 'case_started', shelf: 'history',
+            caseState: 终局状态('ended', 'mc_h1'),
+            匹配分: 87, 匹配解释: BFF匹配解释87分样本,
+          }),
+        ],
+      }),
+    });
+    render(历史元素('candidate'));
+    expect(screen.getByText('平台工程师')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
+  it('招聘双架子行有分有解释同样零入口', () => {
+    置历史状态({
+      role: 'recruiter',
+      completed快照: 快照({
+        items: [招聘终局行({ caseId: 'mc_c1', lifecycle: 'completed', 匹配分: 92, 匹配解释: BFF匹配解释92分样本 })],
+      }),
+      ended快照: 快照({
+        items: [招聘终局行({ caseId: 'mc_e1', lifecycle: 'ended', 匹配分: 87, 匹配解释: null })],
+      }),
+    });
+    render(历史元素('recruiter'));
+    expect(screen.getAllByText('平台工程师').length).toBe(2);
+    expect(screen.queryByRole('button', { name: '查看匹配分析' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
   });
 });

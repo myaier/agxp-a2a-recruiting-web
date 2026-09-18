@@ -11,7 +11,7 @@
 // 测试宿主：mock 应用状态 / 导航钩子（同 候选推荐.test.tsx 惯例）。
 // 注：仓库未装 @testing-library/jest-dom，用 toBeTruthy / queryBy* 缺席断言为 null。
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatchCase列表 } from './MatchCase列表';
@@ -22,11 +22,11 @@ import type { P5连续列表快照, P5列表快照 } from '../../状态/后端/�
 import type { P5列表项 } from '../../数据/招聘数据源/MatchCase';
 import type { P5状态视图 } from '../../数据/招聘数据源/MatchCase';
 import type { NegotiationCard, NegotiationShelf } from '../../数据/招聘数据源/连续代谈';
-import type { BFF招聘候选摘要 } from '../../数据/BFF契约';
+import type { BFF招聘候选摘要, BFF匹配解释 } from '../../数据/BFF契约';
 import { P5契约错误提示 } from '../../数据/MatchCase展示映射';
 import { 路径 } from '../../路由/路径表';
 import { 在谈列表, 在招岗位列表, 在谈候选列表 } from '../../测试/P5Mock边界种子';
-import { BFF主体样本, 招聘候选摘要样本 } from '../../测试/BFF样本';
+import { BFF主体样本, 招聘候选摘要样本, BFF匹配解释87分样本, BFF匹配解释92分样本 } from '../../测试/BFF样本';
 import { BFF公司摘要样本 } from '../../测试/展示资料样本';
 
 const mock派发 = vi.fn();
@@ -92,6 +92,7 @@ function 连续卡(选项: {
   办公方式?: NegotiationCard['job']['workplace_mode'];
   薪资月数?: number | null;
   匹配分?: number | null;
+  匹配解释?: NegotiationCard['匹配解释'];
 }): NegotiationCard {
   const recordKind = 选项.recordId.startsWith('dlg_') ? 'delegation' : 'case';
   return {
@@ -122,6 +123,7 @@ function 连续卡(选项: {
     actions: { retry: false, archive: false, open_case: false },
     retry_generation: 0,
     match_score: 选项.匹配分 ?? null,
+    ...(选项.匹配解释 === undefined ? {} : { 匹配解释: 选项.匹配解释 }),
     created_at: '2026-09-01T08:00:00Z',
     updated_at: '2026-09-01T09:00:00Z',
     archived_at: null,
@@ -182,7 +184,7 @@ function 候选行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
   };
 }
 
-function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: string; 别名?: string; 摘要?: BFF招聘候选摘要 | null; 匹配分?: number | null }): Extract<P5列表项, { role: 'recruiter' }> {
+function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: string; 别名?: string; 摘要?: BFF招聘候选摘要 | null; 匹配分?: number | null; 匹配解释?: BFF匹配解释 | null }): Extract<P5列表项, { role: 'recruiter' }> {
   return {
     role: 'recruiter',
     state: {
@@ -194,6 +196,7 @@ function 招聘行(选项: { caseId: string; 待办?: boolean; 更新于?: strin
     matchScore: 选项.匹配分 ?? null,
     candidateIdentity: { state: 'anonymous', name: null, avatar_url: null, disclosed_at: null },
     ...(选项.摘要 === undefined ? {} : { candidateSummary: 选项.摘要 }),
+    ...(选项.匹配解释 === undefined ? {} : { 匹配解释: 选项.匹配解释 }),
   };
 }
 
@@ -1243,5 +1246,156 @@ describe('候选连续在谈 · 刷新失败的错误与重试', () => {
     });
     render(<在谈首页 />);
     expect(screen.queryByText('在谈暂时加载不了')).toBeNull();
+  });
+});
+// ── Task 6（承接义务 1 / Spec §3.1–3.2）：在谈两架的分数环变独立可点入口，打开该行
+// 已返回解释的行内弹层（共享 分析弹层：可见关闭键 + 岗位上下文行 + 文本总分 + 六维行）；
+// 打开零网络补读、点击不透传导航；换 scope/主体关闭旧弹层。──
+describe('MatchCase列表 · 匹配分析弹层（Backend）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock设置P5范围.mockClear();
+    mock加载工作区.mockClear();
+    mock追加工作区.mockClear();
+    mock刷新工作区.mockClear();
+    mock加载连续列表.mockClear();
+    mock追加连续列表.mockClear();
+    mock刷新连续列表.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('候选在谈：环变按钮只开弹层（岗位上下文 + 文本总分 + 六维行），零请求零导航', async () => {
+    const user = userEvent.setup();
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [
+          连续卡({
+            recordId: 'dlg_1', phase: 'accepted', 匹配分: 87,
+            组织: { organization_id: null, display_name: '云衢科技', industry: null, company_size: null, funding_stage: null, logo: null },
+            匹配解释: BFF匹配解释87分样本,
+          }),
+        ],
+      }),
+    });
+    const 首载请求数 = mock加载连续列表.mock.calls.length;
+    render(列表元素('candidate', null));
+    const 打开前请求数 = mock加载连续列表.mock.calls.length;
+    expect(打开前请求数).toBeGreaterThanOrEqual(首载请求数);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(within(弹层).getByText('AI 产品实习生 · 云衢科技')).toBeTruthy();
+    expect(弹层.textContent).toContain('87 分');
+    expect(within(弹层).getByText('推荐生成时的匹配结果')).toBeTruthy();
+    expect(within(弹层).getByText('命中11/12个岗位关键词')).toBeTruthy();
+    expect(within(弹层).queryByRole('img', { name: /适配/ })).toBeNull();
+    // 打开零网络补读（计数与打开前一致）+ 卡片导航未被触发
+    expect(mock加载连续列表.mock.calls.length).toBe(打开前请求数);
+    expect(mock跳转).not.toHaveBeenCalled();
+    // 可见关闭键收弹层
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
+  it('候选在谈：解释显式 null → 缺失说明 + 无六行；刷新替换权威值后弹层跟随新值', async () => {
+    const user = userEvent.setup();
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [连续卡({ recordId: 'dlg_1', phase: 'accepted', 匹配分: 87, 匹配解释: null })],
+      }),
+    });
+    const 页 = render(列表元素('candidate', null));
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(within(screen.getByRole('dialog', { name: '匹配度分析' })).getByText('暂无该次匹配的详细分析')).toBeTruthy();
+    页.unmount();
+
+    // 轮询/刷新整组替换：同记录解释落地 → 弹层用新权威值，绝不见旧缺失
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [连续卡({ recordId: 'dlg_1', phase: 'accepted', 匹配分: 92, 匹配解释: BFF匹配解释92分样本 })],
+      }),
+    });
+    const 页2 = render(列表元素('candidate', null));
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层2 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(弹层2.textContent).toContain('92 分');
+    expect(within(弹层2).queryByText('暂无该次匹配的详细分析')).toBeNull();
+    页2.unmount();
+  });
+
+  it('候选在谈：换主体（scope 切换）关闭旧弹层，旧解释不跨主体残留', async () => {
+    const user = userEvent.setup();
+    置P5状态({
+      role: 'candidate', filterRef: null,
+      连续快照: 连续快照({
+        items: [连续卡({ recordId: 'dlg_1', phase: 'accepted', 匹配分: 87, 匹配解释: BFF匹配解释87分样本 })],
+      }),
+    });
+    const 页 = render(列表元素('candidate', null));
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    // 主体换代：scope effect 清选中 ID，弹层关闭
+    mock应用状态.后端状态.主体 = { ...BFF主体样本, subject_id: 'sub_2', last_used_role: 'candidate' };
+    页.rerender(列表元素('candidate', null));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
+  it('招聘在谈：环变按钮开弹层（该行 87 分 + 六维行），换过滤 scope 关闭旧弹层', async () => {
+    const user = userEvent.setup();
+    置P5状态({
+      role: 'recruiter', filterRef: null,
+      快照: 快照({
+        items: [招聘行({ caseId: 'mc_1', 匹配分: 87, 匹配解释: BFF匹配解释87分样本 })],
+      }),
+    });
+    const 页 = render(列表元素('recruiter', null));
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    expect(within(弹层).getByText('AI 产品实习生')).toBeTruthy();
+    expect(弹层.textContent).toContain('87 分');
+    expect(within(弹层).getByText('薪资范围不匹配')).toBeTruthy();
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+
+    // 换过滤 scope：旧弹层不残留
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    expect(screen.getByRole('dialog', { name: '匹配度分析' })).toBeTruthy();
+    页.rerender(列表元素('recruiter', 意向ID));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+});
+
+describe('MatchCase列表 · §8 资料配套（Task 6）', () => {
+  beforeEach(() => {
+    mock派发.mockClear();
+    mock跳转.mockClear();
+    mock设置P5范围.mockClear();
+    mock加载工作区.mockClear();
+    mock追加工作区.mockClear();
+    mock刷新工作区.mockClear();
+    mock加载连续列表.mockClear();
+    mock追加连续列表.mockClear();
+    mock刷新连续列表.mockClear();
+  });
+
+  it('§8：摘要 personal_highlights 合法空 → 卡面不出任何编造亮点（空占位不变）', () => {
+    置P5状态({
+      role: 'recruiter', filterRef: null,
+      快照: 快照({
+        items: [招聘行({
+          caseId: 'mc_1',
+          摘要: { ...招聘候选摘要样本, personal_highlights: [] },
+        })],
+      }),
+    });
+    render(列表元素('recruiter', null));
+    expect(screen.queryByText('带领5人团队交付')).toBeNull();
+    expect(screen.getByText('亮点信息未知')).toBeTruthy(); // 既有空占位口径不变
   });
 });

@@ -239,18 +239,5 @@
 
 
 
-/* ── Task 5：匹配分析弹层面板（复用本页 .遮罩/.抓手；面板与原因层同款视觉语汇，
-    内容 = 匹配分析块（藏环文本总分），长内容在面板内滚动。 ── */
-.分析层 {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 61;
-  background: var(--白);
-  border-radius: 22px 22px 0 0;
-  padding: 10px 20px calc(max(var(--安全区下), 20px) + 12px);
-  max-height: 72%;
-  overflow-y: auto;
-  animation: 抽屉升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
+/* （Task 5 的 匹配分析弹层面板 .分析层 已随共享 组件/分析弹层 收拢删除；
+   本页 .遮罩/.抓手 仍被 不合适原因层 消费。） */

@@ -1,0 +1,90 @@
+/* 分析弹层（承接义务 1/2，Spec §3.2）：四个列表消费者的共享弹层版式。
+   视觉语汇沿用 Task 5 各屏的既有分析层（遮罩淡入 / 抽屉升起 / 圆角抓手），
+   集中到组件自有 module 后删除各屏的重复副本；长内容在面板内滚动，
+   关闭键恒在头部行右缘（内容滚动也保持可达）。 */
+
+.遮罩 {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: var(--遮罩);
+  animation: 遮罩淡入 0.18s ease-out both;
+}
+
+.层 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  background: var(--白);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 20px calc(max(var(--安全区下), 20px) + 12px);
+  max-height: 72%;
+  overflow-y: auto;
+  animation: 层升起 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+.抓手 {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--描边深);
+  margin: 0 auto 6px;
+}
+
+/* 头部行：当前记录岗位上下文（左）+ 可见关闭键（右缘）。 */
+.头行 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.上下文 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--次要);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.关闭键 {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin-right: -8px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--浅灰底);
+  color: var(--次要);
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes 遮罩淡入 {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes 层升起 {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

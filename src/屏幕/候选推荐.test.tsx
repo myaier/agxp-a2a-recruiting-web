@@ -1408,6 +1408,24 @@ describe('候选推荐 · 匹配分析弹层（Backend）', () => {
     expect(screen.getByRole('button', { name: '取消收藏' })).toBeTruthy();
   });
 
+  // 承接义务 1（Spec §3.2）：共享 分析弹层 的可见关闭键 + 该行岗位上下文行
+  it('弹层头部有可见关闭键与该行岗位上下文（当前岗位名），关闭只收弹层', async () => {
+    const user = userEvent.setup();
+    置P4状态({
+      快照: P4快照({
+        阶段: '成功',
+        items: [{ ...BFF招聘候选推荐样本, match_explanation: BFF匹配解释87分样本 }],
+      }),
+    });
+    render(<候选推荐 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    // 岗位上下文 = 该列表当前岗位名（页面已返回数据，零补读）
+    expect(within(弹层).getByText('AI 产品实习生')).toBeTruthy();
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
+
   it('换岗位（scope 切换）关闭旧弹层；Mock 列表不出现分析入口', async () => {
     const user = userEvent.setup();
     置P4状态({

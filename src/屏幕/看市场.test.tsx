@@ -1783,4 +1783,18 @@ describe('看市场 · 匹配分析弹层（Backend）', () => {
     expect(screen.getByRole('dialog', { name: '匹配度分析' }).textContent).not.toContain('92 分');
     页.unmount();
   });
+
+  // 承接义务 1（Spec §3.2）：弹层头部可见关闭按钮 + 当前记录岗位上下文行（该行已返回数据）
+  it('弹层头部有可见关闭按钮与该行岗位上下文行（职位 · 公司），关闭只收弹层', async () => {
+    const user = userEvent.setup();
+    置P4候选状态([{ ...BFF候选岗位推荐样本, match_explanation: BFF匹配解释92分样本 }]);
+    render(<看市场 />);
+    await user.click(screen.getByRole('button', { name: '查看匹配分析' }));
+    const 弹层 = screen.getByRole('dialog', { name: '匹配度分析' });
+    // 岗位上下文 = 该行已返回的 职位名 · 公司（零网络补读）
+    expect(within(弹层).getByText('AI 产品实习生 · 云衢科技')).toBeTruthy();
+    // 可见关闭键（可访问名「关闭」，与遮罩「关闭匹配度分析」并存）
+    await user.click(within(弹层).getByRole('button', { name: '关闭' }));
+    expect(screen.queryByRole('dialog', { name: '匹配度分析' })).toBeNull();
+  });
 });
