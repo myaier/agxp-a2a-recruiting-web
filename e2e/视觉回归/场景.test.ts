@@ -50,7 +50,7 @@ const 预期ID = [
 
 describe('视觉场景清单', () => {
   // onboarding 与简历编辑（Task 5）：新增三个场景（日常基本信息编辑 / 共用状态编辑 /
-  // 招聘三级类别）；Task 10 再加十三个 match-explanation-* 场景 —— 26 → 39；
+  // 招聘三级类别）；Task 10 再加十二个 match-explanation-* 场景 —— 26 → 38；
   // 既有 P8 两场景、企业公开页与 chat-recommend-frontend 场景全部保留，不按旧固定数量覆盖。
   it('包含 38 个稳定且唯一的场景 ID', () => {
     expect(视觉场景们.map((场景) => 场景.id)).toEqual(预期ID);

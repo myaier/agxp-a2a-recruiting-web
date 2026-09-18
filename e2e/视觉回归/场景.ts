@@ -788,7 +788,6 @@ const 六维市场卡场景: 视觉场景 = {
     await expect(page.getByRole('button', { name: '查看匹配分析' }).first()).toBeVisible();
   },
   关键元素(page: Page): 关键元素描述[] {
-    const 卡 = page.locator('[data-testid="市场卡"], [class*="市场卡"]').first();
     return [
       { 名称: '首卡分析入口 查看匹配分析', 定位: page.getByRole('button', { name: '查看匹配分析' }).first() },
       { 名称: '首卡薪资', 定位: page.locator('[class*="薪资"]').first() },

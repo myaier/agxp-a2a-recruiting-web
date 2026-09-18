@@ -106,11 +106,9 @@ describe('从Mock到简历正文 / 从安全资料到简历正文 · 等价输�
     expect(Mock出.技能).toEqual(安全出.技能);
   });
 
-  it('来源独有事实各归各位：适配分/批注/一致性/项目日期只属于 Mock，安全槽恒空且不设页尾说明', () => {
+  it('来源独有事实各归各位：批注/一致性/项目日期只属于 Mock，安全槽恒空且不设页尾说明', () => {
     const Mock出 = Mock内容();
     const 安全出 = 安全内容(等价资料);
-    expect(Mock出.适配分).toBe(87);
-    expect(安全出.适配分).toBeNull();
     expect(Mock出.经历![0].批注).toBe('与岗位硬性条件吻合');
     expect(安全出.经历![0].批注).toBeNull();
     expect(Mock出.项目![0].起止).toBe('2022.03—2022.09');

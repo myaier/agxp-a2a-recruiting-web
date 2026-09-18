@@ -174,8 +174,6 @@ export interface 在线简历项目段内容 {
 /** 正文内容；null = 整份缺源档（各区原位显示缺失） */
 export interface 在线简历正文内容 {
   头区: 在线简历头区内容 | null;
-  /** 匹配对齐卡的分数槽：只有 Mock 档有；安全来源无分数证据，不画卡只按布局出缺失 */
-  适配分: number | null;
   自述: string | null;
   期望: 在线简历期望内容 | null;
   经历: 在线简历经历段内容[] | null;

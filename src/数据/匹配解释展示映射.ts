@@ -6,6 +6,12 @@
 // 解释缺席时返回 null，类型与运行时都不可能补出六条假状态。
 
 import type {
+  BFF方向原因,
+  BFF技能原因,
+  BFF经验原因,
+  BFF地点原因,
+  BFF办公方式原因,
+  BFF薪资原因,
   BFF匹配原因,
   BFF匹配状态,
   BFF匹配维度,
@@ -42,7 +48,7 @@ const 方向说明表 = {
   candidate_category_missing: '求职方向信息缺失',
   category_matched: '求职方向与岗位方向匹配',
   category_not_matched: '求职方向与岗位方向不匹配',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<BFF方向原因, string>;
 
 const 技能说明表 = {
   job_keywords_missing: '岗位关键词缺失',
@@ -50,28 +56,28 @@ const 技能说明表 = {
   no_keyword_overlap: '未命中岗位关键词',
   partial_keyword_overlap: '命中部分岗位关键词',
   all_keywords_matched: '已命中全部岗位关键词',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<BFF技能原因, string>;
 
 const 经验说明表 = {
   requirements_unconfirmed: '岗位经验要求尚未确认',
   candidate_experience_missing: '候选经验信息缺失',
   experience_met: '经验满足岗位要求',
   experience_not_met: '经验未满足岗位要求',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<BFF经验原因, string>;
 
 const 地点说明表 = {
   job_location_missing: '岗位地点信息缺失',
   candidate_locations_missing: '求职地点信息缺失',
   location_matched: '求职地点与岗位地点匹配',
   location_not_matched: '求职地点与岗位地点不匹配',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<BFF地点原因, string>;
 
 const 办公方式说明表 = {
   job_workplace_mode_missing: '岗位办公方式信息缺失',
   candidate_workplace_modes_missing: '求职办公方式信息缺失',
   workplace_mode_matched: '办公方式匹配',
   workplace_mode_not_matched: '办公方式不匹配',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<BFF办公方式原因, string>;
 
 const 薪资说明表 = {
   compensation_overlap: '薪资范围匹配',
@@ -83,7 +89,7 @@ const 薪资说明表 = {
   job_compensation_missing: '岗位薪资信息缺失',
   compensation_not_annualizable: '薪资缺少可比口径',
   compensation_type_unsupported: '当前薪资类型无法比较',
-} as const satisfies Record<string, string>;
+} as const satisfies Record<BFF薪资原因, string>;
 
 const 说明表: Readonly<Record<BFF匹配维度, Readonly<Record<string, string>>>> = {
   direction: 方向说明表,

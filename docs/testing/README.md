@@ -684,7 +684,8 @@ fixture 修复前 20 failed，断言迁移（URL 四坐标锚、include 矩阵�
 P1 Backend 消息层 12 例的归属更正（review 裁定 + 本轮清偿）：红始于**本分支**
 Task 5/6 接线引入的新请求形态 —— 会话页按会话 case_id 定向补读
 `GET /{me/negotiations|recruiter/match-cases}/{id}?include=…`（84fd3c11 的 src 无此
-形态，git grep 证实；P1 spec 84fd3c11→HEAD 逐行未变），Task 8 基线首次观测到红，
+形态，git grep 证实；红出现时点 P1 spec 84fd3c11 未变——非 spec 断言迁移所致，
+其后 P1 spec 的断言迁移见下文清偿段），Task 8 基线首次观测到红，
 并非存量基线债。清偿：P1 fixture 补声明该聚合详情坐标（按会话 case_id 给最小合法
 开案 wire，分数/解释显式 null；招聘侧 candidate_identity/jobDetail 支撑行资料映射），
 并把两处停在 viewer-safe 加载标签的旧行锚迁到落地资料锚（候选 '美团 · 招聘负责人'、
