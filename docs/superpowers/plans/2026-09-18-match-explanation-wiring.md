@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Claude Code 使用 superpowers:subagent-driven-development；Codex 使用 superpowers:executing-plans。必须实际调用，按下列 Task 依赖实施，不在规划会话执行。
 
-Revision：1。日期：2026-09-18。
+Revision：2。日期：2026-09-18。
 
 **Goal:** 保留上一轮 S0–S3、身份、在线简历、屏蔽接线，完成新版详情字段兼容、六维批次解释及全页面既有薪资字段统一。
 
@@ -52,7 +52,7 @@ input=null 直接返回 null（score 可以有值）；对象时 score 必须为
 |workplace_mode|job_workplace_mode_missing → U → 岗位办公方式信息缺失；candidate_workplace_modes_missing → U → 求职办公方式信息缺失；workplace_mode_matched → M → 办公方式匹配；workplace_mode_not_matched → N → 办公方式不匹配|
 |compensation|compensation_overlap → M → 薪资范围匹配；compensation_near_miss → P → 薪资范围接近；compensation_disjoint → N → 薪资范围不匹配；compensation_type_mismatch → U → 薪资周期不同，无法直接比较；compensation_negotiable → U → 薪资面议，尚未核对；candidate_compensation_missing → U → 求职薪资信息缺失；job_compensation_missing → U → 岗位薪资信息缺失；compensation_not_annualizable → U → 薪资缺少可比口径；compensation_type_unsupported → U → 当前薪资类型无法比较|
 
-严格复核后端已给数据的一致性，不从 JD/简历重新评分：matched 必为该维满分；unknown/not_matched 必为 0；部分匹配仅 skills/compensation，薪资部分匹配固定 5。skills 0≤matched≤required；job_keywords_missing 要求 required=matched=0；candidate_skills_missing/no_keyword_overlap 要求 required>0、matched=0；partial 要求 0<matched<required；all 要求 matched=required>0。仅校验已给 skills points 等于 required=0 时0，否则 floor(35*matched/required)，不是业务评分入口。反例：1/100 命中、0/35 分必须合法且仍为 P。未知 reason、错维度/状态、额外键均走现有 invalid_response，不降级为合法 null。
+严格复核后端已给数据的一致性，不从 JD/简历重新评分：matched 必为该维满分；unknown/not_matched 必为 0；部分匹配仅 skills/compensation，薪资部分匹配固定 5。skills 0≤matched≤required；job_keywords_missing 要求 required=matched=0；candidate_skills_missing/no_keyword_overlap 要求 required>0、matched=0；partial 要求 0<matched<required；all 要求 matched=required>0。仅校验已给 skills points 等于 required=0 时0，否则 floor(35*matched/required)，不是业务评分入口。此公式只允许留在冻结 v1 解码一致性校验内，不导出生成分数能力，展示始终使用返回的 points；版本变化走现有契约错误，不悄悄套新权重。反例：1/100 命中、0/35 分必须合法且仍为 P。未知 reason、错维度/状态、额外键均走现有 invalid_response，不降级为合法 null。
 
 ### C2. 读取与来源模式
 
@@ -196,7 +196,7 @@ npm test -- src/数据/招聘数据源/发现推荐.test.ts src/数据/招聘数
 **预期编辑文件：**
 
 - 新增：`src/组件/匹配分析块.test.tsx`。
-- 修改：`src/组件/匹配分析块.tsx`、`src/组件/匹配分析块.module.css`、`src/组件/匹配对齐卡.tsx`、`src/组件/招聘匹配依据.tsx`、`src/组件/列表卡片/求职推荐卡.tsx`、`src/组件/列表卡片/求职推荐卡.test.tsx`、`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/列表卡片/求职在谈卡.test.tsx`、`src/组件/列表卡片/招聘推荐卡.tsx`、`src/组件/列表卡片/招聘推荐卡.test.tsx`、`src/组件/列表卡片/招聘在谈卡.tsx`、`src/组件/列表卡片/招聘在谈卡.test.tsx`。
+- 修改：`src/组件/招聘匹配依据.test.tsx`、`src/组件/列表卡片/类型.ts`、`src/组件/列表卡片/招聘推荐卡.module.css`、`src/组件/列表卡片/招聘在谈卡.module.css`、`src/组件/列表卡片/求职在谈卡.module.css`、`src/屏幕/看市场.module.css`、`src/组件/匹配分析块.tsx`、`src/组件/匹配分析块.module.css`、`src/组件/匹配对齐卡.tsx`、`src/组件/招聘匹配依据.tsx`、`src/组件/列表卡片/求职推荐卡.tsx`、`src/组件/列表卡片/求职推荐卡.test.tsx`、`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/列表卡片/求职在谈卡.test.tsx`、`src/组件/列表卡片/招聘推荐卡.tsx`、`src/组件/列表卡片/招聘推荐卡.test.tsx`、`src/组件/列表卡片/招聘在谈卡.tsx`、`src/组件/列表卡片/招聘在谈卡.test.tsx`。
 - 删除：无预定文件；仅在证明旧实现无消费者后删除死代码，不删除历史文档。
 
 **依赖与接口：** 依赖2。实现 C3 模型/props 和可选卡片回调；适配旧消费者至后续Task迁移完成，不新建评分或弹层基础设施。
@@ -207,7 +207,7 @@ npm test -- src/数据/招聘数据源/发现推荐.test.ts src/数据/招聘数
 - [ ] 在上述已有测试或指定新测试中加入本 Task 失败反例，先运行下列命令；应因目标行为缺失失败，不能因路径/fixture无关损坏失败。
 
 ```bash
-npm test -- src/组件/匹配分析块.test.tsx src/组件/列表卡片/求职推荐卡.test.tsx src/组件/列表卡片/求职在谈卡.test.tsx src/组件/列表卡片/招聘推荐卡.test.tsx src/组件/列表卡片/招聘在谈卡.test.tsx --maxWorkers=2 --retry=0
+npm test -- src/组件/匹配分析块.test.tsx src/组件/列表卡片/求职推荐卡.test.tsx src/组件/列表卡片/求职在谈卡.test.tsx src/组件/列表卡片/招聘推荐卡.test.tsx src/组件/列表卡片/招聘在谈卡.test.tsx src/组件/招聘匹配依据.test.tsx --maxWorkers=2 --retry=0
 ```
 
 - [ ] 按本 Task 范围完成最小实现/断言迁移，保留未改行为的原测试；不通过宽松白名单、快照盲更新或吞错达成通过。
@@ -246,7 +246,7 @@ npm test -- src/屏幕/匿名在线简历.test.tsx src/屏幕/职位详情.test.
 **预期编辑文件：**
 
 - 新增：无。
-- 修改：`src/屏幕/P5/MatchCase列表.tsx`、`src/屏幕/P5/MatchCase列表.test.tsx`、`src/屏幕/P5/MatchCase历史.tsx`、`src/屏幕/P5/MatchCase历史.test.tsx`、`src/屏幕/P5/MatchCase详情.tsx`、`src/屏幕/详情控制/use后端详情控制.ts`、`src/屏幕/详情控制/use后端详情控制.test.tsx`、`src/屏幕/详情控制/后端正常详情.tsx`、`src/屏幕/详情控制/后端正常详情.test.tsx`、`src/组件/在谈详情/类型.ts`、`src/组件/在谈详情/职位资料.tsx`、`src/组件/在谈详情/职位资料.test.tsx`、`src/组件/在谈详情/在线简历正文.tsx`、`src/数据/详情展示映射.ts`、`src/数据/详情展示映射.test.ts`、`src/屏幕/P7/use真人会话资料.ts`、`src/屏幕/P7/use真人会话资料.test.tsx`、`src/屏幕/P7/Backend真人会话.tsx`、`src/屏幕/P7/Backend真人会话.test.tsx`、`src/组件/真人在线简历正文.tsx`。
+- 修改：`src/组件/在谈详情/在线简历正文.test.tsx`、`src/屏幕/P5/MatchCase列表.tsx`、`src/屏幕/P5/MatchCase列表.test.tsx`、`src/屏幕/P5/MatchCase历史.tsx`、`src/屏幕/P5/MatchCase历史.test.tsx`、`src/屏幕/P5/MatchCase详情.tsx`、`src/屏幕/详情控制/use后端详情控制.ts`、`src/屏幕/详情控制/use后端详情控制.test.tsx`、`src/屏幕/详情控制/后端正常详情.tsx`、`src/屏幕/详情控制/后端正常详情.test.tsx`、`src/组件/在谈详情/类型.ts`、`src/组件/在谈详情/职位资料.tsx`、`src/组件/在谈详情/职位资料.test.tsx`、`src/组件/在谈详情/在线简历正文.tsx`、`src/数据/详情展示映射.ts`、`src/数据/详情展示映射.test.ts`、`src/屏幕/P7/use真人会话资料.ts`、`src/屏幕/P7/use真人会话资料.test.tsx`、`src/屏幕/P7/Backend真人会话.tsx`、`src/屏幕/P7/Backend真人会话.test.tsx`、`src/组件/真人在线简历正文.tsx`。
 - 删除：无预定文件；仅在证明旧实现无消费者后删除死代码，不删除历史文档。
 
 **依赖与接口：** 依赖1/3/4。Case/协商用自己的响应，聊天只用会话Case。历史列表仅解码不加入口；历史详情展示自己的分析。
@@ -257,7 +257,7 @@ npm test -- src/屏幕/匿名在线简历.test.tsx src/屏幕/职位详情.test.
 - [ ] 在上述已有测试或指定新测试中加入本 Task 失败反例，先运行下列命令；应因目标行为缺失失败，不能因路径/fixture无关损坏失败。
 
 ```bash
-npm test -- src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/屏幕/详情控制/use后端详情控制.test.tsx src/屏幕/详情控制/后端正常详情.test.tsx src/组件/在谈详情/职位资料.test.tsx src/屏幕/P7/use真人会话资料.test.tsx src/屏幕/P7/Backend真人会话.test.tsx src/数据/详情展示映射.test.ts --maxWorkers=2 --retry=0
+npm test -- src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史.test.tsx src/屏幕/详情控制/use后端详情控制.test.tsx src/屏幕/详情控制/后端正常详情.test.tsx src/组件/在谈详情/职位资料.test.tsx src/屏幕/P7/use真人会话资料.test.tsx src/屏幕/P7/Backend真人会话.test.tsx src/数据/详情展示映射.test.ts src/组件/在谈详情/在线简历正文.test.tsx --maxWorkers=2 --retry=0
 ```
 
 - [ ] 按本 Task 范围完成最小实现/断言迁移，保留未改行为的原测试；不通过宽松白名单、快照盲更新或吞错达成通过。
@@ -271,7 +271,7 @@ npm test -- src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史
 **预期编辑文件：**
 
 - 新增：`src/数据/Mock匹配快照.ts`、`src/数据/Mock匹配快照.test.ts`。
-- 修改：`src/数据/模拟数据.ts`、`src/数据/企业端模拟数据.ts`、`src/数据/匹配对齐.ts`、`src/数据/匹配对齐.test.ts`、`src/屏幕/看市场.tsx`、`src/屏幕/职位详情.tsx`、`src/屏幕/在谈首页.tsx`、`src/屏幕/在谈详情.tsx`、`src/屏幕/候选详情.tsx`、`src/屏幕/真人会话.tsx`、`src/屏幕/企业在谈候选.tsx`、`src/屏幕/企业真人会话.tsx`。
+- 修改：`src/屏幕/真人会话.test.tsx`、`src/屏幕/在谈详情.test.tsx`、`src/数据/模拟数据.ts`、`src/数据/企业端模拟数据.ts`、`src/数据/匹配对齐.ts`、`src/数据/匹配对齐.test.ts`、`src/屏幕/看市场.tsx`、`src/屏幕/职位详情.tsx`、`src/屏幕/在谈首页.tsx`、`src/屏幕/在谈详情.tsx`、`src/屏幕/候选详情.tsx`、`src/屏幕/真人会话.tsx`、`src/屏幕/企业在谈候选.tsx`、`src/屏幕/企业真人会话.tsx`。
 - 删除：无预定文件；仅在证明旧实现无消费者后删除死代码，不删除历史文档。
 
 **依赖与接口：** 依赖4–6。新增固定记录ID→BFF匹配解释|null的小型Mock数据表，非运行时评分器；分数与表内total_points同源。
@@ -282,7 +282,7 @@ npm test -- src/屏幕/P5/MatchCase列表.test.tsx src/屏幕/P5/MatchCase历史
 - [ ] 在上述已有测试或指定新测试中加入本 Task 失败反例，先运行下列命令；应因目标行为缺失失败，不能因路径/fixture无关损坏失败。
 
 ```bash
-npm test -- src/数据/Mock匹配快照.test.ts src/数据/匹配对齐.test.ts src/屏幕/职位详情.test.tsx --maxWorkers=2 --retry=0
+npm test -- src/数据/Mock匹配快照.test.ts src/数据/匹配对齐.test.ts src/屏幕/职位详情.test.tsx src/屏幕/真人会话.test.tsx src/屏幕/在谈详情.test.tsx --maxWorkers=2 --retry=0
 ```
 
 - [ ] 按本 Task 范围完成最小实现/断言迁移，保留未改行为的原测试；不通过宽松白名单、快照盲更新或吞错达成通过。
@@ -296,18 +296,18 @@ npm test -- src/数据/Mock匹配快照.test.ts src/数据/匹配对齐.test.ts 
 **预期编辑文件：**
 
 - 新增：`src/数据/薪资展示.ts`、`src/数据/薪资展示.test.ts`。
-- 修改：`src/数据/后端映射.ts`、`src/数据/后端映射.test.ts`、`src/屏幕/学生分流.tsx`、`src/屏幕/学生分流.test.tsx`、`src/屏幕/添加意向.tsx`、`src/屏幕/添加意向.test.tsx`、`src/屏幕/发布岗位.tsx`、`src/屏幕/发布岗位.薪资地点.test.tsx`、`src/屏幕/求职意向管理.tsx`、`src/屏幕/顶部意向栏.tsx`、`src/屏幕/岗位管理.tsx`、`src/屏幕/岗位详情.tsx`。
+- 修改：`src/状态/后端/候选操作.ts`、`src/状态/后端/候选操作.test.ts`、`src/数据/后端映射.ts`、`src/数据/后端映射.test.ts`、`src/屏幕/学生分流.tsx`、`src/屏幕/学生分流.test.tsx`、`src/屏幕/添加意向.tsx`、`src/屏幕/添加意向.test.tsx`、`src/屏幕/发布岗位.tsx`、`src/屏幕/发布岗位.薪资地点.test.tsx`、`src/屏幕/求职意向管理.tsx`、`src/屏幕/顶部意向栏.tsx`、`src/屏幕/岗位管理.tsx`、`src/屏幕/岗位详情.tsx`。
 - 删除：无预定文件；仅在证明旧实现无消费者后删除死代码，不删除历史文档。
 
 **依赖与接口：** 独立薪资边界，按顺序执行避免共享文件冲突。实现C4两个格式函数，消费数值/有限字符串，输出Spec §8A的文本，不改DTO写入类型。
 
-**范围与失败反例：** 表驱动覆盖month/day/hour、12/14/缺失、同值、面议、空白、未知格式、K/day与K/hour不猜元、幂等；结构化数据和显示字符串冲突不择一拼接。保留填写控件数值/单位/年薪月数输入布局，统一选后摘要、管理列表/顶栏回显。检查保存解析路径，en dash和x后缀不得造成保存失败或年薪月数丢失；测试选择→保存请求体仍数值→读取一致。表单未确认、面议三态不改变。
+**范围与失败反例：** 表驱动覆盖month/day/hour、12/14/缺失、同值、面议、空白、未知格式、K/day与K/hour不猜元、幂等；结构化数据和显示字符串冲突不择一拼接。同步 `候选操作.ts` 的 Mock `意向说明`，仅使用草稿实际存在字段，不给求职意向制造年薪月数；保留填写控件数值/单位/年薪月数输入布局，统一选后摘要、管理列表/顶栏回显。检查保存解析路径，en dash和x后缀不得造成保存失败或年薪月数丢失；测试选择→保存请求体仍数值→读取一致。表单未确认、面议三态不改变。
 
 - [ ] 核对当前 Task 文件和依赖产物；若基线已实现部分要求，记录证据而非覆盖重做；公共合同漂移先暂停依赖部分并报告。
 - [ ] 在上述已有测试或指定新测试中加入本 Task 失败反例，先运行下列命令；应因目标行为缺失失败，不能因路径/fixture无关损坏失败。
 
 ```bash
-npm test -- src/数据/薪资展示.test.ts src/数据/后端映射.test.ts src/屏幕/学生分流.test.tsx src/屏幕/添加意向.test.tsx src/屏幕/发布岗位.薪资地点.test.tsx --maxWorkers=2 --retry=0
+npm test -- src/数据/薪资展示.test.ts src/数据/后端映射.test.ts src/屏幕/学生分流.test.tsx src/屏幕/添加意向.test.tsx src/屏幕/发布岗位.薪资地点.test.tsx src/状态/后端/候选操作.test.ts --maxWorkers=2 --retry=0
 ```
 
 - [ ] 按本 Task 范围完成最小实现/断言迁移，保留未改行为的原测试；不通过宽松白名单、快照盲更新或吞错达成通过。
@@ -321,7 +321,7 @@ npm test -- src/数据/薪资展示.test.ts src/数据/后端映射.test.ts src/
 **预期编辑文件：**
 
 - 新增：无。
-- 修改：`src/数据/发现推荐映射.ts`、`src/数据/发现推荐映射.test.ts`、`src/数据/连续代谈展示映射.ts`、`src/数据/连续代谈展示映射.test.ts`、`src/数据/详情展示映射.ts`、`src/数据/详情展示映射.test.ts`、`src/数据/企业公开页展示映射.ts`、`src/数据/企业公开页展示映射.test.ts`、`src/组件/列表卡片/求职推荐卡.tsx`、`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/在谈详情/职位资料.tsx`、`src/组件/问AI代理/查询结果展示.tsx`、`src/屏幕/职位详情展示/准备职位正文.ts`、`src/数据/模拟数据.ts`、`src/数据/企业端模拟数据.ts`、`src/屏幕/真人会话.tsx`、`src/屏幕/企业真人会话.tsx`。
+- 修改：`src/屏幕/P5/MatchCase详情.展示与隐私.test.tsx`、`src/数据/发现推荐映射.ts`、`src/数据/发现推荐映射.test.ts`、`src/数据/连续代谈展示映射.ts`、`src/数据/连续代谈展示映射.test.ts`、`src/数据/详情展示映射.ts`、`src/数据/详情展示映射.test.ts`、`src/数据/企业公开页展示映射.ts`、`src/数据/企业公开页展示映射.test.ts`、`src/组件/列表卡片/求职推荐卡.tsx`、`src/组件/列表卡片/求职在谈卡.tsx`、`src/组件/在谈详情/职位资料.tsx`、`src/组件/问AI代理/查询结果展示.tsx`、`src/屏幕/职位详情展示/准备职位正文.ts`、`src/数据/模拟数据.ts`、`src/数据/企业端模拟数据.ts`、`src/屏幕/真人会话.tsx`、`src/屏幕/企业真人会话.tsx`。
 - 删除：无预定文件；仅在证明旧实现无消费者后删除死代码，不删除历史文档。
 
 **依赖与接口：** 依赖8，并保留5–7解释接线。逐行落实Spec §8A.2，输入限本记录当前/冻结公开薪资；不是解释compensation维度。
@@ -332,7 +332,7 @@ npm test -- src/数据/薪资展示.test.ts src/数据/后端映射.test.ts src/
 - [ ] 在上述已有测试或指定新测试中加入本 Task 失败反例，先运行下列命令；应因目标行为缺失失败，不能因路径/fixture无关损坏失败。
 
 ```bash
-npm test -- src/数据/发现推荐映射.test.ts src/数据/连续代谈展示映射.test.ts src/数据/详情展示映射.test.ts src/数据/企业公开页展示映射.test.ts src/组件/在谈详情/职位资料.test.tsx --maxWorkers=2 --retry=0
+npm test -- src/数据/发现推荐映射.test.ts src/数据/连续代谈展示映射.test.ts src/数据/详情展示映射.test.ts src/数据/企业公开页展示映射.test.ts src/组件/在谈详情/职位资料.test.tsx src/屏幕/P5/MatchCase详情.展示与隐私.test.tsx --maxWorkers=2 --retry=0
 ```
 
 - [ ] 按本 Task 范围完成最小实现/断言迁移，保留未改行为的原测试；不通过宽松白名单、快照盲更新或吞错达成通过。
@@ -389,4 +389,13 @@ npm run test:e2e -- e2e/suites/发现推荐.spec.ts e2e/suites/MatchCase.spec.ts
 
 覆盖关系：Spec §3/4→Task4–7；§5/6→Task2/3/5/6；§7→Task7；§8→Task6/10；§8A→Task8/9/10；§8B→Task1/3/6/10；§9/10→Global Constraints及不计数收尾。
 
-文档 review 候选：本 Plan Revision 1 与已批准 Spec Revision 3。review_mode=WORKFLOW_DOCUMENT_REVIEW；scope_approved_by_parent_workflow=true；精确范围仅本Plan与上述Spec。审查结果由planning owner在本节逐轮记录；没有实际报告前不得标clean，不生成执行prompt。
+文档 review：Claude Opus/high，`claude-review-loop` 的 WORKFLOW_DOCUMENT_REVIEW，scope_approved_by_parent_workflow=true。冻结范围仅本Plan与上述Spec；首轮候选HEAD `2fee807b`，Spec blob `e03157e2239104e52c278aadbd71d2c5fb3ef6da`，Plan blob `345c2549`（完整指纹存本轮原始review receipt）。reviewer未运行测试、未改文件，驱动者核对HEAD/status/两文件指纹均一致。
+
+|轮次/项|原判定|裁决及证据|
+|---|---|---|
+|R1-1|Important / required / 真实缺陷 / 复杂度不变|接受并修复：确有旧薪资串和分析旧文案断言，Task4/6/7/9补入招聘匹配依据、在线简历正文、真人会话、在谈详情、MatchCase详情展示与隐私五个既有测试文件及定向命令。不是盲删断言；有限依据和权限反例保留，按新合同迁移。|
+|R1-2|Minor / optional / 契约违反 / 复杂度不变|接受并修复：候选操作.ts 的意向说明确实独立拼薪资；Task8补该文件和现有测试，复用格式函数。求职草稿无年薪月数时不制造后缀。|
+|R1-3|Minor / optional / 真实缺陷 / 复杂度不变|接受并修复：四卡props集中于列表卡片/类型.ts；Task4补类型和实际样式文件，求职推荐卡沿用看市场.module.css，不假造不存在的同名CSS。|
+|R1-4|Minor / optional / 可选增强 / 降低复杂度|拒绝：用户原始要求及批准Spec §5.1明确以冻结后端验证器约束为准。C1公式仅校验已返回计数/分数一致性，非生成分数；后端验证不能替代本任务要求的前端损坏输入拒绝。补明仅限v1解码、不能导出算分能力、展示用返回值。|
+
+结论：1轮，4条发现；3条接受修复（其中1条required），1条optional拒绝，无未解决有效required。依review-loop停止条件结束，不声称reviewer给出NO FINDINGS，不启动无必要复审或产品测试。修订只补实施路径/验证覆盖与解释既定约束，不改变批准Spec。此记录随Plan Revision 2固定，最终执行提示词引用该版本blob。
