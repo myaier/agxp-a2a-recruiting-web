@@ -286,7 +286,8 @@ describe('学生分流 · 首屏期望薪资（Task 3）', () => {
       引导预填: { ...无薪资预填, 薪资: { 下限: 20, 上限: 30, 单位: '月薪K' } },
     });
     const 用户 = userEvent.setup();
-    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20-30K');
+    // Task 8（Spec §8A）：选后摘要走统一显示合同（en dash 区间）
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20–30K');
     await 用户.click(screen.getByRole('button', { name: '期望薪资' }));
     const 下限列 = screen.getByRole('listbox', { name: '薪资下限' });
     await 用户.click(within(下限列).getByRole('option', { name: '面议' }));
@@ -337,14 +338,24 @@ describe('学生分流 · 首屏期望薪资（Task 3）', () => {
       },
     });
     expect(screen.getByText('期望薪资（日薪 · 元/天）')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('300-500/天');
+    // Task 8（Spec §8A）：日薪区间显示 `300–500 元/天`（en dash + 数字与单位一空格），不追加年薪月数
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('300–500 元/天');
     日薪.视图.unmount();
   });
 
   it('月薪标签显示 月薪 · K，行文字带 K 后缀', () => {
     render学生分流({ 数据源: 'backend', 引导预填: 完整预填 });
     expect(screen.getByText('期望薪资（月薪 · K）')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20-30K');
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20–30K');
+  });
+
+  it('同值折单值：20/20 确认后行上显示 20K（Spec §8A.1）', () => {
+    render学生分流({
+      数据源: 'backend',
+      引导预填: { ...无薪资预填, 薪资: { 下限: 20, 上限: 20, 单位: '月薪K' } },
+    });
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).toContain('20K');
+    expect(screen.getByRole('button', { name: '期望薪资' }).textContent).not.toContain('–');
   });
 });
 

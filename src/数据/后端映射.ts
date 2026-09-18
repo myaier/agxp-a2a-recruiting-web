@@ -34,6 +34,7 @@ import type {
 } from './招聘数据源类型';
 import { 迁移主要求职类型, 规范化作品集链接, 校验作品集链接 } from '../流程/onboarding配置';
 import { BFF错误, 客户端校验错误 } from './HTTP客户端';
+import { 格式化薪资 } from './薪资展示';
 
 // ── 身份 / 性别 枚举映射（固定）──
 const 身份到后端 = { 在校: 'student', 在职: 'employed', 离职: 'unemployed' } as const;
@@ -273,11 +274,17 @@ const 页面招聘类型到后端 = { 全职: 'social_full_time', 校园招聘: 
 const 办公方式到后端 = { 现场: 'onsite', 混合: 'hybrid', 远程: 'remote', 全远程: 'remote' } as const;
 export { 招聘类型到页面 };
 
-/** BFF意向 → 页面求职意向表条目（编号/标题/说明），标题沿用 `[城市] 职位` 格式以兼容 拆意向为草稿。 */
+/** BFF意向 → 页面求职意向表条目（编号/标题/说明），标题沿用 `[城市] 职位` 格式以兼容 拆意向为草稿。
+ *  Task 8（Spec §8A）：说明的薪资段走统一显示合同 —— 结构化补偿（含 annual_salary_months）
+ *  经 格式化薪资 输出，en dash / x N 后缀 / 面议·未知分立；同一份补偿结构是唯一真相。 */
 export function 从BFF意向(dto: BFFOwnerIntention): 求职意向 {
-  const 薪资段 = dto.compensation.mode === 'negotiable'
-    ? '面议'
-    : `${dto.compensation.lower}-${dto.compensation.upper}${dto.salary_period === 'day' ? ' 元/天' : dto.salary_period === 'hour' ? ' 元/时' : 'K'}`;
+  const 薪资段 = 格式化薪资({
+    下限: dto.compensation.lower ?? null,
+    上限: dto.compensation.upper ?? null,
+    周期: dto.salary_period,
+    年薪月数: dto.compensation.annual_salary_months ?? null,
+    面议: dto.compensation.mode === 'negotiable',
+  });
   return {
     编号: dto.intention_id,
     标题: `[${dto.primary_location.display_name}] ${dto.job_category.display_name}`,

@@ -56,7 +56,7 @@ describe('岗位管理 · 岗位行的可访问名称', () => {
       岗位列表: [岗位({ 编号: 'j1', 名称: '浏览器验收岗位 · 在招基线', 薪资带: '30-45K', 状态: '在招' })],
     });
     expect(
-      screen.getByRole('button', { name: '浏览器验收岗位 · 在招基线 30-45K · 在谈 0 人 在招' }),
+      screen.getByRole('button', { name: '浏览器验收岗位 · 在招基线 30–45K · 在谈 0 人 在招' }),
     ).toBeTruthy();
   });
 
@@ -69,7 +69,7 @@ describe('岗位管理 · 岗位行的可访问名称', () => {
         { 岗位编号: 'j2', 需要你: false },
       ],
     });
-    expect(screen.getByRole('button', { name: '交易网关 50-65K · 在谈 2 人 在招' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '交易网关 50–65K · 在谈 2 人 在招' })).toBeTruthy();
   });
 
   it('当前岗位把「当前」徽也读出来', () => {
@@ -77,7 +77,7 @@ describe('岗位管理 · 岗位行的可访问名称', () => {
       岗位列表: [岗位({ 编号: 'j1', 名称: '交易网关', 薪资带: '50-65K', 状态: '在招' })],
       当前岗位编号: 'j1',
     });
-    expect(screen.getByRole('button', { name: '交易网关 当前 50-65K · 在谈 0 人 在招' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '交易网关 当前 50–65K · 在谈 0 人 在招' })).toBeTruthy();
   });
 
   it('已归档行不报在谈人数，状态徽读「已归档」', () => {
@@ -85,7 +85,7 @@ describe('岗位管理 · 岗位行的可访问名称', () => {
       岗位列表: [岗位({ 编号: 'j2', 名称: '浏览器验收岗位 · 归档基线', 薪资带: '30-45K', 状态: '已归档' })],
     });
     expect(
-      screen.getByRole('button', { name: '浏览器验收岗位 · 归档基线 30-45K 已归档' }),
+      screen.getByRole('button', { name: '浏览器验收岗位 · 归档基线 30–45K 已归档' }),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /在谈/ })).toBeNull();
   });
@@ -101,7 +101,30 @@ describe('岗位管理 · 岗位行的可访问名称', () => {
       .getAllByRole('button')
       .map((节点) => 节点.getAttribute('aria-label'))
       .filter((名): 名 is string => 名 !== null);
-    expect(行名们).toContain('浏览器验收岗位 · 在招基线 30-45K · 在谈 0 人 在招');
-    expect(行名们).toContain('浏览器验收岗位 · 归档基线 30-45K 已归档');
+    expect(行名们).toContain('浏览器验收岗位 · 在招基线 30–45K · 在谈 0 人 在招');
+    expect(行名们).toContain('浏览器验收岗位 · 归档基线 30–45K 已归档');
+  });
+});
+
+// ── Task 8（Spec §8A）：管理列表只读薪资带走统一显示合同 ──
+// 行上的带是「内部 ASCII 带 + 年薪月数」经 规范薪资文本 的显示表示：
+// en dash 区间、明确非 12 的月薪才追加 x N、日薪带不追加。
+describe('岗位管理 · 薪资带显示合同（Task 8 / Spec §8A）', () => {
+  it('月薪 14 薪岗位：行上读 20–30K x 14（保存数值 → 读取一致的显示端）', () => {
+    render岗位管理({
+      岗位列表: [岗位({ 编号: 'j1', 名称: '交易网关', 薪资带: '20-30K', 年薪月数: 14, 状态: '在招' })],
+    });
+    expect(screen.getByRole('button', { name: '交易网关 20–30K x 14 · 在谈 0 人 在招' })).toBeTruthy();
+  });
+
+  it('12 薪与未填一样省略后缀；日薪带不追加年薪月数', () => {
+    render岗位管理({
+      岗位列表: [
+        岗位({ 编号: 'j1', 名称: '十二薪岗', 薪资带: '20-30K', 年薪月数: 12, 状态: '在招' }),
+        岗位({ 编号: 'j2', 名称: '日薪岗', 薪资带: '300-500 元/天', 年薪月数: 14, 状态: '在招' }),
+      ],
+    });
+    expect(screen.getByRole('button', { name: '十二薪岗 20–30K · 在谈 0 人 在招' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '日薪岗 300–500 元/天 · 在谈 0 人 在招' })).toBeTruthy();
   });
 });

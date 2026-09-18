@@ -21,6 +21,7 @@ import { 取公司档案 } from '../数据/公司档案';
 import { 从BFF岗位发布方, 从BFF招聘身份 } from '../数据/组织映射';
 import type { 岗位发布方视图, 招聘身份视图 } from '../数据/组织映射';
 import { 取后端错误文案 } from '../数据/HTTP客户端';
+import { 规范薪资文本 } from '../数据/薪资展示';
 import type { 在招岗位 } from '../数据/类型';
 
 /** 本企业在公司档案表里的键。企业端全站都是这一家（云衢科技），同 企业我的 的公司主页入口 */
@@ -133,7 +134,9 @@ export default function 岗位详情() {
           <div>
             <div className={样式.标题行}>
               <h1 className={样式.岗位名}>{岗.名称}</h1>
-              <span className={`${样式.薪资带} 薪资体 等宽数字`}>{岗.薪资带}</span>
+              {/* Task 8（Spec §8A）：只读带经 规范薪资文本 统一（en dash / 明确非 12 的月薪 x N）；
+                  存档字段本身保持结构化（ASCII 带 + 年薪月数），保存解析路径不受显示影响 */}
+              <span className={`${样式.薪资带} 薪资体 等宽数字`}>{规范薪资文本(岗.薪资带, 岗.年薪月数 ?? null)}</span>
             </div>
             <div className={样式.顶胶行}>
               <span className={`${样式.状态徽} ${在招中 ? '' : 样式.归档徽}`}>

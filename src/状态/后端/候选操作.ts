@@ -10,6 +10,7 @@
 
 import { BFF错误 } from '../../数据/HTTP客户端';
 import { 从BFF简历, 从BFF意向草稿, 去重引用, 招聘类型到页面, 转意向写入, 转首次意向写入 } from '../../数据/后端映射';
+import { 格式化薪资 } from '../../数据/薪资展示';
 import { 规范化作品集链接, 空求职初筛偏好 } from '../../流程/onboarding配置';
 import type { BFF简历, BFF意向写入, BFFOwnerIntention } from '../../数据/BFF契约';
 import type {
@@ -26,15 +27,19 @@ import { 完成Onboarding角色, 查证Onboarding角色, Onboarding422提示 } f
 import { 清候选预填引用 } from './简历预填操作';
 import { 轻提示 } from '../../组件/轻提示';
 
-/** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 添加意向.tsx 提交 的说明格式保持一致）。 */
+/** 意向草稿 → 求职意向.说明 文案（Mock 分支用，与 Backend 从BFF意向 同一显示合同）。
+ *  Task 8（Spec §8A / R1-2）：复用 格式化薪资；仅使用草稿实际存在的字段 ——
+ *  草稿没有年薪月数字段，说明永不制造 x N 后缀；薪资未填按保存语义是面议
+ *  （转意向写入 null → negotiable），不是空串也不是 薪资未知。 */
 function 意向说明(draft: import('../../数据/招聘数据源类型').意向草稿型): string {
-  const 单位 = draft.薪资周期 === 'hour' ? ' 元/时' : draft.薪资周期 === 'day' || draft.求职类型 === '实习生' ? ' 元/天' : 'K';
-  const 薪资文本 =
-    draft.薪资下限 === null || draft.薪资上限 === null
-      ? ''
-      : draft.薪资下限 === draft.薪资上限
-        ? `${draft.薪资下限}${单位}`
-        : `${draft.薪资下限}-${draft.薪资上限}${单位}`;
+  const 周期 = draft.薪资周期 ?? (draft.求职类型 === '实习生' ? 'day' : 'month');
+  const 未填 = draft.薪资下限 === null || draft.薪资上限 === null;
+  const 薪资文本 = 格式化薪资({
+    下限: draft.薪资下限,
+    上限: draft.薪资上限,
+    周期,
+    ...(未填 ? { 面议: true } : {}),
+  });
   const 期望行业文本 = draft.期望行业们.join('、');
   return 期望行业文本 === '' ? 薪资文本 : `${薪资文本}｜${期望行业文本}`;
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向草稿, 转证书写入, 转证书, 岗位办公方式到Wire, Wire到岗位办公方式 } from './后端映射';
+import { 从BFF简历, 转资料写入, 转经历写入, 转教育写入, 从BFF岗位, 转岗位创建, 转岗位补丁, 转意向写入, 转首次意向写入, 从BFF意向, 从BFF意向草稿, 转证书写入, 转证书, 岗位办公方式到Wire, Wire到岗位办公方式 } from './后端映射';
 import { BFF意向样本, BFF岗位样本, BFF简历样本, 页面岗位样本 } from '../测试/BFF样本';
 import type { 意向草稿型, 岗位创建上下文 } from './招聘数据源类型';
-import type { BFF证书, BFFOwnerJob, BFF简历 } from './BFF契约';
+import type { BFF证书, BFFOwnerIntention, BFFOwnerJob, BFF简历 } from './BFF契约';
 import { 取后端错误文案 } from './HTTP客户端';
 
 /** 构造空草稿（含 Task 6 新增的 办公方式 字段），测试用展开覆盖个别字段 */
@@ -679,6 +679,75 @@ describe('候选人后端映射', () => {
     const 草稿 = 从BFF意向草稿({ ...BFF意向样本, compensation: { mode: 'negotiable' } });
     expect(草稿.薪资下限).toBeNull();
     expect(草稿.薪资上限).toBeNull();
+  });
+
+  // Task 8（Spec §8A）：意向列表的 说明 薪资段与全站同一显示合同 —— en dash、
+  // 月薪 x N 后缀（明确非 12 才追加）、日/时不追加、面议原样。同一份补偿结构
+  // 就是唯一真相，说明只是它的显示表示。
+  describe('从BFF意向 说明薪资段（Spec §8A 显示合同）', () => {
+    const 意向 = (补丁: Partial<BFFOwnerIntention>): BFFOwnerIntention => ({
+      ...BFF意向样本,
+      ...补丁,
+    });
+
+    it('月薪区间带 14 薪：说明为 30–45K x 14', () => {
+      const 条目 = 从BFF意向(意向({
+        recruitment_type: 'social_full_time',
+        compensation: { mode: 'range', lower: 30, upper: 45, annual_salary_months: 14 },
+        salary_period: 'month',
+      }));
+      expect(条目.说明).toBe('30–45K x 14');
+    });
+
+    it('月薪区间 12 薪与未填一样省略后缀', () => {
+      expect(从BFF意向(意向({
+        recruitment_type: 'social_full_time',
+        compensation: { mode: 'range', lower: 30, upper: 45, annual_salary_months: 12 },
+        salary_period: 'month',
+      })).说明).toBe('30–45K');
+      expect(从BFF意向(意向({
+        recruitment_type: 'social_full_time',
+        compensation: { mode: 'range', lower: 30, upper: 45, annual_salary_months: null },
+        salary_period: 'month',
+      })).说明).toBe('30–45K');
+    });
+
+    it('月薪同值折单值', () => {
+      expect(从BFF意向(意向({
+        recruitment_type: 'social_full_time',
+        compensation: { mode: 'range', lower: 30, upper: 30, annual_salary_months: null },
+        salary_period: 'month',
+      })).说明).toBe('30K');
+    });
+
+    it('日薪/时薪区间不追加年薪月数', () => {
+      expect(从BFF意向(意向({
+        compensation: { mode: 'range', lower: 300, upper: 500, annual_salary_months: null },
+        salary_period: 'day',
+      })).说明).toBe('300–500 元/天');
+      expect(从BFF意向(意向({
+        compensation: { mode: 'range', lower: 40, upper: 60, annual_salary_months: null },
+        salary_period: 'hour',
+      })).说明).toBe('40–60 元/时');
+    });
+
+    it('面议显示 面议，不追加年薪月数', () => {
+      expect(从BFF意向(意向({
+        compensation: { mode: 'negotiable' },
+        salary_period: 'month',
+      })).说明).toBe('面议');
+    });
+
+    it('区间结构非法（缺上限/倒置）显示 薪资未知，不造 0 不推断面议', () => {
+      expect(从BFF意向(意向({
+        compensation: { mode: 'range', lower: 30, upper: null, annual_salary_months: null },
+        salary_period: 'month',
+      })).说明).toBe('薪资未知');
+      expect(从BFF意向(意向({
+        compensation: { mode: 'range', lower: 65, upper: 50, annual_salary_months: null },
+        salary_period: 'month',
+      })).说明).toBe('薪资未知');
+    });
   });
 
   // #4：编辑已有意向时 annual_salary_months 从服务端快照保留（草稿不能表达此字段）。

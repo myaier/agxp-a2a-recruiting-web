@@ -25,6 +25,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { 页面岗位样本 } from '../测试/BFF样本';
 import { 转岗位创建 } from '../数据/后端映射';
+import { 规范薪资文本 } from '../数据/薪资展示';
 import userEvent from '@testing-library/user-event';
 import 发布岗位 from './发布岗位';
 
@@ -362,6 +363,32 @@ describe('发布岗位页 月薪选择行（薪资区间层）', () => {
     await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
     // 上下限与单位（K）与原映射逐字相同：不乘 1000、不加小数
     expect(mock发布岗位.mock.calls[0][0]).toMatchObject({ 薪资带: '20-30K' });
+  });
+
+  it('Task 8 保存解析栅栏：选 20/30 + 14 薪 → 请求体仍是数值带与月数，读取显示 20–30K x 14', async () => {
+    const 用户 = userEvent.setup();
+    render新建();
+    await 填到第三步(用户);
+    await 设月薪带(用户, 20, 30);
+    // 年薪月数滚轮：显式选 14 薪（不是默认 12）
+    await 用户.click(screen.getByRole('button', { name: /年薪月数/ }));
+    await 用户.click(within(screen.getByRole('listbox', { name: '年薪月数' })).getByRole('option', { name: '14' }));
+    await 用户.click(screen.getByRole('button', { name: '确定' }));
+    await 用户.click(screen.getByRole('button', { name: /工作城市/ }));
+    await screen.findByText('选择工作城市');
+    await 用户.click((await screen.findAllByRole('button', { name: '上海市' }))[0]);
+    await 用户.click(screen.getByRole('button', { name: '保存' }));
+    await 用户.type(screen.getByPlaceholderText('如：浦东新区世纪大道 1568 号中建大厦 28 层'), '张江路 1 号');
+    await 用户.click(screen.getByRole('checkbox', { name: 结构化确认文案 }));
+    await 用户.click(screen.getByRole('button', { name: '发布岗位并开始寻访' }));
+    await waitFor(() => expect(mock发布岗位).toHaveBeenCalledTimes(1));
+    // 保存请求体仍是数值/结构：内部带保持 ASCII 连字符、月数是独立数值字段 ——
+    // 显示统一不改写 DTO 写入类型，en dash 与 x 后缀只出现在读取侧显示。
+    const 存档 = mock发布岗位.mock.calls[0][0] as { 薪资带: string; 年薪月数?: number };
+    expect(存档.薪资带).toBe('20-30K');
+    expect(存档.年薪月数).toBe(14);
+    // 读取一致：同一份存档经统一显示合同得到 en dash + x 14 后缀（岗位管理/岗位详情读同一函数）
+    expect(规范薪资文本(存档.薪资带, 存档.年薪月数 ?? null)).toBe('20–30K x 14');
   });
 
   it('空弹层打开取消不填值：草稿仍空，发布被「请填写薪资带」拦下', async () => {

@@ -445,7 +445,7 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
 
   it('14薪社招切兼职：保留月薪区间，序列化 body 不带 annual_salary_months', async () => {
     渲染意向('/intentions/int_14');
-    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('20–30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '兼职' }));
     await waitFor(() => expect(screen.getByRole('button', { name: '兼职' }).getAttribute('aria-pressed')).toBe('true'));
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
@@ -458,7 +458,7 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
 
   it('14薪社招切实习并重填日薪区间：序列化 body 不带 annual_salary_months', async () => {
     渲染意向('/intentions/int_14');
-    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('20–30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '实习生' }));
     // 跨周期既有行为：切型清上下限，薪资行回落占位
     await waitFor(() => expect(screen.getByText('请选择薪资要求')).toBeTruthy());
@@ -470,7 +470,7 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
     // 页面真实路径重填区间：底部弹层 确定（日薪默认 150/200）
     await userEvent.click(screen.getByText('薪资要求（日薪 · 元/天）'));
     await userEvent.click(screen.getByRole('button', { name: '确定' }));
-    await waitFor(() => expect(screen.getByText('150-200 元/天')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('150–200 元/天')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
     const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
@@ -481,7 +481,7 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
 
   it('14薪社招切实习且不重填区间：序列化面议精确为 { mode: negotiable }', async () => {
     渲染意向('/intentions/int_14');
-    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('20–30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '实习生' }));
     await waitFor(() => expect(screen.getByText('请选择薪资要求')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: /实习时长/ }));
@@ -497,7 +497,7 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
 
   it('切校招并填毕业月保存：合法 14 薪保留', async () => {
     渲染意向('/intentions/int_14');
-    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('20–30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '校园招聘' }));
     await userEvent.click(screen.getByText('请选择毕业年月'));
     await userEvent.click(screen.getByRole('button', { name: '确定' }));
@@ -510,12 +510,51 @@ describe('添加意向页 跨类型年薪月数（core editors §6.2 Task 2）',
 
   it('同类型重复点击社招全职不清值：序列化仍带合法 14 薪', async () => {
     渲染意向('/intentions/int_14');
-    await waitFor(() => expect(screen.getByText('20-30K')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('20–30K')).toBeTruthy());
     await userEvent.click(screen.getByRole('button', { name: '社招全职' }));
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mock保存意向).toHaveBeenCalled());
     const body = 转意向写入(mock保存意向.mock.calls[0][0] as 意向草稿型, { 原始: 原始14薪 });
     expect(body.recruitment_type).toBe('social_full_time');
     expect(body.compensation.annual_salary_months).toBe(14);
+  });
+});
+
+// ── Task 8（Spec §8A）：选后摘要遵守统一显示合同 ──
+// 输入控件仍走数值滚轮（§8A.1 填写控件不改）；行上摘要统一 en dash / 单位空格 /
+// 同值折单值；未确认仍是「请选择薪资要求」占位，不混同只读的「薪资未知」；
+// 草稿没有年薪月数字段，摘要永不制造 x N 后缀。
+describe('添加意向页 薪资摘要显示合同（Task 8 / Spec §8A）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mock数据源模式 = 'backend';
+    当前草稿 = { ...基础草稿, 办公方式: [...基础草稿.办公方式] };
+    mock状态扩展 = { 求职意向表: [] };
+  });
+
+  it('未确认：行上是既有占位，不显示 薪资未知', () => {
+    当前草稿 = { ...当前草稿, 薪资下限: null, 薪资上限: null };
+    渲染意向('/intentions/new');
+    expect(screen.getByText('请选择薪资要求')).toBeTruthy();
+    expect(screen.queryByText('薪资未知')).toBeNull();
+  });
+
+  it('时薪区间摘要 40–60 元/时（单位前一空格）', () => {
+    // 直接改共享草稿再渲染：摘要只消费草稿实际存在的字段
+    当前草稿 = { ...当前草稿, 薪资周期: 'hour', 薪资下限: 40, 薪资上限: 60 };
+    渲染意向('/intentions/new');
+    expect(screen.getByText('40–60 元/时')).toBeTruthy();
+  });
+
+  it('日薪区间摘要 300–500 元/天（单位前一空格）', () => {
+    当前草稿 = { ...当前草稿, 薪资周期: 'day', 薪资下限: 300, 薪资上限: 500 };
+    渲染意向('/intentions/new');
+    expect(screen.getByText('300–500 元/天')).toBeTruthy();
+  });
+
+  it('同值折单值：10/10 显示 10K，无区间连字符', () => {
+    当前草稿 = { ...当前草稿, 薪资下限: 10, 薪资上限: 10 };
+    渲染意向('/intentions/new');
+    expect(screen.getByText('10K')).toBeTruthy();
   });
 });

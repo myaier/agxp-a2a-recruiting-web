@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { HTTP招聘数据源 } from '../../数据/HTTP招聘数据源';
 import { BFF错误, 取后端错误文案, type BFF请求选项, type BFF响应 } from '../../数据/HTTP客户端';
 import type { BFF简历, BFF证书, BFF教育, BFF经历, BFFOwnerIntention, BFF项目 } from '../../数据/BFF契约';
+import type { 意向草稿型 } from '../../数据/招聘数据源类型';
 import type { 简历经历段, 简历教育段 } from '../../数据/类型';
 import { 初始状态 } from '../初始状态';
 import { BFF意向样本, BFF简历样本 } from '../../测试/BFF样本';
@@ -38,6 +39,8 @@ function 创建场景(选项: {
   建档?: 候选引导建档草稿 | null;
   存储?: 候选建档草稿存储 | null;
   后端覆盖?: Partial<HTTP招聘数据源>;
+  /** Task 8：Mock 分支用例传 false —— 保存意向 走本地派发（标题/说明由 意向说明 组装） */
+  是后端?: boolean;
   /** fix-r2：模拟「渲染尚未落地」—— 设后端状态 只推进 React state，镜像引用要等一次
    *  「渲染」（模拟渲染）才跟上。生产里 后端状态引用.current 只在渲染期赋值，
    *  聚合链收尾的 保存个人优势 正好落在两次渲染之间 —— 用它钉住那个竞态。 */
@@ -87,7 +90,7 @@ function 创建场景(选项: {
   const 候选预填恢复存储: 候选预填恢复存储 = { 读取: vi.fn(() => null), 写入: vi.fn(), 删除: vi.fn() };
   const 候选预填恢复 = { current: 候选预填恢复存储 };
   const deps = {
-    是后端: true,
+    是后端: 选项.是后端 ?? true,
     后端: 后端 as unknown as HTTP招聘数据源,
     派发: vi.fn(),
     设后端状态,
@@ -2324,5 +2327,80 @@ describe('创建候选操作 · 聚合链收尾的 next 基底（fix-r2）', () 
     expect(基底.skills).toEqual(['Go']);
     expect(写入.技能).toEqual(['Go']);
     expect(写入.个人优势).toBe('我的优势');
+  });
+});
+
+// ── Task 8（Spec §8A / R1-2）：Mock 分支 意向说明 复用薪资格式函数，与 Backend 从BFF意向 同一口径 ──
+// en dash 区间、同值折单值、日/时薪单位一空格；意向草稿没有年薪月数字段 → 说明永不制造 x N 后缀；
+// 薪资未填按保存语义是面议（转意向写入 null → negotiable），不显示 薪资未知、不推断 0。
+describe('创建候选操作 · Mock 意向说明薪资段（Task 8 / Spec §8A）', () => {
+  const 草稿基底: 意向草稿型 = {
+    编辑编号: null,
+    求职类型: '全职',
+    工作城市: '上海',
+    期望职位: '产品经理',
+    感兴趣城市们: [],
+    薪资下限: 20,
+    薪资上限: 30,
+    期望行业们: ['互联网'],
+    后端招聘类型: null,
+    求职类型已改: false,
+    办公方式: ['混合'],
+  };
+
+  it('月薪区间：说明 20–30K｜互联网，且无 x N 后缀（草稿无年薪月数字段）', async () => {
+    const 场景 = 创建场景({ 是后端: false });
+    await 场景.操作.保存意向({ ...草稿基底 });
+    expect(场景.派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '新增意向',
+      标题: '[上海] 产品经理',
+      说明: '20–30K｜互联网',
+    }));
+  });
+
+  it('实习生未显式给周期按日薪：300–500 元/天', async () => {
+    const 场景 = 创建场景({ 是后端: false });
+    await 场景.操作.保存意向({ ...草稿基底, 求职类型: '实习生', 薪资下限: 300, 薪资上限: 500, 期望行业们: [] });
+    expect(场景.派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '新增意向',
+      说明: '300–500 元/天',
+    }));
+  });
+
+  it('时薪草稿：40–60 元/时', async () => {
+    const 场景 = 创建场景({ 是后端: false });
+    await 场景.操作.保存意向({ ...草稿基底, 薪资周期: 'hour', 薪资下限: 40, 薪资上限: 60 });
+    expect(场景.派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '新增意向',
+      说明: '40–60 元/时｜互联网',
+    }));
+  });
+
+  it('同值折单值：20/20 → 20K', async () => {
+    const 场景 = 创建场景({ 是后端: false });
+    await 场景.操作.保存意向({ ...草稿基底, 薪资下限: 20, 薪资上限: 20 });
+    expect(场景.派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '新增意向',
+      说明: '20K｜互联网',
+    }));
+  });
+
+  it('薪资未填：保存语义是面议（不是空串也不是 薪资未知）', async () => {
+    const 场景 = 创建场景({ 是后端: false });
+    await 场景.操作.保存意向({ ...草稿基底, 薪资下限: null, 薪资上限: null, 期望行业们: [] });
+    expect(场景.派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '新增意向',
+      说明: '面议',
+    }));
+  });
+
+  it('编辑已有意向走 改意向，说明同一合同', async () => {
+    const 场景 = 创建场景({ 是后端: false });
+    await 场景.操作.保存意向({ ...草稿基底, 编辑编号: 'mock_1', 薪资下限: 20, 薪资上限: 20 });
+    expect(场景.派发).toHaveBeenCalledWith(expect.objectContaining({
+      型: '改意向',
+      编号: 'mock_1',
+      说明: '20K｜互联网',
+    }));
   });
 });
