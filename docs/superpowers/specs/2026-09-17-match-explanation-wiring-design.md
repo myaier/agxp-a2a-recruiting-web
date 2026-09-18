@@ -2,7 +2,7 @@
 
 日期：2026-09-17；校准日期：2026-09-18。Revision：3。
 
-状态：用户已确认本文的页面展示方案、推荐详情上下文策略和 Mock 快照策略，并要求写入 Spec；已追加用户确认的紧凑六维行与全页面薪资格式，已追加用户确认的 MatchCase/Negotiation 契约兼容修复与验收边界，Revision 3 全文待用户审阅批准。尚未进入 Plan、文档 review 或实施阶段。
+状态：Revision 3 的产品范围与设计已由用户确认（2026-09-18），用户授权按 development-workflow 编写零上下文 Plan、Claude 文档 review 和执行提示词。批准包含六维评分、全页面薪资统一、MatchCase/Negotiation 契约兼容及真实验收由用户负责；尚未实施。
 
 ## 1. 目标与范围
 
