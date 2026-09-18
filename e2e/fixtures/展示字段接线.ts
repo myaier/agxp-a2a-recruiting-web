@@ -390,6 +390,8 @@ function 推荐卡(job: Record<string, unknown>, match_score: number): Record<st
     structured_requirements_confirmed: true,
     job,
     delegation: null,
+    // include=match_explanation 展开读取（C2）：解释键必在；null = 已展开无溯源
+    match_explanation: null,
   };
 }
 
@@ -475,6 +477,8 @@ function 招聘Case详情(caseId: string, 覆盖: {
     job_detail: 覆盖.jobDetail,
     candidate_resume: 覆盖.resume,
     candidate_identity: 候选身份(覆盖.disclosed),
+    // recruiter 详情恒带 include=match_explanation（C2）：解释键必在；null = 已展开无溯源
+    match_explanation: null,
     // S0–S3 连续筛选合并（2026-09-15）：version 1 = 历史 Case，连续块四成员整组缺席合法。
     continuity_version: 1,
   };
@@ -534,6 +538,8 @@ function 连续卡(r: 连续记录形): Record<string, unknown> {
     updated_at: 时间戳,
     archived_at: null,
     match_score: r.matchScore,
+    // include=match_explanation 展开读取（C2）：解释键必在；null = 已展开无溯源
+    match_explanation: null,
   };
 }
 
@@ -631,6 +637,8 @@ function 招聘推荐行(): Record<string, unknown> {
     state: 'available',
     structured_requirements_confirmed: true,
     delegation: null,
+    // include=match_explanation 展开读取（C2）：解释键必在；null = 已展开无溯源
+    match_explanation: null,
     candidate_summary: 招聘摘要(),
   };
 }
@@ -644,6 +652,8 @@ function 招聘Case行(caseId: string, 覆盖: { matchScore: number | null; disc
     match_score: 覆盖.matchScore,
     candidate_identity: 候选身份(覆盖.disclosed),
     candidate_summary: 招聘摘要(),
+    // recruiter 列表恒带 include=match_explanation（C2）：解释键必在；null = 已展开无溯源
+    match_explanation: null,
   };
 }
 

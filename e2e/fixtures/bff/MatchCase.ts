@@ -57,7 +57,9 @@ export const P5标记 = {
   戊职位名: 'P5 Fixture 终局岗位·戊',
   己职位名: 'P5 Fixture 终局岗位·己',
   城市: 'P5 Fixture 市',
-  薪资带: 'P5 30-45K·15薪',
+  // §8A 有限识别清单内的 wire 串（Mock · N 薪 风格）：页面按 30–45K x 15 渲染；
+  // 来源溯源由 职位名/城市 标记承担
+  薪资带: '30-45K·15薪',
   技能: 'P5FixtureGo',
   甲别名: 'candidate-00000000a5a1',
   乙别名: 'candidate-00000000a5a2',

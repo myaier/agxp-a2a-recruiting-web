@@ -261,7 +261,7 @@ function P1岗位(job_id: string, 覆盖: Partial<P1CandidateJob形> = {}): P1Ca
     salary_lower: 标记.同文薪资下,
     salary_upper: 标记.同文薪资上,
     salary_period: 'month',
-    annual_salary_months: null,
+    annual_salary_months: 16, // 双栈同文对照：与 Mock M-13 的 16 薪数据对齐（§8A 后缀一致）
     campus_cohort: null,
     internship_months: null,
     onsite_days_per_week: null,

@@ -157,7 +157,7 @@ const 职位顶部场景: P1场景 = {
   关键元素(page) {
     return [
       { 名称: '职位名', 定位: page.getByText('交易中台架构师', { exact: true }) },
-      { 名称: '薪资', 定位: page.getByText('60-80K', { exact: true }) },
+      { 名称: '薪资', 定位: page.getByText('60–80K x 16', { exact: true }) }, // 双栈同文：Mock/Backend 都渲染 §8A 后缀
       { 名称: '分数位 适配环', 定位: page.getByRole('img', { name: /适配 \d+ 分/ }) },
       { 名称: '匹配度分析标题', 定位: page.getByText('匹配度分析', { exact: true }) },
       { 名称: 'JD卡标题 职位详情', 定位: page.getByText('职位详情', { exact: true }) },
@@ -815,7 +815,7 @@ for (const 宽度 of 后端宽度们) {
       // 双栈同文对照场景：顶部区域几何与 Mock 基准同源同文
       const 顶部几何 = [
         await 取几何(page.getByText('交易中台架构师', { exact: true }).first(), '职位名'),
-        await 取几何(page.getByText('60-80K', { exact: true }), '薪资'),
+        await 取几何(page.getByText('60–80K x 16', { exact: true }), '薪资'),
         await 取几何(page.getByRole('img', { name: /适配 \d+ 分/ }), '分数位 适配环'),
         await 取几何(page.getByText('匹配度分析', { exact: true }), '匹配度分析标题'),
         await 取几何(page.getByRole('button', { name: '让AI代理去谈' }), '浮动主按钮 让AI代理去谈'),

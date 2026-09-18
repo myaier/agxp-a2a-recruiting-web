@@ -137,7 +137,7 @@ test.describe('在谈详情完整布局', () => {
 
       // 顶栏：冻结职位名 + 城市 · 薪资带；匹配分缺失显示「—」并带可访问说明
       await expect(page.getByText(P5标记.乙职位名).first()).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByText(`${P5标记.城市} · ${P5标记.薪资带}`).first()).toBeVisible();
+      await expect(page.getByText(`${P5标记.城市} · 30–45K x 15`).first()).toBeVisible();
       await expect(page.getByTitle('匹配分缺失')).toBeVisible();
       await expect(page.getByRole('button', { name: '代谈进度', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '职位详情', exact: true })).toBeVisible();
@@ -221,7 +221,7 @@ test.describe('在谈详情完整布局', () => {
 
       // 甲（S1 已披露）：画像全缺顶栏 + 岗位上下文 + typed 附件 + 长正文当前段
       await hash直达(page, `/#/hr/candidate/${P5编号.甲}`);
-      await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · ${P5标记.薪资带}`).first())
+      await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · 30–45K x 15`).first())
         .toBeVisible({ timeout: 20_000 });
       await expect(page.getByText('经验缺失')).toBeVisible();
       await expect(page.getByText('学历缺失')).toBeVisible();
@@ -371,7 +371,7 @@ test.describe('在谈详情完整布局', () => {
 //     margin10），Backend 无假 total，canonical record_id/case_id 路由，招聘双架失败隔离；
 //   · P1–P3 进度：候选 v2 核心样本（S1 ended 默认展开非勾、手开 S0 时序各一次、
 //     顶部无公开大段/终局/重复轮次条、灰注释不计条数、手动折叠经受数据刷新与 Tab 来回）；
-//   · P4/D/R：冻结职位 20-30K 回退与空/缺简介区分、无公司 ID 禁用；招聘端安全简历
+//   · P4/D/R：冻结职位 20–30K 回退与空/缺简介区分、无公司 ID 禁用；招聘端安全简历
 //     同源顶栏、遮蔽公司、无项目日期、不承诺沟通；PDF 租约与动作卡跨 Tab 保留；
 //   · X1–X3：320×568/390×844 完整/缺失/长文/终局代表场景无横向溢出（document 与
 //     主要滚动容器，1px 取整容差），定向截图只进 test-results，不动视觉基线。
@@ -822,10 +822,10 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       expect(fixture.变更请求).toEqual([]); // 观察窗零写请求
     });
 
-    test('job 深链与冻结投影：?tab=job 首挂载定位、20-30K 回退顶栏一致、空/缺简介区分、无公司 ID 禁用 @backend @s0-s3-display', async ({ page }) => {
+    test('job 深链与冻结投影：?tab=job 首挂载定位、20–30K 回退顶栏一致、空/缺简介区分、无公司 ID 禁用 @backend @s0-s3-display', async ({ page }) => {
       const fixture = 创建P5MatchCasefixture();
       const 甲 = fixture.cases[P5编号.甲]!;
-      // 摘要薪资置空 + 冻结三元组 20/30/month → 唯一薪资投影回退 20-30K（Spec §6.2）
+      // 摘要薪资置空 + 冻结三元组 20/30/month → 唯一薪资投影回退 20–30K（Spec §6.2 / §8A 显示合同）
       甲.职位覆盖 = { 薪资带: '' };
       甲.jobDetail = {
         title: null, recruitment_type: null, category: null, office_location: null,
@@ -857,9 +857,9 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
       expect(page.url()).toContain(`deal/${P5连续编号.甲}`);
       expect(page.url()).toContain('tab=job');
 
-      // 顶栏与资料摘要同吃一份冻结投影：职位/公司、城市 · 20-30K（D1 顶栏一致）
+      // 顶栏与资料摘要同吃一份冻结投影：职位/公司、城市 · 20–30K（D1 顶栏一致）
       await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.冻结公司}`).first()).toBeVisible();
-      await expect(page.getByText(`${P5标记.城市} · 20-30K`).first()).toBeVisible();
+      await expect(page.getByText(`${P5标记.城市} · 20–30K`).first()).toBeVisible();
       await expect(page.getByText('P5 Fixture 冻结岗位描述')).toBeVisible();
       await expect(page.getByText('P5 Fixture 冻结岗位要求')).toBeVisible();
       await expect(page.getByText(P5标记.冻结发布人)).toBeVisible();
@@ -889,7 +889,7 @@ test.describe('S0-S3 展示统一 @s0-s3-display', () => {
 
       // 320×568：冻结摘要四事实与缺失说明同屏可读
       await page.setViewportSize({ width: 320, height: 568 });
-      await expect(page.getByText('20-30K').first()).toBeVisible();
+      await expect(page.getByText('20–30K').first()).toBeVisible();
       await expect(page.getByText(P5标记.技能).first()).toBeVisible();
       await 断言核心页无横向溢出(page);
       await page.screenshot({ path: 'test-results/S0S3展示统一/bk-资料-job深链-320.png', fullPage: true });
@@ -1298,8 +1298,8 @@ test.describe('卡片统一 Backend @backend', () => {
     ).toBeLessThanOrEqual(后端在谈390.区域.title!.y + 1);
     await expect(后端在谈卡.getByText('公司信息未知')).toBeVisible();
     await expect(后端在谈卡.getByText('公司简介未知')).toBeVisible();
-    // 卡面沿用原 Mock 展示行为：把 - 换成 –（不改币种/单位/数值）
-    await expect(后端在谈卡.getByText(P5标记.薪资带.replace('-', '–'))).toBeVisible();
+    // §8A：薪资串在映射边界规范化后原样渲染（en dash + x N 后缀）
+    await expect(后端在谈卡.getByText('30–45K x 15')).toBeVisible();
     await page.screenshot({ path: 'test-results/卡片统一/backend-在谈候选端-390.png' });
     // 320 收窄：还在候选端会话里，先看候选端在谈卡
     await page.setViewportSize({ width: 320, height: 844 });

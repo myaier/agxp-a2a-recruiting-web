@@ -111,7 +111,7 @@ const 市场场景: 展接线场景 = {
       { 名称: '首卡 查看职位详情按钮', 定位: page.getByRole('button', { name: '查看职位详情' }).first() },
       { 名称: '首卡 让AI代理去谈按钮', 定位: page.getByRole('button', { name: '让AI代理去谈' }).first() },
       { 名称: '首卡职位名', 定位: page.getByText('交易系统资深工程师', { exact: true }) },
-      { 名称: '首卡薪资', 定位: page.getByText('55–70K', { exact: true }) },
+      { 名称: '首卡薪资', 定位: page.getByText('55–70K x 15', { exact: true }) },
       { 名称: '首卡公司名', 定位: page.getByText('老虎国际', { exact: true }) },
       { 名称: '首卡分数环', 定位: page.getByRole('img', { name: /适配 \d+ 分/ }).first() },
     ];
@@ -203,7 +203,7 @@ const 职位详情顶部场景: 展接线场景 = {
   关键元素(page) {
     return [
       { 名称: '职位名', 定位: page.getByText('交易中台架构师', { exact: true }) },
-      { 名称: '薪资', 定位: page.getByText('60-80K', { exact: true }) },
+      { 名称: '薪资', 定位: page.getByText('60–80K x 16', { exact: true }) }, // Mock M-13 带 §8A 后缀
       { 名称: '分数位 适配环', 定位: page.getByRole('img', { name: /适配 \d+ 分/ }) },
       { 名称: '匹配度分析标题', 定位: page.getByText('匹配度分析', { exact: true }) },
       { 名称: 'JD卡标题 职位详情', 定位: page.getByText('职位详情', { exact: true }) },

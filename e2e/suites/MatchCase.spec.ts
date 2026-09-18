@@ -661,7 +661,7 @@ test.describe('DF-005 DF-016 dogfood 回归 @backend', () => {
     await expect.poll(() => 覆盖送达数, { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
     expect(送达档案键们).toEqual(['public_name', 'title', 'personal_verification_status']);
     // DF-005：缺头像键不再整页失败 —— 岗位上下文（冻结职位 · 城市 · 薪资带）照常渲染
-    await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · ${P5标记.薪资带}`).first())
+    await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · 30–45K x 15`).first())
       .toBeVisible({ timeout: 15_000 });
 
     // 顶栏画像来自同一响应 candidate_resume 的安全摘要（性别/年限/学历/求职状态 + 最近工作行）
@@ -688,7 +688,7 @@ test.describe('DF-005 DF-016 dogfood 回归 @backend', () => {
     await expect(page.getByText(`P5 Fixture 公司 · ${P5标记.现职.甲}`)).toHaveCount(0);
     await expect(page.getByText('匿名画像缺失').first()).toBeVisible();
     // 冻结职位事实（岗位上下文行）不受摘要清空影响
-    await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · ${P5标记.薪资带}`).first()).toBeVisible();
+    await expect(page.getByText(`${P5标记.甲职位名} · ${P5标记.城市} · 30–45K x 15`).first()).toBeVisible();
     // 全程身份零渲染、身份头像 URL 零请求
     await expect(page.getByText('P5 Fixture 候选真名')).toHaveCount(0);
     expect(身份头像请求).toEqual([]);

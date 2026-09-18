@@ -595,12 +595,13 @@ for (const 宽度 of [320, 390]) {
       await expect(page.getByText(长职位名)).toHaveCount(1);
       await expect(page.getByRole('img', { name: '公司图片未知' })).toHaveCount(5);
       await expect(page.getByText('发布人未知')).toHaveCount(2);
-      // nullable 与占位：公司名缺失、在谈薪资缺失、同名项目两卡、需要你徽标、15 薪标签
+      // nullable 与占位：公司名缺失、在谈薪资缺失、同名项目两卡、需要你徽标、月薪月数并入薪资后缀（§8A）
       await expect(page.getByTestId('求职推荐卡').filter({ hasText: '公司信息未知' })).toHaveCount(1);
       await expect(page.getByText('薪资未知')).toHaveCount(1);
       await expect(page.getByText('同名在谈项目')).toHaveCount(3);
       await expect(page.getByText('需要你')).toHaveCount(1);
-      await expect(page.getByText('15 薪')).toHaveCount(1);
+      await expect(page.getByText('25–40K x 15')).toHaveCount(1);
+      await expect(page.getByText('15 薪')).toHaveCount(0);
       // 在谈列表卡 next_cursor='3' 非空：既有「下一批」提示照常上屏（静态提示，非分页入口）
       await expect(page.getByText(/下一批/)).toBeVisible();
       // 类型标题与数量；查询时间不上屏
