@@ -1196,9 +1196,9 @@ test.describe('卡片统一 Mock 三屏 @mock', () => {
     await expect(mock推荐卡.getByRole('img', { name: '适配 91 分' })).toBeVisible({ timeout: 15_000 });
     const mock推荐390 = await 采集卡观察(page, mock推荐卡);
     await 断言卡在视口内(page, mock推荐卡);
-    // Mock 推荐列表不传分析回调（Task 7 as-built：Mock 人才库卡无分析入口），
-    // 分数仍在卡主体内 → score 先行；Backend 传回调 → 入口挂卡根在后
-    断言区域顺序(mock推荐390, ['score', 'head', 'work', 'education', 'tags', 'actions']);
+    // review-r1 接线后的 as-built（Spec §7）：Mock 推荐列表同样传 查看匹配分析 回调，
+    // 按卡设计的传回调态 → 分数入口挂卡根、卡体之后渲染（与上方招聘在谈卡同形）
+    断言区域顺序(mock推荐390, ['head', 'work', 'education', 'tags', 'actions', 'score']);
     断言分数位让位(mock推荐390);
     await page.screenshot({ path: 'test-results/卡片统一/mock-推荐-390.png' });
     // 卡主体与 › 都开匿名在线简历；★ 收藏可点

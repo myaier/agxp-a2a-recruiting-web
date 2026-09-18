@@ -17,7 +17,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 生成失败不覆盖原文档。标记外侧的手写 L3 索引不受生成影响，勿改标记行本身。
 
 <!-- BEGIN GENERATED CASES -->
-## 第一层 · 单元/组件（Vitest） · 6337 例 · 271 文件
+## 第一层 · 单元/组件（Vitest） · 6339 例 · 271 文件
 
 ### 数据契约/映射 · 1723 例 · 58 文件
 
@@ -3956,7 +3956,7 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 
 </details>
 
-### 页面/接线 · 2450 例 · 104 文件
+### 页面/接线 · 2452 例 · 104 文件
 
 <details>
 <summary>展开明细</summary>
@@ -4626,6 +4626,8 @@ npm run test:list -- --check   # 只比对自动区是否过期；不同/收集�
 | 初筛对话 · Mock 原型行为保持 > 无效 ID 维持既有空态，不崩溃 |  | [src/屏幕/初筛对话.test.tsx](../../src/屏幕/初筛对话.test.tsx) | npm test -- src/屏幕/初筛对话.test.tsx -t '初筛对话 · Mock 原型行为保持 (> )?无效 ID 维持既有空态，不崩溃' | 未知 |
 | 初筛记录 · Backend 退场 > Backend 初筛列表不显示 fixture |  | [src/屏幕/初筛记录.test.tsx](../../src/屏幕/初筛记录.test.tsx) | npm test -- src/屏幕/初筛记录.test.tsx -t '初筛记录 · Backend 退场 (> )?Backend 初筛列表不显示 fixture' | 未知 |
 | 初筛记录 · Mock 原型行为保持 > 按岗位分组渲染 fixture，行点击导航到单条初筛对话 |  | [src/屏幕/初筛记录.test.tsx](../../src/屏幕/初筛记录.test.tsx) | npm test -- src/屏幕/初筛记录.test.tsx -t '初筛记录 · Mock 原型行为保持 (> )?按岗位分组渲染 fixture，行点击导航到单条初筛对话' | 未知 |
+| 匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） > review-r2：顶栏总分与分析模型同源（A-07 快照 null → 种子 79；档.适配分 89 不上屏） |  | [src/屏幕/匿名在线简历.test.tsx](../../src/屏幕/匿名在线简历.test.tsx) | npm test -- src/屏幕/匿名在线简历.test.tsx -t '匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） (> )?review-r2：顶栏总分与分析模型同源（A-07 快照 null → 种子 79；档\.适配分 89 不上屏）' | 未知 |
+| 匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） > review-r3：未知编号不抛异常，缺档文案照常（栏匹配分计算安全） |  | [src/屏幕/匿名在线简历.test.tsx](../../src/屏幕/匿名在线简历.test.tsx) | npm test -- src/屏幕/匿名在线简历.test.tsx -t '匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） (> )?review-r3：未知编号不抛异常，缺档文案照常（栏匹配分计算安全）' | 未知 |
 | 匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） > 快照 null 条目（A-07）：缺失说明 + 有限依据行，不造六条假状态 |  | [src/屏幕/匿名在线简历.test.tsx](../../src/屏幕/匿名在线简历.test.tsx) | npm test -- src/屏幕/匿名在线简历.test.tsx -t '匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） (> )?快照 null 条目（A-07）：缺失说明 \+ 有限依据行，不造六条假状态' | 未知 |
 | 匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） > 快照命中记录（A-01，总分 94）走六维模型版式：顶栏唯一总分，正文无第二环 |  | [src/屏幕/匿名在线简历.test.tsx](../../src/屏幕/匿名在线简历.test.tsx) | npm test -- src/屏幕/匿名在线简历.test.tsx -t '匿名在线简历 · Mock 匹配依据（review-r1 对齐六维） (> )?快照命中记录（A-01，总分 94）走六维模型版式：顶栏唯一总分，正文无第二环' | 未知 |
 | 匿名在线简历 · P4 招聘端详情（Backend） > 404 已收口给安全不可用页，不再渲染任何画像 |  | [src/屏幕/匿名在线简历.test.tsx](../../src/屏幕/匿名在线简历.test.tsx) | npm test -- src/屏幕/匿名在线简历.test.tsx -t '匿名在线简历 · P4 招聘端详情（Backend） (> )?404 已收口给安全不可用页，不再渲染任何画像' | 未知 |
