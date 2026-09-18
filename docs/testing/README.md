@@ -674,12 +674,17 @@ npm run test:e2e -- e2e/suites/发现推荐.spec.ts e2e/suites/MatchCase.spec.ts
 # 实跑 9 passed（复跑两次稳定；其中一次并行负载下 1 例纵序翻红，已改为层内定位）
 ```
 
-Task 9 递延的基线红遮蔽断言随 8B fixture 落地复验：五个 Suite 全量
-（95 tests）在 fixture 修复前 20 failed，断言迁移（URL 四坐标锚、include 矩阵串、
-卡传回调态 DOM 顺序、退役文案「未提供判定/匹配分析缺失/推荐依据」、旧合并轮次行）
-后全绿；`e2e/P1展示统一.spec.ts`（含 `匹配度分析标题` 关键元素场景）与
-`e2e/展示字段接线.spec.ts`（含 `wiring-job-top`）同批通过（Task 9 已改两 fixture 的
-展开键与 URL 锚，本轮只复验未再改）。
+Task 9 递延的基线红遮蔽断言随 8B fixture 落地复验：五个 Suite 全量（95 tests）在
+fixture 修复前 20 failed，断言迁移（URL 四坐标锚、include 矩阵串、卡传回调态 DOM
+顺序、退役文案「未提供判定/匹配分析缺失/推荐依据」、旧合并轮次行）后全绿；
+`e2e/展示字段接线.spec.ts` 全量 34 passed（候选侧 4 例基线红根因有二：URL `$` 锚
+未容纳四坐标 query、嵌套候选 case_detail 缺解释键，均已修）；`e2e/P1展示统一.spec.ts`
+中义务点名的 `p1-job-top`（含 `匹配度分析标题` 关键元素，Mock 320/390）通过。
+P1 Backend 消息层 12 例（双端消息行/无上下文/长文/错误带缓存/长标题 × 320/390）
+维持基线红：根因是 P1 fixture 未声明会话页 Case 聚合详情坐标
+（`GET /me/negotiations/{id}?include=match_explanation` 落离线边界），与 Task 8/9
+基线红集合逐例相同（本轮零新增、零修复 —— 修法需在 P1 fixture 内建完整聚合详情
+wire，超出本 Task 迁移范围，留待 P1 fixture 责任方）。
 
 ### 视觉（Task 4/10 义务）
 
